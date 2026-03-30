@@ -1,4 +1,13 @@
-# pdf4tcllib-0.1.1.tm -- Extension library for pdf4tcl
+# pdf4tcllib -- Extension library for pdf4tcl
+#
+# Copyright (c) 2026 Gregor (gregnix)
+# BSD 2-Clause License -- see LICENSE for details
+#
+# Provides: fonts, unicode, text, table, page, drawing,
+#           units, image, form namespaces
+# Requires: pdf4tcl 0.9.4.23+, Tcl 8.6+
+
+# pdf4tcllib-0.1.tm -- Extension library for pdf4tcl
 #
 # Single file: all modules in one file. (2544 lines)
 # No external dependencies except pdf4tcl itself.

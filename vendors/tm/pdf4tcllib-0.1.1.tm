@@ -1,3 +1,12 @@
+# pdf4tcllib -- Extension library for pdf4tcl
+#
+# Copyright (c) 2026 Gregor (gregnix)
+# BSD 2-Clause License -- see LICENSE for details
+#
+# Provides: fonts, unicode, text, table, page, drawing,
+#           units, image, form namespaces
+# Requires: pdf4tcl 0.9.4.23+, Tcl 8.6+
+
 # pdf4tcllib-0.1.tm -- Extension library for pdf4tcl
 #
 # Single file: all modules in one file. (2544 lines)
@@ -25,10 +34,10 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.1
+package provide pdf4tcllib 0.1.1
 
 namespace eval ::pdf4tcllib {
-    variable version 0.1
+    variable version 0.1.1
 }
 
 proc ::pdf4tcllib::version {} {
