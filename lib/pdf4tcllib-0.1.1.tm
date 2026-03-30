@@ -1,4 +1,4 @@
-# pdf4tcllib-0.1.tm -- Extension library for pdf4tcl
+# pdf4tcllib-0.1.1.tm -- Extension library for pdf4tcl
 #
 # Single file: all modules in one file. (2544 lines)
 # No external dependencies except pdf4tcl itself.
@@ -25,10 +25,10 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.1
+package provide pdf4tcllib 0.1.1
 
 namespace eval ::pdf4tcllib {
-    variable version 0.1
+    variable version 0.1.1
 }
 
 proc ::pdf4tcllib::version {} {
