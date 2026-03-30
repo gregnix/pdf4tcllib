@@ -27,7 +27,7 @@ Single file -- no subdirectory needed:
 ```
 myproject/
   tm/
-    pdf4tcllib-0.1.tm     (single file, all 9 modules, 2681 lines)
+    pdf4tcllib-0.1.1.tm     (single file, all 9 modules, 2681 lines)
 ```
 
 ```tcl
