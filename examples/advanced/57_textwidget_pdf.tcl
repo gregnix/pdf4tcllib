@@ -22,7 +22,8 @@
 package require Tk
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+#package require pdf4tcllib
+package require pdf4tcltext
 package require pdf4tcl
 
 set outdir [expr {$argc > 0 ? [lindex $argv 0] : [file join $scriptDir pdf]}]
@@ -196,7 +197,7 @@ $t2 insert end "\nInstallation\n" section
 $t2 insert end "Das Paket ist eine einzelne " body
 $t2 insert end ".tm" code
 $t2 insert end "-Datei ohne externe Abhängigkeiten:\n" body
-$t2 insert end "tcl::tm::path add lib\npackage require pdf4tcllib 0.1\n" code
+$t2 insert end "tcl::tm::path add lib\npackage require pdf4tcllib 0.2\n" code
 
 $t2 insert end "\nWichtige Regeln\n" section
 
@@ -210,7 +211,7 @@ $t2 insert end " verwenden.\n" body
 
 $t2 insert end "\nVersion\n" section
 $t2 insert end "Aktuelle Version: " body
-$t2 insert end "pdf4tcllib 0.1" version
+$t2 insert end "pdf4tcllib 0.2" version
 $t2 insert end " (2026-03-29)\n" body
 
 $t2 configure -state disabled

@@ -18,7 +18,8 @@
 package require Tk
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+#package require pdf4tcllib 0.2
+package require pdf4tcltable 0.1
 package require pdf4tcl
 
 # tablelist -- aus vendors/ oder systemweit

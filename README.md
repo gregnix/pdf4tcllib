@@ -27,12 +27,12 @@ Single file -- no subdirectory needed:
 ```
 myproject/
   tm/
-    pdf4tcllib-0.1.1.tm   (single file, all 9 modules)
+    pdf4tcllib-0.2.tm   (single file, all 9 modules)
 ```
 
 ```tcl
 tcl::tm::path add /path/to/tm
-package require pdf4tcllib 0.1.1
+package require pdf4tcllib 0.2
 ```
 
 All modules (fonts, unicode, text, table, page, drawing, units, image, form)
@@ -42,7 +42,7 @@ are contained in one file. The only external dependency is pdf4tcl.
 ## Quick start
 
 ```tcl
-package require pdf4tcllib 0.1.1
+package require pdf4tcllib 0.2
 
 # Initialize fonts (searches for TTF automatically)
 pdf4tcllib::fonts::init

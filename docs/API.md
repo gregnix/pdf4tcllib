@@ -2,7 +2,7 @@
 
 pdf4tcllib extends pdf4tcl with Unicode handling, emoji fallbacks, page context
 management, text wrapping, simplified tables, and form layout.
-Distributed as a single `.tm` file (2681 lines).
+Distributed as a single `.tm` file (3483 lines).
 
 ## Overview
 
@@ -16,11 +16,11 @@ that recur in every PDF project.
 ```tcl
 # As a .tm module
 tcl::tm::path add /path/to/lib
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.2
 
 # Or in vendors/tm/ (mdstack, mdhelp4)
 tcl::tm::path add vendors/tm
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.2
 ```
 
 Dependency: pdf4tcl (in `vendors/pkg/` or system-wide).
@@ -38,6 +38,9 @@ Dependency: pdf4tcl (in `vendors/pkg/` or system-wide).
 | image   | Image embedding with automatic page breaks |
 | form    | Form layout: label+field, sections, order tables |
 | core    | readFile, version, validate_pdf |
+
+> **Note:** `tablelist` and `textwidget` modules are distributed as
+> separate packages (`pdf4tcltable`, `pdf4tcltext`) since version 0.2.
 
 ---
 
@@ -263,7 +266,7 @@ set newY [pdf4tcllib::text::writeParagraph $pdf $x $y $width $text \
 # Returns the Y position after the last line
 ```
 
-Since pdf4tcllib 0.1.1 (pdf4tcl 0.9.4.23+): uses `drawTextBox -newyvar`
+Since pdf4tcllib 0.2 (pdf4tcl 0.9.4.23+): uses `drawTextBox -newyvar`
 for exact Y position. Falls back to line-count estimation for older pdf4tcl.
 
 ### text::width -- measuring text width
@@ -571,7 +574,7 @@ pdf4tcllib::form::sumLine $pdf $ctx y {30 200 50 80} "Total:" "0.00 EUR"
 ### Complete example
 
 ```tcl
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.2
 pdf4tcllib::fonts::init
 
 set pdf [pdf4tcl::new %AUTO% -paper a4]
@@ -618,7 +621,7 @@ if {[pdf4tcllib::validate_pdf "output.pdf"]} {
 
 ```tcl
 puts [pdf4tcllib::version]
-# -> 0.1
+# -> 0.2
 ```
 
 ### readFile
