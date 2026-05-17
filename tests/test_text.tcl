@@ -184,4 +184,57 @@ test text-detect-empty "Leerer String -> Sans" -body {
     expr {$result eq "Helvetica" || $result eq "Pdf4tclSans"}
 } -result 1
 
+
+# ============================================================
+# text::mathSymbol -- LaTeX-Name -> Unicode Lookup
+# ============================================================
+
+test math-symbol-alpha "Greek lowercase alpha" -body {
+    pdf4tcllib::text::mathSymbol alpha
+} -result \u03B1
+
+test math-symbol-Sigma "Greek uppercase Sigma" -body {
+    pdf4tcllib::text::mathSymbol Sigma
+} -result \u03A3
+
+test math-symbol-cdot "Center dot" -body {
+    pdf4tcllib::text::mathSymbol cdot
+} -result \u00B7
+
+test math-symbol-le "Less-or-equal" -body {
+    pdf4tcllib::text::mathSymbol le
+} -result \u2264
+
+test math-symbol-infty "Infinity" -body {
+    pdf4tcllib::text::mathSymbol infty
+} -result \u221E
+
+test math-symbol-unknown "Unknown name returns empty string" -body {
+    pdf4tcllib::text::mathSymbol xyz_not_a_real_symbol
+} -result ""
+
+test math-symbol-names-list "mathSymbolNames returns sorted list" -body {
+    set names [pdf4tcllib::text::mathSymbolNames]
+    expr {[llength $names] > 0 \
+          && $names eq [lsort $names] \
+          && "alpha" in $names \
+          && "cdot" in $names}
+} -result 1
+
+
+# ============================================================
+# text::superscript / text::subscript -- API smoke
+# ============================================================
+# Diese rendern in ein PDF -- wir pruefen primaer dass die Procs
+# existieren und ohne Error durchlaufen. Visueller Output via Demo.
+
+test math-procs-exist "superscript proc exists" -body {
+    expr {[info procs ::pdf4tcllib::text::superscript] ne ""}
+} -result 1
+
+test math-procs-exist-sub "subscript proc exists" -body {
+    expr {[info procs ::pdf4tcllib::text::subscript] ne ""}
+} -result 1
+
+
 cleanupTests

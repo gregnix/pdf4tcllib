@@ -13,7 +13,7 @@ set libDir [file normalize [file join $testDir .. lib]]
 
 # pdf4tcllib laden
 tcl::tm::path add $libDir
-if {[catch {package require pdf4tcllib 0.1} err]} {
+if {[catch {package require pdf4tcllib 0.2} err]} {
     puts stderr "FEHLER: pdf4tcllib konnte nicht geladen werden."
     puts stderr "  $err"
     puts stderr ""

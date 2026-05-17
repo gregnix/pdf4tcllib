@@ -1245,6 +1245,95 @@ proc ::pdf4tcllib::text::writeParagraph {pdf text x y width {size 12} {align lef
 }
 
 
+# ----------------------------------------------------------------
+# Math-Inline-Helpers (Subset, kein vollstaendiges LaTeX)
+# ----------------------------------------------------------------
+# Pragmatischer Ansatz: Sub/Super via y-Offset + reduzierte Fontgroesse,
+# plus eine Lookup-Tabelle fuer haeufige LaTeX-Symbol-Namen -> Unicode.
+#
+# Damit lassen sich Inline-Math wie $x^2$, $H_2O$, $\alpha + \beta$
+# direkt in PDFs rendern. Komplexere Konstrukte (Brueche, Wurzeln,
+# Integrale-Limits) brauchen externe Renderer (KaTeX-CLI -> SVG,
+# eingebettet via Image).
+#
+# Konventionen pdf4tcl-text:
+#   $pdf text $str -x $x -y $y -font $font
+# y ist die Baseline. Fuer Superscript verschieben wir nach oben
+# (negativ in PDF-Y-Koordinaten? -- in pdf4tcl ist y top-down, also
+# subtrahieren wir vom y-Wert um nach oben zu kommen).
+
+proc ::pdf4tcllib::text::superscript {pdf textStr x y fontSize fontName} {
+    # Zeichnet textStr als Hochstellung. Reduziert Fontgroesse auf 70%
+    # und shift Baseline um 35% der Original-Fontgroesse nach oben.
+    # Returnt die Pixel-Breite des gezeichneten Textes (fuer X-Advance).
+    set smallSize [expr {$fontSize * 0.7}]
+    set yShift    [expr {$fontSize * 0.35}]
+    set ySuper    [expr {$y - $yShift}]
+    $pdf setFont $smallSize $fontName
+    $pdf text $textStr -x $x -y $ySuper
+    set w [$pdf getStringWidth $textStr]
+    # Font wiederherstellen (caller-Verantwortung wenn anders erwartet)
+    $pdf setFont $fontSize $fontName
+    return $w
+}
+
+proc ::pdf4tcllib::text::subscript {pdf textStr x y fontSize fontName} {
+    # Tiefstellung: gleicher Mechanismus, y-Shift NACH UNTEN.
+    set smallSize [expr {$fontSize * 0.7}]
+    set yShift    [expr {$fontSize * 0.20}]
+    set ySub      [expr {$y + $yShift}]
+    $pdf setFont $smallSize $fontName
+    $pdf text $textStr -x $x -y $ySub
+    set w [$pdf getStringWidth $textStr]
+    $pdf setFont $fontSize $fontName
+    return $w
+}
+
+# LaTeX-Symbol-Name -> Unicode-Zeichen
+# Subset der haeufigsten Math-Symbole. Erweitern nach Bedarf.
+variable ::pdf4tcllib::text::_mathSymbols {
+    alpha    \u03B1   beta     \u03B2   gamma    \u03B3   delta    \u03B4
+    epsilon  \u03B5   zeta     \u03B6   eta      \u03B7   theta    \u03B8
+    iota     \u03B9   kappa    \u03BA   lambda   \u03BB   mu       \u03BC
+    nu       \u03BD   xi       \u03BE   omicron  \u03BF   pi       \u03C0
+    rho      \u03C1   sigma    \u03C3   tau      \u03C4   upsilon  \u03C5
+    phi      \u03C6   chi      \u03C7   psi      \u03C8   omega    \u03C9
+    Alpha    \u0391   Beta     \u0392   Gamma    \u0393   Delta    \u0394
+    Theta    \u0398   Lambda   \u039B   Pi       \u03A0   Sigma    \u03A3
+    Phi      \u03A6   Psi      \u03A8   Omega    \u03A9
+    infty    \u221E   sum      \u2211   prod     \u220F   int      \u222B
+    partial  \u2202   nabla    \u2207   sqrt     \u221A
+    le       \u2264   ge       \u2265   ne       \u2260   approx   \u2248
+    equiv    \u2261   pm       \u00B1   mp       \u2213   times    \u00D7
+    cdot     \u00B7   div      \u00F7   to       \u2192   gets     \u2190
+    Rightarrow \u21D2 Leftarrow \u21D0  in       \u2208   notin    \u2209
+    subset   \u2282   supset   \u2283   cup      \u222A   cap      \u2229
+    emptyset \u2205   forall   \u2200   exists   \u2203
+    deg      \u00B0   prime    \u2032
+}
+
+proc ::pdf4tcllib::text::mathSymbol {name} {
+    # Liefert das Unicode-Zeichen zu einem LaTeX-Symbol-Namen.
+    # Beispiele:
+    #   text::mathSymbol alpha   -> \u03B1
+    #   text::mathSymbol cdot    -> \u00B7
+    #   text::mathSymbol unknown -> "" (kein Throw, damit Aufrufer
+    #                                   einfach Fallback rendern kann)
+    variable _mathSymbols
+    if {[dict exists $_mathSymbols $name]} {
+        return [dict get $_mathSymbols $name]
+    }
+    return ""
+}
+
+proc ::pdf4tcllib::text::mathSymbolNames {} {
+    # Liefert eine sortierte Liste aller bekannten Symbol-Namen.
+    # Nuetzlich fuer Dokumentation, Tab-Completion, Tests.
+    variable _mathSymbols
+    return [lsort [dict keys $_mathSymbols]]
+}
+
+
 # ================================================================
 # Module: pdf4tcllib::page
 # ================================================================

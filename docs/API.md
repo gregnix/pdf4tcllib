@@ -314,6 +314,85 @@ set baseline [expr {$boxY + $fontSize}]
 $pdf text "Hello" -x $boxX -y $baseline
 ```
 
+### text::expandTabs -- replace tabs with spaces
+
+```tcl
+set out [pdf4tcllib::text::expandTabs $line $tabWidth]
+```
+
+Replaces tab characters with the configured number of spaces (default 4).
+Useful before passing code-like text to `text::wrap` because tabs render
+unpredictably in PDF.
+
+### text::detectFont -- heuristic font choice
+
+```tcl
+set fontName [pdf4tcllib::text::detectFont $line]
+```
+
+Returns `"Courier"` if `$line` looks like code (heavy use of `(){};:`
+characters, leading whitespace, or all-monospace patterns), else the
+default Sans font. Helper for auto-styling unstructured paragraphs.
+
+### text::superscript / text::subscript -- inline math basics
+
+```tcl
+set width [pdf4tcllib::text::superscript $pdf $str $x $y $fontSize $fontName]
+set width [pdf4tcllib::text::subscript   $pdf $str $x $y $fontSize $fontName]
+```
+
+Renders `$str` at reduced size (70% of `$fontSize`) with a baseline shift:
+0.35x up for superscript, 0.20x down for subscript. Returns the rendered
+text width so the caller can advance `$x` for the next segment.
+
+The procs reset the font to `($fontSize, $fontName)` after rendering so
+subsequent text resumes at the original size.
+
+Typical use -- combine for `H_2O` or `E=mc^2`:
+
+```tcl
+set x 100; set y 100
+$pdf setFont 14 Helvetica
+$pdf text "H" -x $x -y $y
+set x [expr {$x + [$pdf getStringWidth "H"]}]
+set w [pdf4tcllib::text::subscript $pdf "2" $x $y 14 Helvetica]
+set x [expr {$x + $w}]
+$pdf text "O" -x $x -y $y
+```
+
+Full LaTeX (fractions, roots, integrals with limits) is **not** rendered
+by these helpers -- they're intentionally a minimal subset. For full
+math, render with KaTeX-CLI to SVG and embed via image.
+
+### text::mathSymbol / text::mathSymbolNames -- LaTeX-name to Unicode
+
+```tcl
+set ch    [pdf4tcllib::text::mathSymbol alpha]   ;# returns "α"
+set ch    [pdf4tcllib::text::mathSymbol cdot]    ;# returns "·"
+set ch    [pdf4tcllib::text::mathSymbol unknown] ;# returns ""
+set names [pdf4tcllib::text::mathSymbolNames]    ;# sorted list of all names
+```
+
+Lookup table for ~67 common LaTeX math symbol names mapped to their
+Unicode equivalents. Categories:
+
+| Category | Examples |
+|----------|----------|
+| Greek lower | `alpha`, `beta`, ..., `omega` |
+| Greek upper | `Alpha`, `Beta`, ..., `Omega` |
+| Operators | `cdot`, `times`, `div`, `pm`, `mp` |
+| Comparison | `le`, `ge`, `ne`, `approx`, `equiv` |
+| Big symbols | `sum`, `prod`, `int`, `partial`, `nabla`, `sqrt`, `infty` |
+| Arrows | `to`, `gets`, `Rightarrow`, `Leftarrow` |
+| Set theory | `in`, `notin`, `subset`, `supset`, `cup`, `cap`, `emptyset` |
+| Logic | `forall`, `exists` |
+| Misc | `deg`, `prime` |
+
+Unknown names return `""` -- caller decides on fallback (e.g. render
+the raw LaTeX-style string).
+
+```
+
 ---
 
 ## drawing

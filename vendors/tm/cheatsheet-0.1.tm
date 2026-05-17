@@ -22,8 +22,10 @@
 #           }}
 #           {title "Optionen" type table content {
 #               {label1  "Beschreibung 1"}
-#               {label2  "Beschreibung 2"}
+#               {{Label mit Leerzeichen}  "Beschreibung"  0}
 #           }}
+#   Tabellenzeile: {label value ?mono?}; mehrteilige Labels in {{…}} klammern
+#   (siehe docs/csd-format.md), sonst falsche Feldzuordnung / Fehler bei mono.
 #           {title "Hinweis" type hint content {
 #               "Wichtiger Hinweis"
 #           }}
@@ -133,24 +135,35 @@ proc cheatsheet::_row {pdf label value y col {mono 0}} {
 
 proc cheatsheet::_code {pdf line y col} {
     variable C
+    set vx [expr {$col+4}]
+    set vw [expr {$C(col_w) - 8}]
+    set nlines 0
     $pdf setFont 7 Courier
     $pdf setFillColor 0.15 0.15 0.15
-    $pdf text $line -x [expr {$col+4}] -y $y
+    $pdf drawTextBox $vx [expr {$y+1}] $vw 200 $line -align left -linesvar nlines
     $pdf setFillColor 0 0 0
-    return [expr {$y + $C(code_h)}]
+    if {$nlines < 1} { set nlines 1 }
+    set h [expr {max($C(code_h), $nlines * 10 + 2)}]
+    return [expr {$y + $h}]
 }
 
 proc cheatsheet::_hint {pdf text y col} {
     variable C
     variable COL
     set y [expr {$y + 2}]
-    $pdf setFillColor $COL(hint_r) $COL(hint_g) $COL(hint_b)
-    $pdf rectangle $col $y $C(col_w) 14 -filled 1
-    $pdf setFillColor 0.4 0.2 0.0
+    set vx [expr {$col+4}]
+    set vw [expr {$C(col_w) - 8}]
+    set nlines 0
     $pdf setFont 8 Helvetica
-    $pdf text $text -x [expr {$col+6}] -y [expr {$y+5}]
+    $pdf drawTextBox $vx [expr {$y+1}] $vw 500 $text -align left -linesvar nlines -dryrun 1
+    if {$nlines < 1} { set nlines 1 }
+    set boxh [expr {max(14, $nlines * 10 + 8)}]
+    $pdf setFillColor $COL(hint_r) $COL(hint_g) $COL(hint_b)
+    $pdf rectangle $col $y $C(col_w) $boxh -filled 1
+    $pdf setFillColor 0.4 0.2 0.0
+    $pdf drawTextBox $vx [expr {$y+1}] $vw 500 $text -align left -linesvar nlines
     $pdf setFillColor 0 0 0
-    return [expr {$y + 16}]
+    return [expr {$y + $boxh + 4}]
 }
 
 proc cheatsheet::_sep {pdf y col} {
@@ -192,20 +205,27 @@ proc cheatsheet::_sectionHeight {section} {
     switch $type {
         table {
             foreach row $rows {
-                set h [expr {$h + $C(row_h)}]
+                set value [lindex $row 1]
+                set est [expr {max(1, int(ceil([string length $value] / 42.0)))}]
+                incr h [expr {max($C(row_h), $est * 10 + 3)}]
             }
         }
         code {
             foreach line $rows {
-                set h [expr {$h + $C(code_h)}]
+                set est [expr {max(1, int(ceil([string length $line] / 48.0)))}]
+                incr h [expr {max($C(code_h), $est * 10 + 2)}]
             }
         }
         hint {
-            set h [expr {$h + 16}]
+            foreach line $rows {
+                set est [expr {max(1, int(ceil([string length $line] / 35.0)))}]
+                incr h [expr {$est * 10 + 10}]
+            }
         }
         list {
             foreach item $rows {
-                set h [expr {$h + $C(row_h)}]
+                set est [expr {max(1, int(ceil(([string length $item] + 2) / 40.0)))}]
+                incr h [expr {max($C(row_h), $est * 10)}]
             }
         }
     }
@@ -248,9 +268,14 @@ proc cheatsheet::_renderSection {pdf section y col} {
         list {
             $pdf setFont 8 Helvetica
             $pdf setFillColor 0 0 0
+            set vx [expr {$col+8}]
+            set vw [expr {$C(col_w) - 12}]
             foreach item $content {
-                $pdf text "- $item" -x [expr {$col+8}] -y $y
-                set y [expr {$y + $C(row_h)}]
+                set nlines 0
+                $pdf drawTextBox $vx [expr {$y+1}] $vw 200 "- $item" -align left -linesvar nlines
+                if {$nlines < 1} { set nlines 1 }
+                set h [expr {max($C(row_h), $nlines * 10 + 1)}]
+                set y [expr {$y + $h}]
             }
         }
     }
@@ -280,9 +305,11 @@ proc cheatsheet::render {pdf data} {
     set col $C(col1_x)
 
     foreach section $sections {
-        # Spalten-/Seitenwechsel pruefen
+        set need [_sectionHeight $section]
+        for {set i 0} {$i < 24 && $y + $need > $C(y_max)} {incr i} {
+            set y [_col $pdf [expr {$C(y_max)+1}] col $title $subtitle]
+        }
         set y [_col $pdf $y col $title $subtitle]
-        # Section rendern
         set y [_renderSection $pdf $section $y $col]
     }
 

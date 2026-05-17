@@ -38,6 +38,18 @@ package require pdf4tcllib 0.2
 All modules (fonts, unicode, text, table, page, drawing, units, image, form)
 are contained in one file. The only external dependency is pdf4tcl.
 
+### Requirements
+
+- **Tcl** 8.6 or later (works with 9.0)
+- **pdf4tcl** 0.9.4.x or later -- required for TrueType font loading
+  and Unicode CID support. The `gregnix` fork (`createFontSpecCID`)
+  is fully supported.
+- **TclOO** (bundled with Tcl 8.6+)
+
+Older pdf4tcl versions without `loadBaseTrueTypeFont` / `createFontSpecCID`
+will work but lose Unicode-TTF support -- only the built-in PDF Standard
+fonts (Helvetica, Courier) remain usable.
+
 
 ## Quick start
 
