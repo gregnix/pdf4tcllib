@@ -29,9 +29,10 @@ Dependency: pdf4tcl (in `vendors/pkg/` or system-wide).
 
 | Namespace | Purpose |
 |---|---|
-| fonts   | Font management: TTF search, fallback, accessor procs, setFont |
+| fonts   | Font management: TTF search, fallback, accessor procs, setFont, CID-mode |
 | page    | Page context, grid, orientation, header, footer, debugGrid |
-| text    | Unicode-safe text, line wrapping |
+| text    | Unicode-safe text, line wrapping, sub/superscript, math symbols |
+| math    | Inline math formula rendering (eqn-notation, Wiki-style) |
 | table   | Tables (simpleTable + render) |
 | drawing | Shapes, gradients, text transformations, roundedRect |
 | unicode | Sanitization, emoji fallbacks, BOM removal |
@@ -90,6 +91,51 @@ Important: always obtain Italic/BoldItalic via `fontSansItalic` /
 `fontSansBoldItalic` -- never hardcode `"Helvetica-Oblique"`. With TTF,
 DejaVuSansCondensed-Oblique.ttf and -BoldOblique.ttf are loaded.
 Consistent metrics prevent spacing errors in pdftotext round-trips.
+
+### CID-Mode -- full Unicode coverage
+
+By default, `fonts::init` uses `pdf4tcl::createFontSpecEnc` which limits
+the embedded glyph set to **256 characters**: ASCII + Latin-1 Supplement
++ 32 selected extras (arrows, box drawing, le/ge, etc.). Sufficient
+for typical Western text. Greek letters and most math symbols are
+**outside this subset** and get replaced with `?` by
+`unicode::sanitize`.
+
+For full Unicode support pass `-cid 1`:
+
+```tcl
+pdf4tcllib::fonts::init -cid 1
+```
+
+This switches to `pdf4tcl::createFontSpecCID` (Identity-H encoding,
+full TTF embedded). No 256-character limit -- any glyph the loaded
+TTF contains can be rendered. Greek (α β γ), math symbols
+(∞ ∑ ∫ √ ≤ ≥), arrows, set theory operators, even CJK if the TTF
+covers them.
+
+Trade-offs:
+
+| | default (256-char) | `-cid 1` (CID) |
+|---|---|---|
+| Encoding | WinAnsi + 32 extras | Identity-H (Unicode) |
+| Glyph coverage | ~250 | full TTF |
+| PDF size (typical) | ~5-30 KB | ~150-700 KB |
+| `unicode::sanitize` filter | active (Stage 2) | bypassed |
+| Greek / math symbols | rendered as `?` | rendered correctly |
+
+```tcl
+# Query the mode after init
+pdf4tcllib::fonts::isCidMode    ;# returns 1 or 0
+```
+
+When to use which:
+
+- **Default mode**: smaller PDFs, plain Western text, programming docs
+- **CID mode**: scientific documents, multilingual content, math
+  formulae via `pdf4tcllib::math::renderFormula`
+
+`isCidMode` is checked internally by `unicode::sanitize` to skip the
+subset filter when CID is active.
 
 ---
 
@@ -392,6 +438,134 @@ Unknown names return `""` -- caller decides on fallback (e.g. render
 the raw LaTeX-style string).
 
 ```
+
+---
+
+## math
+
+Inline math formula rendering -- port of Arjen Markus' canvas-based
+"MathFormula" from the Tcler's Wiki (2002-2007), adapted to PDF output.
+
+Original: https://wiki.tcl-lang.org/page/Rendering+mathematical+formulae
+
+### Notation
+
+Whitespace-separated tokens, eqn/Wiki-style (not LaTeX):
+
+| Token | Effect |
+|-------|--------|
+| `^` | Next token is superscript |
+| `_` | Next token is subscript |
+| `~` | Forced space |
+| `` ` `` | Forced extra space (small kerning) |
+| `alpha beta gamma ...` | Greek lowercase letters |
+| `Alpha Beta Sigma ...` | Greek uppercase letters |
+| `SUM INT PROD` | Big operators (∑ ∫ ∏) |
+| `from VAL` | Lower limit (after SUM/INT/PROD) |
+| `to VAL` | Upper limit |
+| `infty sqrt cdot le ge ne approx ...` | Math symbols via `text::mathSymbol` |
+| `rightarrow leftarrow Rightarrow Leftarrow` | Arrows |
+
+Important: `from` and `to` are **always** treated as limit keywords
+when they appear in a formula. For the right-arrow symbol use
+`rightarrow` (resolves to `→`).
+
+### math::renderFormula
+
+```tcl
+pdf4tcllib::math::renderFormula $pdf $x $y $formula ?-size N? ?-font NAME?
+```
+
+Renders `$formula` starting at (`$x`, `$y`) in `$pdf`. Returns the
+end X-position (useful for chaining or measurement).
+
+Options:
+
+- `-size N` -- font size in points (default 12). Sub/superscripts
+  automatically scale to 70%.
+- `-font NAME` -- font name. Default: `pdf4tcllib::fonts::fontSans`
+  if TTF loaded, else `Helvetica`.
+
+### Requirements
+
+For Greek letters and math symbols to render correctly, the fonts
+module must run in **CID mode**:
+
+```tcl
+pdf4tcllib::fonts::init -cid 1
+```
+
+Without CID mode, Greek and most math symbols appear as `?` (see the
+fonts section above).
+
+### Examples
+
+```tcl
+package require pdf4tcl
+package require pdf4tcllib 0.2
+
+pdf4tcllib::fonts::init -cid 1
+
+set pdf [pdf4tcl::new %AUTO% -paper a4]
+$pdf startPage
+
+# Einstein: E = mc²
+pdf4tcllib::math::renderFormula $pdf 100 100 "E = mc ^ 2" -size 14
+
+# H₂O
+pdf4tcllib::math::renderFormula $pdf 100 130 "H _ 2 O" -size 14
+
+# Quadratic formula
+pdf4tcllib::math::renderFormula $pdf 100 160 \
+    "x = ( -b pm sqrt ( b ^ 2 - 4ac ) ) / 2a" -size 14
+
+# Sum with limits
+pdf4tcllib::math::renderFormula $pdf 100 200 \
+    "SUM from i=0 to infty ~ a _ i ~ x ^ i" -size 14
+
+# Greek + partial derivative
+pdf4tcllib::math::renderFormula $pdf 100 230 \
+    "partial phi / partial t = D nabla ^ 2 phi" -size 14
+
+$pdf write -file output.pdf
+$pdf destroy
+```
+
+### math::analyseFormula
+
+Exposed token parser -- useful for custom renderers or debugging:
+
+```tcl
+set tokens [pdf4tcllib::math::analyseFormula "E = mc ^ 2"]
+# -> {E 0 0 1} {= 0 0 1} {mc 0 0 1} {2 0 -5 1}
+#
+# Format: {token x-offset y-offset advance}
+#   advance=1 -> advance cursor by token width
+#   advance=0 -> overlay (used internally for ^_ positioning)
+```
+
+### What is NOT supported
+
+By design, since these require 2D layout that exceeds inline rendering:
+
+- **Fractions** with horizontal bar (`\frac{a}{b}`) -- write `(a)/(b)`
+  inline instead
+- **Square roots with vinculum** -- write `sqrt(x+y)` with parens
+- **Matrices** -- use `pdf4tcllib::table::render` for 2D layouts
+- **Multi-line equations** -- align manually with multiple
+  `renderFormula` calls
+
+For full LaTeX math with fractions, roots, integrals with limits etc.:
+use an external rendering engine like KaTeX-CLI to produce SVG, then
+embed via image module.
+
+### Differences from Arjen's original Wiki version
+
+| Wiki 2002 | Here |
+|-----------|------|
+| `Inf` for infinity | `infty` (LaTeX-style, matches `mathSymbol` table) |
+| `PI`, `SIGMA` all-caps (with codepoint typos) | `Pi`, `Sigma` mixed-case, correct U+03Ax codepoints |
+| `to` could mean both limit-keyword and `→` | `to` is always limit-keyword; use `rightarrow` for `→` |
 
 ---
 

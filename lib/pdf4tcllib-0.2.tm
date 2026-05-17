@@ -207,8 +207,13 @@ proc ::pdf4tcllib::fonts::init {args} {
         -fontdir  ""
         -family   "DejaVuSansCondensed"
         -force    0
+        -cid      0
     }
     array set opt $args
+
+    # CID-Mode merken (fuer sanitize-Filter)
+    variable cidMode
+    set cidMode $opt(-cid)
 
     if {$ready && !$opt(-force)} { return }
 
@@ -268,15 +273,36 @@ proc ::pdf4tcllib::fonts::init {args} {
         set existingFonts {}
         catch {set existingFonts [::pdf4tcl::getFonts]}
 
+        # Helper: ein FontSpec registrieren, je nach $cidMode entweder
+        # 256-Char-Encoding (klein) oder CID-Encoding (volles Unicode).
+        # Vorteil CID: Greek, Math-Symbole, beliebige Unicode-Punkte gehen.
+        # Nachteil: PDF ist groesser (TTF wird komplett eingebettet).
+        set _registerFont [list apply {{baseName fontName cidMode subset} {
+            ::pdf4tcl::loadBaseTrueTypeFont $baseName [set ::_ttfPath_$baseName]
+            if {$cidMode} {
+                ::pdf4tcl::createFontSpecCID $baseName $fontName
+            } else {
+                ::pdf4tcl::createFontSpecEnc $baseName $fontName $subset
+            }
+        }}]
+
         if {"Pdf4tclSans" ni $existingFonts} {
             ::pdf4tcl::loadBaseTrueTypeFont _Pdf4tcl_Base_Regular $ttfRegular
-            ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Regular Pdf4tclSans $subsetList
+            if {$cidMode} {
+                ::pdf4tcl::createFontSpecCID _Pdf4tcl_Base_Regular Pdf4tclSans
+            } else {
+                ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Regular Pdf4tclSans $subsetList
+            }
             lappend registeredFonts Pdf4tclSans
         }
 
         if {"Pdf4tclSansBold" ni $existingFonts} {
             ::pdf4tcl::loadBaseTrueTypeFont _Pdf4tcl_Base_Bold $ttfBold
-            ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Bold Pdf4tclSansBold $subsetList
+            if {$cidMode} {
+                ::pdf4tcl::createFontSpecCID _Pdf4tcl_Base_Bold Pdf4tclSansBold
+            } else {
+                ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Bold Pdf4tclSansBold $subsetList
+            }
             lappend registeredFonts Pdf4tclSansBold
         }
 
@@ -291,12 +317,20 @@ proc ::pdf4tcllib::fonts::init {args} {
             if {[catch {
                 if {"Pdf4tclSansItalic" ni $existingFonts} {
                     ::pdf4tcl::loadBaseTrueTypeFont _Pdf4tcl_Base_Italic $ttfItalic
-                    ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Italic Pdf4tclSansItalic $subsetList
+                    if {$cidMode} {
+                        ::pdf4tcl::createFontSpecCID _Pdf4tcl_Base_Italic Pdf4tclSansItalic
+                    } else {
+                        ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Italic Pdf4tclSansItalic $subsetList
+                    }
                     lappend registeredFonts Pdf4tclSansItalic
                 }
                 if {"Pdf4tclSansBoldItalic" ni $existingFonts} {
                     ::pdf4tcl::loadBaseTrueTypeFont _Pdf4tcl_Base_BoldItalic $ttfBoldItalic
-                    ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_BoldItalic Pdf4tclSansBoldItalic $subsetList
+                    if {$cidMode} {
+                        ::pdf4tcl::createFontSpecCID _Pdf4tcl_Base_BoldItalic Pdf4tclSansBoldItalic
+                    } else {
+                        ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_BoldItalic Pdf4tclSansBoldItalic $subsetList
+                    }
                     lappend registeredFonts Pdf4tclSansBoldItalic
                 }
                 set fontSansItalic     "Pdf4tclSansItalic"
@@ -340,6 +374,17 @@ proc ::pdf4tcllib::fonts::hasTtfItalic {} {
     # Returns 1 if TTF italic fonts are loaded.
     variable hasTtfItalic
     return $hasTtfItalic
+}
+
+proc ::pdf4tcllib::fonts::isCidMode {} {
+    # Returns 1 if fonts were registered with CID encoding (full Unicode),
+    # 0 if classic 256-char-subset encoding was used. CID mode lifts the
+    # 256-char limit -- Greek letters, Math symbols, CJK etc. all render
+    # correctly, but the resulting PDF is larger (full TTF embedded).
+    # Enable via:  pdf4tcllib::fonts::init -cid 1
+    variable cidMode
+    if {![info exists cidMode]} { return 0 }
+    return $cidMode
 }
 
 proc ::pdf4tcllib::fonts::fontSans {} {
@@ -805,8 +850,13 @@ proc ::pdf4tcllib::unicode::sanitize {line args} {
                 append result [::pdf4tcllib::unicode::_emojiFallback $cp]
                 continue
             }
-            # TTF-Modus: Nur Subset-Zeichen durchlassen
-            if {[::pdf4tcllib::fonts::inSubset $cp]} {
+            # TTF-Modus: Subset-Filter nur im klassischen 256-Char-Encoding.
+            # Im CID-Mode (full Unicode) wird alles durchgelassen -- pdf4tcl
+            # kuemmert sich um Glyph-Lookup und mappt unbekannte Codepoints
+            # selbst auf .notdef.
+            if {[::pdf4tcllib::fonts::isCidMode]} {
+                append result $c
+            } elseif {[::pdf4tcllib::fonts::inSubset $cp]} {
                 append result $c
             } else {
                 append result "?"
@@ -1306,7 +1356,8 @@ variable ::pdf4tcllib::text::_mathSymbols {
     le       \u2264   ge       \u2265   ne       \u2260   approx   \u2248
     equiv    \u2261   pm       \u00B1   mp       \u2213   times    \u00D7
     cdot     \u00B7   div      \u00F7   to       \u2192   gets     \u2190
-    Rightarrow \u21D2 Leftarrow \u21D0  in       \u2208   notin    \u2209
+    Rightarrow \u21D2 Leftarrow \u21D0  rightarrow \u2192   leftarrow \u2190
+    in       \u2208   notin    \u2209
     subset   \u2282   supset   \u2283   cup      \u222A   cap      \u2229
     emptyset \u2205   forall   \u2200   exists   \u2203
     deg      \u00B0   prime    \u2032
@@ -1331,6 +1382,177 @@ proc ::pdf4tcllib::text::mathSymbolNames {} {
     # Nuetzlich fuer Dokumentation, Tab-Completion, Tests.
     variable _mathSymbols
     return [lsort [dict keys $_mathSymbols]]
+}
+
+
+# ================================================================
+# Module: pdf4tcllib::math
+# ================================================================
+#
+# pdf4tcllib::math -- Inline-Math-Rendering im PDF
+#
+# Inspiriert von Arjen Markus' "MathFormula" auf wiki.tcl-lang.org
+# (Rendering mathematical formulae, 2002-2007). Portierung der Notation
+# auf pdf4tcl-basierte PDF-Ausgabe statt Tk-Canvas.
+#
+# Notation -- jedes Token whitespace-separiert:
+#   alpha beta gamma   griechische Buchstaben (LaTeX-Stil, klein)
+#   Alpha Beta Sigma   griechische Grossbuchstaben
+#   x ^ 2              Superscript (x mit hoch 2)
+#   H _ 2 O            Subscript (H mit tief 2, dann O)
+#   ~                  forced space
+#   SUM PROD INT       grosse Operatoren
+#   from ... to ...    Limits unter/ueber SUM/INT/PROD
+#   infty sqrt cdot    Math-Symbole (siehe text::mathSymbolNames)
+#
+# Beispiele:
+#   "alpha + beta = gamma"
+#   "x ^ 2 + y ^ 2 = r ^ 2"
+#   "SUM from i=0 to infty ~ a _ i"
+#   "INT from 0 to pi cos ^ 2 x dx"
+#
+# Public API:
+#   pdf4tcllib::math::renderFormula pdf x y formula ?-size N? ?-font NAME?
+#       Rendert formula bei (x,y) ins PDF. Returnt End-X-Position.
+#
+#   pdf4tcllib::math::analyseFormula formula
+#       Tokenisiert formula. Returnt Liste von {token xp yp advance}.
+#       Nuetzlich fuer eigene Renderer.
+#
+# Voraussetzungen:
+#   pdf4tcllib::fonts::init -cid 1   -- fuer Greek + Math-Symbole
+
+namespace eval ::pdf4tcllib::math {
+    namespace export renderFormula analyseFormula
+}
+
+# ----------------------------------------------------------------
+# analyseFormula -- Token-Parser
+# ----------------------------------------------------------------
+proc ::pdf4tcllib::math::analyseFormula {formula} {
+    set result  [list]
+    set advance 1
+    set xp      0
+    set yp      0
+    # Limit-Offsets fuer SUM/INT/PROD (werden von from/to genutzt)
+    set xtop  -8 ; set ytop  -8
+    set xbot  -8 ; set ybot   8
+    # Letzter Operator war SUM/INT/PROD? Wenn ja, sind from/to Limits;
+    # sonst werden from/to literal als Text gerendert.
+
+    foreach token $formula {
+        switch -- $token {
+            "_" { # Subscript: naechstes Token tiefgestellt
+                set yp 5
+                set advance 0
+                continue
+            }
+            "^" { # Superscript
+                set yp -5
+                set advance 0
+                continue
+            }
+            "~" { # Forced space
+                set token   " "
+                set advance 1
+            }
+            "INT" { # Integral
+                set xp 0; set yp 0
+                set xtop  -3 ; set ytop  -8
+                set xbot  -5 ; set ybot  10
+                set advance 1
+            }
+            "SUM" - "PROD" { # Sum, Product
+                set xp 0; set yp 0
+                set xtop -12 ; set ytop  -8
+                set xbot  -8 ; set ybot  12
+                set advance 1
+            }
+            "from" { # Unterer Limit -- Arjen-Konvention: always limit
+                set xp $xbot ; set yp $ybot
+                set advance 0
+                continue
+            }
+            "to" { # Oberer Limit -- Arjen-Konvention: always limit
+                # Wer das Pfeil-Symbol -> braucht: "rightarrow" verwenden
+                set xp $xtop ; set yp $ytop
+                set advance 0
+                continue
+            }
+            default {
+                set advance 1
+            }
+        }
+        lappend result $token $xp $yp $advance
+        if {$advance} { set xp 0; set yp 0 }
+    }
+    return $result
+}
+
+# ----------------------------------------------------------------
+# renderFormula -- PDF-Renderer
+# ----------------------------------------------------------------
+proc ::pdf4tcllib::math::renderFormula {pdf x y formula args} {
+    # Optionen
+    array set opt {-size 12 -font ""}
+    array set opt $args
+
+    set fontSize $opt(-size)
+    set font     $opt(-font)
+    if {$font eq ""} {
+        # Default: erst TTF-Sans (wenn da), sonst Helvetica
+        if {[::pdf4tcllib::fonts::hasTtf]} {
+            set font [::pdf4tcllib::fonts::fontSans]
+        } else {
+            set font Helvetica
+        }
+    }
+
+    set tokens [analyseFormula $formula]
+    set xpos $x
+
+    foreach {token xp yp advance} $tokens {
+        # 1. Symbol-Lookup
+        #    - Erst direkt (alpha -> α, le -> ≤)
+        #    - SUM/INT/PROD: lowercase-Variante fuer Symbol-Lookup
+        set glyph [::pdf4tcllib::text::mathSymbol $token]
+        if {$glyph eq ""} {
+            # Operator-Aliase: SUM -> sum, INT -> int, PROD -> prod
+            switch -- $token {
+                "SUM"  { set glyph [::pdf4tcllib::text::mathSymbol sum] }
+                "INT"  { set glyph [::pdf4tcllib::text::mathSymbol int] }
+                "PROD" { set glyph [::pdf4tcllib::text::mathSymbol prod] }
+            }
+        }
+        if {$glyph eq ""} {
+            # Kein Symbol -- Token literal verwenden
+            set glyph $token
+        }
+
+        # 2. Position berechnen (xp/yp relativ zum aktuellen Cursor)
+        set drawX [expr {$xpos + $xp}]
+        set drawY [expr {$y + $yp}]
+
+        # 3. Sub/Super-Erkennung: yp != 0 -> kleinere Schrift
+        if {$yp != 0} {
+            set smallSize [expr {$fontSize * 0.7}]
+            $pdf setFont $smallSize $font
+            $pdf text $glyph -x $drawX -y $drawY
+            set w [$pdf getStringWidth $glyph]
+            $pdf setFont $fontSize $font
+        } else {
+            $pdf setFont $fontSize $font
+            $pdf text $glyph -x $drawX -y $drawY
+            set w [$pdf getStringWidth $glyph]
+        }
+
+        # 4. X-Cursor weiter, wenn advance=1
+        if {$advance} {
+            set xpos [expr {$drawX + $w}]
+        }
+    }
+
+    return $xpos
 }
 
 

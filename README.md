@@ -110,9 +110,10 @@ Use `page::_advance $ctx y $step` for layout code that works in both modes.
 ### fonts -- Font management
 
 ```tcl
-pdf4tcllib::fonts::init ?-fontdir /path? ?-family DejaVuSansCondensed?
+pdf4tcllib::fonts::init ?-fontdir /path? ?-family DejaVuSansCondensed? ?-cid 0/1?
 
 pdf4tcllib::fonts::hasTtf              ;# -> 1/0
+pdf4tcllib::fonts::isCidMode           ;# -> 1/0 (full Unicode if 1)
 pdf4tcllib::fonts::fontSans            ;# -> "Pdf4tclSans" or "Helvetica"
 pdf4tcllib::fonts::fontSansBold        ;# -> "Pdf4tclSansBold" or "Helvetica-Bold"
 pdf4tcllib::fonts::fontSansItalic      ;# -> "Pdf4tclSansItalic" or "Helvetica-Oblique"
@@ -125,6 +126,11 @@ pdf4tcllib::fonts::setFont $pdf 12 Helvetica Bold
 pdf4tcllib::fonts::setFont $pdf 11 Helvetica Italic
 pdf4tcllib::fonts::setFont $pdf 10 Helvetica BoldItalic
 ```
+
+**CID-mode** (`-cid 1`) embeds the complete TTF rather than a 256-char
+subset. Required for Greek letters, math symbols, CJK and anything
+outside Latin-1. PDFs become larger (~150 KB vs ~5 KB), but
+`unicode::sanitize` no longer replaces these glyphs with `?`.
 
 ### unicode -- Crash protection
 
@@ -150,7 +156,39 @@ set w [pdf4tcllib::text::width $text $fontSize $fontName $pdf]
 # Truncate and wrap
 set cut   [pdf4tcllib::text::truncate $text $maxW $fontSize $fontName ?$pdf?]
 set lines [pdf4tcllib::text::wrap     $text $maxW $fontSize $fontName 0 ?$pdf?]
+
+# Inline math helpers (sub/superscript + LaTeX-name lookup)
+set w [pdf4tcllib::text::superscript $pdf "2" $x $y 14 $fontName]
+set w [pdf4tcllib::text::subscript   $pdf "2" $x $y 14 $fontName]
+set ch [pdf4tcllib::text::mathSymbol alpha]    ;# returns "α"
 ```
+
+### math -- Inline math formulae (eqn/Wiki notation)
+
+Port of Arjen Markus' MathFormula (Tcler's Wiki 2002-2007), adapted to
+PDF. Requires CID-mode fonts for Greek + math symbols.
+
+```tcl
+# Init fonts with CID-mode for full Unicode
+pdf4tcllib::fonts::init -cid 1
+
+# Render formulae using whitespace-separated tokens
+pdf4tcllib::math::renderFormula $pdf 100 100 "E = mc ^ 2"
+pdf4tcllib::math::renderFormula $pdf 100 130 "H _ 2 O"
+pdf4tcllib::math::renderFormula $pdf 100 160 \
+    "SUM from i=0 to infty ~ a _ i ~ x ^ i"
+pdf4tcllib::math::renderFormula $pdf 100 190 \
+    "partial phi / partial t = D nabla ^ 2 phi"
+```
+
+Notation: `^` (superscript), `_` (subscript), `~` (forced space),
+Greek names (`alpha beta`), big operators (`SUM INT PROD` with
+`from`/`to` limits), math symbols (`infty sqrt cdot le ge ...`),
+arrows (`rightarrow leftarrow`).
+
+Not supported (use external KaTeX-CLI for these): fractions with
+horizontal bar, square roots with vinculum, matrices, multi-line
+equations. See `docs/API.md#math` for the complete reference.
 
 ### table -- Tables
 
