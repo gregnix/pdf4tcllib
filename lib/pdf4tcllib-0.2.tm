@@ -1556,6 +1556,346 @@ proc ::pdf4tcllib::math::renderFormula {pdf x y formula args} {
 }
 
 
+# ----------------------------------------------------------------
+# renderLatex -- box-model LaTeX-subset renderer
+# ----------------------------------------------------------------
+# Complements renderFormula (linear token list) with a recursive box
+# model: grouped/nested ^{} _{}, \frac, \sqrt, \int/\sum/\prod with
+# stacked limits. Pure Tcl on pdf4tcl primitives (text + line).
+#
+# Supported subset:
+#   - plain chars, + - = ( ) ...
+#   - \alpha..\omega, \infty, \pi, \le, \forall, \to ... (via mathSymbol)
+#   - ^{...} _{...} grouped super/subscript (also single token x^2)
+#   - \frac{num}{den}, \sqrt{...}
+#   - \int \sum \prod with _{lower} ^{upper} as stacked limits
+#   - \, \; \: thin spaces ; { } grouping
+#
+# Usage:
+#   pdf4tcllib::math::renderLatex $pdf $x $y $latex ?-size 12? ?-font name?
+#   -> returns total advance width; baseline at $y.
+#
+# Note: not a full LaTeX math mode (no \left\right sizing, matrices,
+# \text). Measure helpers (_latexMeasure*) expose w/h/d so callers can
+# centre or page-fit display formulas before drawing.
+
+namespace eval ::pdf4tcllib::math {
+    namespace export renderLatex measureLatex
+    # Encoding-safe fallback for names mathSymbol lacks. \uXXXX escapes
+    # are independent of how this file is sourced.
+    variable latexFallback
+    array set latexFallback [list \
+        neq         \u2260 \
+        ne          \u2260 \
+        leftrightarrow \u2194 \
+        Leftrightarrow \u21d4 \
+        Rightarrow  \u21d2 \
+        Leftarrow   \u21d0 \
+        rightarrow  \u2192 \
+        leftarrow   \u2190 \
+        mp          \u2213 \
+        notin       \u2209 \
+        emptyset    \u2205 \
+        cdots       \u22ef \
+        ldots       \u2026 ]
+}
+
+proc ::pdf4tcllib::math::_latexSymbol {name} {
+    variable latexFallback
+    # Primary: reuse the text symbol table (alpha, pi, infty, int, le ...)
+    set g ""
+    catch { set g [::pdf4tcllib::text::mathSymbol $name] }
+    if {$g ne ""} { return $g }
+    if {[info exists latexFallback($name)]} { return $latexFallback($name) }
+    return $name
+}
+
+# ---- Tokenizer ----
+proc ::pdf4tcllib::math::_latexTokenize {s} {
+    set toks {}
+    set i 0; set n [string length $s]
+    while {$i < $n} {
+        set c [string index $s $i]
+        if {$c eq "\\"} {
+            set j [expr {$i+1}]
+            if {[string match {[A-Za-z]} [string index $s $j]]} {
+                set k $j
+                while {$k < $n && [string match {[A-Za-z]} [string index $s $k]]} { incr k }
+                lappend toks [list cmd [string range $s $j [expr {$k-1}]]]
+                set i $k
+            } else {
+                set p [string index $s $j]
+                if {$p in {, ; :}} {
+                    lappend toks [list space {}]
+                } else {
+                    lappend toks [list char $p]
+                }
+                set i [expr {$j+1}]
+            }
+        } elseif {$c eq "\{"} { lappend toks [list open {}];  incr i
+        } elseif {$c eq "\}"} { lappend toks [list close {}]; incr i
+        } elseif {$c eq "^"}  { lappend toks [list sup {}];   incr i
+        } elseif {$c eq "_"}  { lappend toks [list sub {}];   incr i
+        } elseif {$c eq " "}  { incr i
+        } else                { lappend toks [list char $c];  incr i }
+    }
+    return $toks
+}
+
+# ---- Parser: tokens -> list of atoms ----
+proc ::pdf4tcllib::math::_latexParseGroup {toksVar} {
+    upvar 1 $toksVar toks
+    set atoms {}
+    while {[llength $toks]} {
+        set t [lindex $toks 0]
+        lassign $t kind val
+        if {$kind eq "close"} { set toks [lrange $toks 1 end]; break }
+        set toks [lrange $toks 1 end]
+        switch -- $kind {
+            char  { lappend atoms [list sym $val] }
+            space { lappend atoms [list space {}] }
+            open  { lappend atoms [list grp [_latexParseGroup toks]] }
+            sup   { _latexAttachScript atoms sup toks }
+            sub   { _latexAttachScript atoms sub toks }
+            cmd {
+                switch -- $val {
+                    frac {
+                        set num [_latexParseArg toks]; set den [_latexParseArg toks]
+                        lappend atoms [list frac $num $den]
+                    }
+                    sqrt {
+                        lappend atoms [list sqrt [_latexParseArg toks]]
+                    }
+                    int - sum - prod {
+                        lappend atoms [list bigop $val {} {}]
+                    }
+                    default { lappend atoms [list sym [_latexSymbol $val]] }
+                }
+            }
+        }
+    }
+    return $atoms
+}
+
+# Parse one argument: either {group} or a single token
+proc ::pdf4tcllib::math::_latexParseArg {toksVar} {
+    upvar 1 $toksVar toks
+    if {![llength $toks]} { return {} }
+    set t [lindex $toks 0]; lassign $t kind val
+    set toks [lrange $toks 1 end]
+    switch -- $kind {
+        open { return [_latexParseGroup toks] }
+        char { return [list [list sym $val]] }
+        cmd  {
+            switch -- $val {
+                frac { set num [_latexParseArg toks]; set den [_latexParseArg toks]
+                       return [list [list frac $num $den]] }
+                sqrt { return [list [list sqrt [_latexParseArg toks]]] }
+                int - sum - prod { return [list [list bigop $val {} {}]] }
+                default { return [list [list sym [_latexSymbol $val]]] }
+            }
+        }
+        default { return {} }
+    }
+}
+
+# Attach a sup/sub to the preceding atom (or to a bigop as a limit)
+proc ::pdf4tcllib::math::_latexAttachScript {atomsVar which toksVar} {
+    upvar 1 $atomsVar atoms
+    upvar 1 $toksVar toks
+    set arg [_latexParseArg toks]
+    if {![llength $atoms]} { lappend atoms [list sym ""] }
+    set last [lindex $atoms end]
+    lassign $last lk
+    if {$lk eq "bigop"} {
+        lassign $last _ op lower upper
+        if {$which eq "sub"} { set lower $arg } else { set upper $arg }
+        lset atoms end [list bigop $op $lower $upper]
+        return
+    }
+    if {$lk eq "scripted"} {
+        lassign $last _ base sub sup
+        if {$which eq "sub"} { set sub $arg } else { set sup $arg }
+        lset atoms end [list scripted $base $sub $sup]
+        return
+    }
+    if {$which eq "sub"} {
+        lset atoms end [list scripted $last $arg {}]
+    } else {
+        lset atoms end [list scripted $last {} $arg]
+    }
+}
+
+# ---- Measure (returns {width heightAboveBaseline depthBelow}) ----
+proc ::pdf4tcllib::math::_latexMeasureList {pdf font size atoms} {
+    set w 0.0; set h [expr {$size*0.7}]; set d [expr {$size*0.2}]
+    foreach a $atoms {
+        lassign [_latexMeasureAtom $pdf $font $size $a] aw ah ad
+        set w [expr {$w + $aw}]
+        if {$ah > $h} { set h $ah }
+        if {$ad > $d} { set d $ad }
+    }
+    return [list $w $h $d]
+}
+
+proc ::pdf4tcllib::math::_latexMeasureAtom {pdf font size a} {
+    set kind [lindex $a 0]
+    switch -- $kind {
+        sym {
+            set g [lindex $a 1]
+            $pdf setFont $size $font
+            return [list [$pdf getStringWidth $g] [expr {$size*0.72}] [expr {$size*0.20}]]
+        }
+        space { return [list [expr {$size*0.3}] 0 0] }
+        grp   { return [_latexMeasureList $pdf $font $size [lindex $a 1]] }
+        scripted {
+            lassign $a _ base sub sup
+            lassign [_latexMeasureAtom $pdf $font $size $base] bw bh bd
+            set ss [expr {$size*0.7}]
+            set sw 0.0; set extraH 0; set extraD 0
+            if {[llength $sup]} {
+                lassign [_latexMeasureList $pdf $font $ss $sup] supw suph supd
+                if {$supw>$sw} { set sw $supw }
+                set extraH [expr {$bh*0.5}]
+            }
+            if {[llength $sub]} {
+                lassign [_latexMeasureList $pdf $font $ss $sub] subw subh subd
+                if {$subw>$sw} { set sw $subw }
+                set extraD [expr {$bd+$ss*0.4}]
+            }
+            return [list [expr {$bw+$sw}] [expr {$bh+$extraH}] [expr {$bd+$extraD}]]
+        }
+        frac {
+            lassign $a _ num den
+            lassign [_latexMeasureList $pdf $font [expr {$size*0.85}] $num] nw nh nd
+            lassign [_latexMeasureList $pdf $font [expr {$size*0.85}] $den] dw dh dd
+            return [list [expr {max($nw,$dw)+4}] [expr {$nh+$nd+2+$size*0.3}] [expr {$dh+$dd+2}]]
+        }
+        sqrt {
+            lassign $a _ arg
+            lassign [_latexMeasureList $pdf $font $size $arg] aw ah ad
+            return [list [expr {$aw+$size*0.7+2}] [expr {$ah+2}] $ad]
+        }
+        bigop {
+            return [list [expr {$size*1.1}] [expr {$size*1.0}] [expr {$size*0.7}]]
+        }
+    }
+    return [list 0 0 0]
+}
+
+# ---- Draw (baseline at $y; returns advance x) ----
+proc ::pdf4tcllib::math::_latexDrawList {pdf font size x y atoms} {
+    set cx $x
+    foreach a $atoms {
+        set cx [_latexDrawAtom $pdf $font $size $cx $y $a]
+    }
+    return $cx
+}
+
+proc ::pdf4tcllib::math::_latexDrawAtom {pdf font size x y a} {
+    set kind [lindex $a 0]
+    switch -- $kind {
+        sym {
+            set g [lindex $a 1]
+            $pdf setFont $size $font
+            $pdf text $g -x $x -y $y
+            return [expr {$x+[$pdf getStringWidth $g]}]
+        }
+        space { return [expr {$x+$size*0.3}] }
+        grp   { return [_latexDrawList $pdf $font $size $x $y [lindex $a 1]] }
+        scripted {
+            lassign $a _ base sub sup
+            set bx [_latexDrawAtom $pdf $font $size $x $y $base]
+            set ss [expr {$size*0.7}]
+            if {[llength $sup]} { _latexDrawList $pdf $font $ss $bx [expr {$y-$size*0.45}] $sup }
+            if {[llength $sub]} { _latexDrawList $pdf $font $ss $bx [expr {$y+$size*0.28}] $sub }
+            lassign [_latexMeasureAtom $pdf $font $size $a] aw ah ad
+            return [expr {$x+$aw}]
+        }
+        frac {
+            lassign $a _ num den
+            set fs [expr {$size*0.85}]
+            lassign [_latexMeasureList $pdf $font $fs $num] nw nh nd
+            lassign [_latexMeasureList $pdf $font $fs $den] dw dh dd
+            set w [expr {max($nw,$dw)+4}]
+            set midY [expr {$y-$size*0.25}]
+            _latexDrawList $pdf $font $fs [expr {$x+($w-$nw)/2.0}] [expr {$midY-2-$nd}] $num
+            _latexDrawList $pdf $font $fs [expr {$x+($w-$dw)/2.0}] [expr {$midY+2+$dh}] $den
+            $pdf setLineWidth 0.6
+            $pdf line $x $midY [expr {$x+$w}] $midY
+            return [expr {$x+$w}]
+        }
+        sqrt {
+            lassign $a _ arg
+            set radW [expr {$size*0.6}]
+            lassign [_latexMeasureList $pdf $font $size $arg] aw ah ad
+            set topY [expr {$y-$ah}]
+            $pdf setLineWidth 0.7
+            $pdf line $x [expr {$y-$size*0.25}] [expr {$x+$radW*0.4}] [expr {$y+$ad*0.5}]
+            $pdf line [expr {$x+$radW*0.4}] [expr {$y+$ad*0.5}] [expr {$x+$radW*0.65}] $topY
+            $pdf line [expr {$x+$radW*0.65}] $topY [expr {$x+$radW+$aw+2}] $topY
+            set ax [_latexDrawList $pdf $font $size [expr {$x+$radW+1}] $y $arg]
+            return [expr {$ax+1}]
+        }
+        bigop {
+            lassign $a _ op lower upper
+            set bs [expr {$size*1.6}]
+            $pdf setFont $bs $font
+            set g [_latexSymbol $op]
+            set ow [$pdf getStringWidth $g]
+            lassign [_latexMeasureAtom $pdf $font $size $a] aw ah ad
+            $pdf text $g -x [expr {$x+($aw-$ow)/2.0}] -y [expr {$y+$size*0.35}]
+            set ls [expr {$size*0.62}]
+            if {[llength $upper]} {
+                lassign [_latexMeasureList $pdf $font $ls $upper] uw uh ud
+                _latexDrawList $pdf $font $ls [expr {$x+($aw-$uw)/2.0}] [expr {$y-$size*0.95}] $upper
+            }
+            if {[llength $lower]} {
+                lassign [_latexMeasureList $pdf $font $ls $lower] lw lh ld
+                _latexDrawList $pdf $font $ls [expr {$x+($aw-$lw)/2.0}] [expr {$y+$size*0.95}] $lower
+            }
+            return [expr {$x+$aw+1}]
+        }
+    }
+    return $x
+}
+
+proc ::pdf4tcllib::math::measureLatex {pdf latex args} {
+    # Returns {width heightAboveBaseline depthBelow} for a LaTeX-subset
+    # string, so callers can centre or page-fit before renderLatex.
+    array set opt {-size 12 -font ""}
+    array set opt $args
+    set font $opt(-font)
+    if {$font eq ""} {
+        if {[::pdf4tcllib::fonts::hasTtf]} {
+            set font [::pdf4tcllib::fonts::fontSans]
+        } else {
+            set font Helvetica
+        }
+    }
+    set toks [_latexTokenize $latex]
+    set atoms [_latexParseGroup toks]
+    return [_latexMeasureList $pdf $font $opt(-size) $atoms]
+}
+
+proc ::pdf4tcllib::math::renderLatex {pdf x y latex args} {
+    array set opt {-size 12 -font ""}
+    array set opt $args
+    set font $opt(-font)
+    if {$font eq ""} {
+        if {[::pdf4tcllib::fonts::hasTtf]} {
+            set font [::pdf4tcllib::fonts::fontSans]
+        } else {
+            set font Helvetica
+        }
+    }
+    set toks [_latexTokenize $latex]
+    set atoms [_latexParseGroup toks]
+    return [_latexDrawList $pdf $font $opt(-size) $x $y $atoms]
+}
+
+
+
 # ================================================================
 # Module: pdf4tcllib::page
 # ================================================================
