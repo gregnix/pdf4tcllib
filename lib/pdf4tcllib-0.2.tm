@@ -183,6 +183,7 @@ namespace eval ::pdf4tcllib::fonts {
 # ============================================================
 
 proc ::pdf4tcllib::fonts::init {args} {
+    ::pdf4tcllib::_installUnicodeTitles
     # Initialize fonts. Only active on first call.
     #
     # Optionen:
@@ -3404,3 +3405,39 @@ proc ::pdf4tcllib::form::sumLine {pdf ctx yVar colWidths label value} {
 # Tablelist-Export: package require pdf4tcltable
 # TextWidget-Export: package require pdf4tcltext
 # ============================================================
+
+
+# --- Unicode-safe bookmark/metadata titles -------------------------------
+# pdf4tcl's ::pdf4tcl::SafeQuoteString replaces every codepoint > U+00FF with
+# "?" (a Tcl-9 binary-channel workaround). That breaks em dash, typographic
+# quotes, Greek, etc. in PDF bookmark titles and document metadata -- visible
+# in a viewer's outline (e.g. Okular). As the Unicode-safety layer over
+# pdf4tcl, pdf4tcllib installs a Unicode-correct version (UTF-16BE hex string
+# with BOM) once pdf4tcl is loaded. Idempotent; pdf4tcl itself stays untouched.
+namespace eval ::pdf4tcllib { variable _unicodeTitlesInstalled 0 }
+proc ::pdf4tcllib::_installUnicodeTitles {} {
+    variable _unicodeTitlesInstalled
+    if {$_unicodeTitlesInstalled} return
+    if {[info commands ::pdf4tcl::SafeQuoteString] eq ""} return
+    proc ::pdf4tcl::SafeQuoteString {string} {
+        if {[regexp {[^\x00-\xFF]} $string]} {
+            set hex "FEFF"
+            foreach ch [split $string ""] {
+                scan $ch %c cp
+                if {$cp > 0xFFFF} {
+                    set cp [expr {$cp - 0x10000}]
+                    append hex [format %04X [expr {0xD800 + ($cp >> 10)}]]
+                    append hex [format %04X [expr {0xDC00 + ($cp & 0x3FF)}]]
+                } else {
+                    append hex [format %04X $cp]
+                }
+            }
+            return "<$hex>"
+        }
+        return [::pdf4tcl::QuoteString $string]
+    }
+    set _unicodeTitlesInstalled 1
+}
+# Try once at load time (no-op if pdf4tcl is not yet present -- the
+# fonts::init hook installs it later, after pdf4tcl is required).
+::pdf4tcllib::_installUnicodeTitles
