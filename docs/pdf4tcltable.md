@@ -1,7 +1,7 @@
 # pdf4tcltable — Tablelist Widget PDF Export
 
-**Package:** `pdf4tcltable 0.1`  
-**File:** `pdf4tcltable-0.1.tm`  
+**Package:** `pdf4tcltable 0.2`  
+**File:** `pdf4tcltable-0.2.tm`  
 **Requires:** `pdf4tcllib 0.2`, `pdf4tcl 0.9.4.25+`, `tablelist_tile` (Csaba Nemethi)
 
 Exports a Tk `tablelist` widget directly to a formatted PDF table.

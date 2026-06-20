@@ -15,7 +15,7 @@
 
 package require pdf4tcllib 0.2
 
-package provide pdf4tcltable 0.1
+package provide pdf4tcltable 0.2
 
 # ============================================================
 # pdf4tcllib::tablelist -- Tablelist-Widget -> PDF
@@ -35,8 +35,12 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
         -zebra     1    -border    1   -tree      1
         -indentW   12   -formatted 1   -yvar      {}
         -ctx       {}   -headerbg  {}  -headerfg  {}
+        -footer    {}   -footerbg  {}  -footerbold 1
+        -font      {}   -boldfont  {}
     }
     array set opts $args
+    set fontSet [_resolveFonts $opts(-font) $opts(-boldfont)]
+    lassign $fontSet fReg fBold fIta fBI fMono
     set orient 1
     if {$opts(-ctx) ne {}} { catch {set orient [dict get $opts(-ctx) orient]} }
     set fs $opts(-fontsize)
@@ -112,7 +116,7 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
         $pdf rectangle $x $curY $totalW $rh
     }
 
-    $pdf setFont $fs Helvetica-Bold
+    $pdf setFont $fs $fBold
     $pdf setFillColor {*}$hfg
     set cx $x; set ci 0
     foreach title $colTitles align $colAligns pw $pdfColW {
@@ -140,7 +144,7 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
     if {[llength $allRows] == 0} {catch {set allRows [$tbl get 0 end]}}
 
     set nrows [$tbl size]
-    $pdf setFont $fs Helvetica
+    $pdf setFont $fs $fReg
 
     for {set r 0} {$r < $nrows} {incr r} {
         set hide 0; catch {set hide [$tbl rowcget $r -hide]}
@@ -164,8 +168,8 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
         set rowFg {0 0 0}
         catch {set f [$tbl rowcget $r -foreground]
                if {$f ne ""} {set rowFg [_tkColorToRGB $f]}}
-        set rowFont Helvetica
-        catch {set rowFont [_tclFontToPdf [$tbl rowcget $r -font] $fs]}
+        set rowFont $fReg
+        catch {set rowFont [_tclFontToPdf [$tbl rowcget $r -font] $fs $fontSet]}
 
         set indent 0
         if {$opts(-tree)} {
@@ -181,7 +185,7 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
 
             set cf $rowFont
             catch {set f2 [$tbl cellcget $r,$c -font]
-                   if {$f2 ne ""} {set cf [_tclFontToPdf $f2 $fs]}}
+                   if {$f2 ne ""} {set cf [_tclFontToPdf $f2 $fs $fontSet]}}
 
             set cellBg {}
             catch {set b [$tbl cellcget $r,$c -background]
@@ -219,6 +223,57 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
         else         {set curY [expr {$curY-$rh}]}
     }
 
+    # Footer -- optional. -footer may be a footer tablelist widget (e.g. from
+    # tlfooter; row 0 is read) or an explicit list of cell values. Footer cells
+    # are indexed by real column number, like the body rows.
+    set footerVals {}
+    if {$opts(-footer) ne {}} {
+        set fw $opts(-footer)
+        if {[llength $fw] == 1 && [winfo exists $fw] && ![catch {$fw size}]} {
+            catch {set footerVals [$fw get 0]}
+            catch {set fv2 [$fw getformatted 0]; if {[llength $fv2]} {set footerVals $fv2}}
+            if {$opts(-footerbg) eq {}} {
+                catch {set b [$fw rowcget 0 -background]
+                       if {$b ne "" && $b ne {}} {set opts(-footerbg) [_tkColorToRGB $b]}}
+            }
+        } else {
+            set footerVals $fw
+        }
+    }
+    if {[llength $footerVals] > 0} {
+        if {$opts(-border)} {
+            $pdf setStrokeColor 0.45 0.45 0.45; $pdf setLineWidth 0.6
+            $pdf line $x $curY [expr {$x+$totalW}] $curY
+        }
+        set fbg $opts(-footerbg)
+        if {$fbg eq {}} {set fbg {0.90 0.90 0.90}}
+        $pdf setFillColor {*}$fbg
+        $pdf rectangle $x $curY $totalW $rh -filled 1 -stroke 0
+        $pdf setFillColor 0 0 0
+        set ffont [expr {$opts(-footerbold) ? $fBold : $fReg}]
+        $pdf setFont $fs $ffont
+        set cx $x; set ci 0
+        foreach c $visCols align $colAligns pw $pdfColW {
+            set ct ""
+            if {[llength $footerVals] > $c} {set ct [lindex $footerVals $c]}
+            catch {set ct [::pdf4tcllib::unicode::sanitize $ct]}
+            set ct [_truncate $pdf $ct [expr {$pw-2*$pad}]]
+            set bl [expr {$curY+$rh-$pad}]
+            switch -- $align {
+                right  {$pdf text $ct -x [expr {$cx+$pw-$pad}] -y $bl -align right}
+                center {$pdf text $ct -x [expr {$cx+$pw/2}] -y $bl -align center}
+                default {$pdf text $ct -x [expr {$cx+$pad}] -y $bl}
+            }
+            if {$opts(-border) && $ci < [llength $visCols]-1} {
+                $pdf setStrokeColor 0.6 0.6 0.6; $pdf setLineWidth 0.3
+                $pdf line [expr {$cx+$pw}] $curY [expr {$cx+$pw}] [expr {$curY+$rh}]
+            }
+            set cx [expr {$cx+$pw}]; incr ci
+        }
+        $pdf setFillColor 0 0 0
+        if {$orient} {set curY [expr {$curY+$rh}]} else {set curY [expr {$curY-$rh}]}
+    }
+
     if {$opts(-border)} {
         $pdf setStrokeColor 0.45 0.45 0.45; $pdf setLineWidth 0.6
         $pdf line $x $curY [expr {$x+$totalW}] $curY
@@ -239,8 +294,11 @@ proc ::pdf4tcllib::tablelist::renderRange {pdf tbl x y args} {
         -indentW   12   -formatted 1   -firstrow  0
         -lastrow   -1   -yvar      {}  -ctx       {}
         -headerbg  {}   -headerfg  {}
+        -font      {}   -boldfont  {}
     }
     array set opts $args
+    set fontSet [_resolveFonts $opts(-font) $opts(-boldfont)]
+    lassign $fontSet fReg fBold fIta fBI fMono
     set orient 1
     if {$opts(-ctx) ne {}} {catch {set orient [dict get $opts(-ctx) orient]}}
     set fs $opts(-fontsize)
@@ -293,7 +351,7 @@ proc ::pdf4tcllib::tablelist::renderRange {pdf tbl x y args} {
         $pdf setStrokeColor 0.45 0.45 0.45; $pdf setLineWidth 0.6
         $pdf rectangle $x $curY $totalW $rh
     }
-    $pdf setFont $fs Helvetica-Bold
+    $pdf setFont $fs $fBold
     set cx $x; set ci 0
     foreach title $colTitles align $colAligns pw $pdfColW {
         set bl [expr {$curY+$rh-$pad}]
@@ -319,7 +377,7 @@ proc ::pdf4tcllib::tablelist::renderRange {pdf tbl x y args} {
     set nrows [$tbl size]
     set lastrow $opts(-lastrow)
     if {$lastrow < 0 || $lastrow >= $nrows} {set lastrow [expr {$nrows-1}]}
-    $pdf setFont $fs Helvetica
+    $pdf setFont $fs $fReg
 
     for {set r $opts(-firstrow)} {$r <= $lastrow} {incr r} {
         set hide 0; catch {set hide [$tbl rowcget $r -hide]}
@@ -343,8 +401,8 @@ proc ::pdf4tcllib::tablelist::renderRange {pdf tbl x y args} {
         set rowFg {0 0 0}
         catch {set f [$tbl rowcget $r -foreground]
                if {$f ne ""} {set rowFg [_tkColorToRGB $f]}}
-        set rowFont Helvetica
-        catch {set rowFont [_tclFontToPdf [$tbl rowcget $r -font] $fs]}
+        set rowFont $fReg
+        catch {set rowFont [_tclFontToPdf [$tbl rowcget $r -font] $fs $fontSet]}
 
         set indent 0
         if {$opts(-tree)} {
@@ -359,7 +417,7 @@ proc ::pdf4tcllib::tablelist::renderRange {pdf tbl x y args} {
             catch {set t2 [$tbl cellcget $r,$c -text]; if {$t2 ne ""} {set ct $t2}}
             set cf $rowFont
             catch {set f2 [$tbl cellcget $r,$c -font]
-                   if {$f2 ne ""} {set cf [_tclFontToPdf $f2 $fs]}}
+                   if {$f2 ne ""} {set cf [_tclFontToPdf $f2 $fs $fontSet]}}
             set cellBg {}
             catch {set b [$tbl cellcget $r,$c -background]
                    if {$b ne "" && $b ne {}} {set cellBg [_tkColorToRGB $b]}}
@@ -437,20 +495,49 @@ proc ::pdf4tcllib::tablelist::_tkColorToRGB {color} {
     return {0.0 0.0 0.0}
 }
 
-proc ::pdf4tcllib::tablelist::_tclFontToPdf {fontSpec fs} {
-    set bold   [expr {[lsearch $fontSpec bold]   >= 0}]
-    set italic [expr {[lsearch $fontSpec italic] >= 0 || \
-                      [lsearch $fontSpec oblique] >= 0}]
+proc ::pdf4tcllib::tablelist::_resolveFonts {regOpt boldOpt} {
+    # Returns {regular bold italic bolditalic mono}. Uses the TTF sans/mono
+    # fonts when pdf4tcllib::fonts is TTF-initialised (full Unicode), else the
+    # Helvetica/Courier base-14 fonts (ASCII/Latin-1 only). Explicit -font /
+    # -boldfont override the regular/bold faces.
+    set ttf 0
+    catch {set ttf [::pdf4tcllib::fonts::hasTtf]}
+    if {$ttf} {
+        set reg ""; set bold ""; set ital ""; set bi ""; set mono ""
+        catch {set reg  [::pdf4tcllib::fonts::fontSans]}
+        catch {set bold [::pdf4tcllib::fonts::fontSansBold]}
+        catch {set ital [::pdf4tcllib::fonts::fontSansItalic]}
+        catch {set bi   [::pdf4tcllib::fonts::fontSansBoldItalic]}
+        catch {set mono [::pdf4tcllib::fonts::fontMono]}
+        if {$reg  eq ""} {set reg  Helvetica}
+        if {$bold eq ""} {set bold $reg}
+        if {$ital eq ""} {set ital $reg}
+        if {$bi   eq ""} {set bi   $bold}
+        if {$mono eq ""} {set mono Courier}
+    } else {
+        set reg  Helvetica;         set bold Helvetica-Bold
+        set ital Helvetica-Oblique; set bi   Helvetica-BoldOblique
+        set mono Courier
+    }
+    if {$regOpt  ne ""} {set reg  $regOpt}
+    if {$boldOpt ne ""} {set bold $boldOpt}
+    return [list $reg $bold $ital $bi $mono]
+}
+
+proc ::pdf4tcllib::tablelist::_tclFontToPdf {fontSpec fs fontSet} {
+    lassign $fontSet reg bold ital bi mono
+    set isBold   [expr {[lsearch $fontSpec bold]   >= 0}]
+    set isItalic [expr {[lsearch $fontSpec italic] >= 0 || \
+                        [lsearch $fontSpec oblique] >= 0}]
     if {[lsearch -glob $fontSpec {Courier*}] >= 0 || \
         [lsearch -glob $fontSpec {courier*}] >= 0 || \
         [lsearch -glob $fontSpec {Mono*}]    >= 0} {
-        if {$bold} {return Courier-Bold}
-        return Courier
+        return $mono
     }
-    if {$bold && $italic} {return Helvetica-BoldOblique}
-    if {$bold}            {return Helvetica-Bold}
-    if {$italic}          {return Helvetica-Oblique}
-    return Helvetica
+    if {$isBold && $isItalic} {return $bi}
+    if {$isBold}              {return $bold}
+    if {$isItalic}            {return $ital}
+    return $reg
 }
 
 # ============================================================

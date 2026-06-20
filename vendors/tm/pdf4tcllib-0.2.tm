@@ -183,6 +183,7 @@ namespace eval ::pdf4tcllib::fonts {
 # ============================================================
 
 proc ::pdf4tcllib::fonts::init {args} {
+    ::pdf4tcllib::_installUnicodeTitles
     # Initialize fonts. Only active on first call.
     #
     # Optionen:
@@ -207,8 +208,13 @@ proc ::pdf4tcllib::fonts::init {args} {
         -fontdir  ""
         -family   "DejaVuSansCondensed"
         -force    0
+        -cid      0
     }
     array set opt $args
+
+    # CID-Mode merken (fuer sanitize-Filter)
+    variable cidMode
+    set cidMode $opt(-cid)
 
     if {$ready && !$opt(-force)} { return }
 
@@ -268,15 +274,36 @@ proc ::pdf4tcllib::fonts::init {args} {
         set existingFonts {}
         catch {set existingFonts [::pdf4tcl::getFonts]}
 
+        # Helper: ein FontSpec registrieren, je nach $cidMode entweder
+        # 256-Char-Encoding (klein) oder CID-Encoding (volles Unicode).
+        # Vorteil CID: Greek, Math-Symbole, beliebige Unicode-Punkte gehen.
+        # Nachteil: PDF ist groesser (TTF wird komplett eingebettet).
+        set _registerFont [list apply {{baseName fontName cidMode subset} {
+            ::pdf4tcl::loadBaseTrueTypeFont $baseName [set ::_ttfPath_$baseName]
+            if {$cidMode} {
+                ::pdf4tcl::createFontSpecCID $baseName $fontName
+            } else {
+                ::pdf4tcl::createFontSpecEnc $baseName $fontName $subset
+            }
+        }}]
+
         if {"Pdf4tclSans" ni $existingFonts} {
             ::pdf4tcl::loadBaseTrueTypeFont _Pdf4tcl_Base_Regular $ttfRegular
-            ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Regular Pdf4tclSans $subsetList
+            if {$cidMode} {
+                ::pdf4tcl::createFontSpecCID _Pdf4tcl_Base_Regular Pdf4tclSans
+            } else {
+                ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Regular Pdf4tclSans $subsetList
+            }
             lappend registeredFonts Pdf4tclSans
         }
 
         if {"Pdf4tclSansBold" ni $existingFonts} {
             ::pdf4tcl::loadBaseTrueTypeFont _Pdf4tcl_Base_Bold $ttfBold
-            ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Bold Pdf4tclSansBold $subsetList
+            if {$cidMode} {
+                ::pdf4tcl::createFontSpecCID _Pdf4tcl_Base_Bold Pdf4tclSansBold
+            } else {
+                ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Bold Pdf4tclSansBold $subsetList
+            }
             lappend registeredFonts Pdf4tclSansBold
         }
 
@@ -291,12 +318,20 @@ proc ::pdf4tcllib::fonts::init {args} {
             if {[catch {
                 if {"Pdf4tclSansItalic" ni $existingFonts} {
                     ::pdf4tcl::loadBaseTrueTypeFont _Pdf4tcl_Base_Italic $ttfItalic
-                    ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Italic Pdf4tclSansItalic $subsetList
+                    if {$cidMode} {
+                        ::pdf4tcl::createFontSpecCID _Pdf4tcl_Base_Italic Pdf4tclSansItalic
+                    } else {
+                        ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Italic Pdf4tclSansItalic $subsetList
+                    }
                     lappend registeredFonts Pdf4tclSansItalic
                 }
                 if {"Pdf4tclSansBoldItalic" ni $existingFonts} {
                     ::pdf4tcl::loadBaseTrueTypeFont _Pdf4tcl_Base_BoldItalic $ttfBoldItalic
-                    ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_BoldItalic Pdf4tclSansBoldItalic $subsetList
+                    if {$cidMode} {
+                        ::pdf4tcl::createFontSpecCID _Pdf4tcl_Base_BoldItalic Pdf4tclSansBoldItalic
+                    } else {
+                        ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_BoldItalic Pdf4tclSansBoldItalic $subsetList
+                    }
                     lappend registeredFonts Pdf4tclSansBoldItalic
                 }
                 set fontSansItalic     "Pdf4tclSansItalic"
@@ -340,6 +375,17 @@ proc ::pdf4tcllib::fonts::hasTtfItalic {} {
     # Returns 1 if TTF italic fonts are loaded.
     variable hasTtfItalic
     return $hasTtfItalic
+}
+
+proc ::pdf4tcllib::fonts::isCidMode {} {
+    # Returns 1 if fonts were registered with CID encoding (full Unicode),
+    # 0 if classic 256-char-subset encoding was used. CID mode lifts the
+    # 256-char limit -- Greek letters, Math symbols, CJK etc. all render
+    # correctly, but the resulting PDF is larger (full TTF embedded).
+    # Enable via:  pdf4tcllib::fonts::init -cid 1
+    variable cidMode
+    if {![info exists cidMode]} { return 0 }
+    return $cidMode
 }
 
 proc ::pdf4tcllib::fonts::fontSans {} {
@@ -805,8 +851,13 @@ proc ::pdf4tcllib::unicode::sanitize {line args} {
                 append result [::pdf4tcllib::unicode::_emojiFallback $cp]
                 continue
             }
-            # TTF-Modus: Nur Subset-Zeichen durchlassen
-            if {[::pdf4tcllib::fonts::inSubset $cp]} {
+            # TTF-Modus: Subset-Filter nur im klassischen 256-Char-Encoding.
+            # Im CID-Mode (full Unicode) wird alles durchgelassen -- pdf4tcl
+            # kuemmert sich um Glyph-Lookup und mappt unbekannte Codepoints
+            # selbst auf .notdef.
+            if {[::pdf4tcllib::fonts::isCidMode]} {
+                append result $c
+            } elseif {[::pdf4tcllib::fonts::inSubset $cp]} {
                 append result $c
             } else {
                 append result "?"
@@ -1243,6 +1294,609 @@ proc ::pdf4tcllib::text::writeParagraph {pdf text x y width {size 12} {align lef
     }
     return [expr {$y + $num_lines * $lh}]
 }
+
+
+# ----------------------------------------------------------------
+# Math-Inline-Helpers (Subset, kein vollstaendiges LaTeX)
+# ----------------------------------------------------------------
+# Pragmatischer Ansatz: Sub/Super via y-Offset + reduzierte Fontgroesse,
+# plus eine Lookup-Tabelle fuer haeufige LaTeX-Symbol-Namen -> Unicode.
+#
+# Damit lassen sich Inline-Math wie $x^2$, $H_2O$, $\alpha + \beta$
+# direkt in PDFs rendern. Komplexere Konstrukte (Brueche, Wurzeln,
+# Integrale-Limits) brauchen externe Renderer (KaTeX-CLI -> SVG,
+# eingebettet via Image).
+#
+# Konventionen pdf4tcl-text:
+#   $pdf text $str -x $x -y $y -font $font
+# y ist die Baseline. Fuer Superscript verschieben wir nach oben
+# (negativ in PDF-Y-Koordinaten? -- in pdf4tcl ist y top-down, also
+# subtrahieren wir vom y-Wert um nach oben zu kommen).
+
+proc ::pdf4tcllib::text::superscript {pdf textStr x y fontSize fontName} {
+    # Zeichnet textStr als Hochstellung. Reduziert Fontgroesse auf 70%
+    # und shift Baseline um 35% der Original-Fontgroesse nach oben.
+    # Returnt die Pixel-Breite des gezeichneten Textes (fuer X-Advance).
+    set smallSize [expr {$fontSize * 0.7}]
+    set yShift    [expr {$fontSize * 0.35}]
+    set ySuper    [expr {$y - $yShift}]
+    $pdf setFont $smallSize $fontName
+    $pdf text $textStr -x $x -y $ySuper
+    set w [$pdf getStringWidth $textStr]
+    # Font wiederherstellen (caller-Verantwortung wenn anders erwartet)
+    $pdf setFont $fontSize $fontName
+    return $w
+}
+
+proc ::pdf4tcllib::text::subscript {pdf textStr x y fontSize fontName} {
+    # Tiefstellung: gleicher Mechanismus, y-Shift NACH UNTEN.
+    set smallSize [expr {$fontSize * 0.7}]
+    set yShift    [expr {$fontSize * 0.20}]
+    set ySub      [expr {$y + $yShift}]
+    $pdf setFont $smallSize $fontName
+    $pdf text $textStr -x $x -y $ySub
+    set w [$pdf getStringWidth $textStr]
+    $pdf setFont $fontSize $fontName
+    return $w
+}
+
+# LaTeX-Symbol-Name -> Unicode-Zeichen
+# Subset der haeufigsten Math-Symbole. Erweitern nach Bedarf.
+variable ::pdf4tcllib::text::_mathSymbols {
+    alpha    \u03B1   beta     \u03B2   gamma    \u03B3   delta    \u03B4
+    epsilon  \u03B5   zeta     \u03B6   eta      \u03B7   theta    \u03B8
+    iota     \u03B9   kappa    \u03BA   lambda   \u03BB   mu       \u03BC
+    nu       \u03BD   xi       \u03BE   omicron  \u03BF   pi       \u03C0
+    rho      \u03C1   sigma    \u03C3   tau      \u03C4   upsilon  \u03C5
+    phi      \u03C6   chi      \u03C7   psi      \u03C8   omega    \u03C9
+    Alpha    \u0391   Beta     \u0392   Gamma    \u0393   Delta    \u0394
+    Theta    \u0398   Lambda   \u039B   Pi       \u03A0   Sigma    \u03A3
+    Phi      \u03A6   Psi      \u03A8   Omega    \u03A9
+    infty    \u221E   sum      \u2211   prod     \u220F   int      \u222B
+    partial  \u2202   nabla    \u2207   sqrt     \u221A
+    le       \u2264   ge       \u2265   ne       \u2260   approx   \u2248
+    equiv    \u2261   pm       \u00B1   mp       \u2213   times    \u00D7
+    cdot     \u00B7   div      \u00F7   to       \u2192   gets     \u2190
+    Rightarrow \u21D2 Leftarrow \u21D0  rightarrow \u2192   leftarrow \u2190
+    in       \u2208   notin    \u2209
+    subset   \u2282   supset   \u2283   cup      \u222A   cap      \u2229
+    emptyset \u2205   forall   \u2200   exists   \u2203
+    deg      \u00B0   prime    \u2032
+}
+
+proc ::pdf4tcllib::text::mathSymbol {name} {
+    # Liefert das Unicode-Zeichen zu einem LaTeX-Symbol-Namen.
+    # Beispiele:
+    #   text::mathSymbol alpha   -> \u03B1
+    #   text::mathSymbol cdot    -> \u00B7
+    #   text::mathSymbol unknown -> "" (kein Throw, damit Aufrufer
+    #                                   einfach Fallback rendern kann)
+    variable _mathSymbols
+    if {[dict exists $_mathSymbols $name]} {
+        return [dict get $_mathSymbols $name]
+    }
+    return ""
+}
+
+proc ::pdf4tcllib::text::mathSymbolNames {} {
+    # Liefert eine sortierte Liste aller bekannten Symbol-Namen.
+    # Nuetzlich fuer Dokumentation, Tab-Completion, Tests.
+    variable _mathSymbols
+    return [lsort [dict keys $_mathSymbols]]
+}
+
+
+# ================================================================
+# Module: pdf4tcllib::math
+# ================================================================
+#
+# pdf4tcllib::math -- Inline-Math-Rendering im PDF
+#
+# Inspiriert von Arjen Markus' "MathFormula" auf wiki.tcl-lang.org
+# (Rendering mathematical formulae, 2002-2007). Portierung der Notation
+# auf pdf4tcl-basierte PDF-Ausgabe statt Tk-Canvas.
+#
+# Notation -- jedes Token whitespace-separiert:
+#   alpha beta gamma   griechische Buchstaben (LaTeX-Stil, klein)
+#   Alpha Beta Sigma   griechische Grossbuchstaben
+#   x ^ 2              Superscript (x mit hoch 2)
+#   H _ 2 O            Subscript (H mit tief 2, dann O)
+#   ~                  forced space
+#   SUM PROD INT       grosse Operatoren
+#   from ... to ...    Limits unter/ueber SUM/INT/PROD
+#   infty sqrt cdot    Math-Symbole (siehe text::mathSymbolNames)
+#
+# Beispiele:
+#   "alpha + beta = gamma"
+#   "x ^ 2 + y ^ 2 = r ^ 2"
+#   "SUM from i=0 to infty ~ a _ i"
+#   "INT from 0 to pi cos ^ 2 x dx"
+#
+# Public API:
+#   pdf4tcllib::math::renderFormula pdf x y formula ?-size N? ?-font NAME?
+#       Rendert formula bei (x,y) ins PDF. Returnt End-X-Position.
+#
+#   pdf4tcllib::math::analyseFormula formula
+#       Tokenisiert formula. Returnt Liste von {token xp yp advance}.
+#       Nuetzlich fuer eigene Renderer.
+#
+# Voraussetzungen:
+#   pdf4tcllib::fonts::init -cid 1   -- fuer Greek + Math-Symbole
+
+namespace eval ::pdf4tcllib::math {
+    namespace export renderFormula analyseFormula
+}
+
+# ----------------------------------------------------------------
+# analyseFormula -- Token-Parser
+# ----------------------------------------------------------------
+proc ::pdf4tcllib::math::analyseFormula {formula} {
+    set result  [list]
+    set advance 1
+    set xp      0
+    set yp      0
+    # Limit-Offsets fuer SUM/INT/PROD (werden von from/to genutzt)
+    set xtop  -8 ; set ytop  -8
+    set xbot  -8 ; set ybot   8
+    # Letzter Operator war SUM/INT/PROD? Wenn ja, sind from/to Limits;
+    # sonst werden from/to literal als Text gerendert.
+
+    foreach token $formula {
+        switch -- $token {
+            "_" { # Subscript: naechstes Token tiefgestellt
+                set yp 5
+                set advance 0
+                continue
+            }
+            "^" { # Superscript
+                set yp -5
+                set advance 0
+                continue
+            }
+            "~" { # Forced space
+                set token   " "
+                set advance 1
+            }
+            "INT" { # Integral
+                set xp 0; set yp 0
+                set xtop  -3 ; set ytop  -8
+                set xbot  -5 ; set ybot  10
+                set advance 1
+            }
+            "SUM" - "PROD" { # Sum, Product
+                set xp 0; set yp 0
+                set xtop -12 ; set ytop  -8
+                set xbot  -8 ; set ybot  12
+                set advance 1
+            }
+            "from" { # Unterer Limit -- Arjen-Konvention: always limit
+                set xp $xbot ; set yp $ybot
+                set advance 0
+                continue
+            }
+            "to" { # Oberer Limit -- Arjen-Konvention: always limit
+                # Wer das Pfeil-Symbol -> braucht: "rightarrow" verwenden
+                set xp $xtop ; set yp $ytop
+                set advance 0
+                continue
+            }
+            default {
+                set advance 1
+            }
+        }
+        lappend result $token $xp $yp $advance
+        if {$advance} { set xp 0; set yp 0 }
+    }
+    return $result
+}
+
+# ----------------------------------------------------------------
+# renderFormula -- PDF-Renderer
+# ----------------------------------------------------------------
+proc ::pdf4tcllib::math::renderFormula {pdf x y formula args} {
+    # Optionen
+    array set opt {-size 12 -font ""}
+    array set opt $args
+
+    set fontSize $opt(-size)
+    set font     $opt(-font)
+    if {$font eq ""} {
+        # Default: erst TTF-Sans (wenn da), sonst Helvetica
+        if {[::pdf4tcllib::fonts::hasTtf]} {
+            set font [::pdf4tcllib::fonts::fontSans]
+        } else {
+            set font Helvetica
+        }
+    }
+
+    set tokens [analyseFormula $formula]
+    set xpos $x
+
+    foreach {token xp yp advance} $tokens {
+        # 1. Symbol-Lookup
+        #    - Erst direkt (alpha -> α, le -> ≤)
+        #    - SUM/INT/PROD: lowercase-Variante fuer Symbol-Lookup
+        set glyph [::pdf4tcllib::text::mathSymbol $token]
+        if {$glyph eq ""} {
+            # Operator-Aliase: SUM -> sum, INT -> int, PROD -> prod
+            switch -- $token {
+                "SUM"  { set glyph [::pdf4tcllib::text::mathSymbol sum] }
+                "INT"  { set glyph [::pdf4tcllib::text::mathSymbol int] }
+                "PROD" { set glyph [::pdf4tcllib::text::mathSymbol prod] }
+            }
+        }
+        if {$glyph eq ""} {
+            # Kein Symbol -- Token literal verwenden
+            set glyph $token
+        }
+
+        # 2. Position berechnen (xp/yp relativ zum aktuellen Cursor)
+        set drawX [expr {$xpos + $xp}]
+        set drawY [expr {$y + $yp}]
+
+        # 3. Sub/Super-Erkennung: yp != 0 -> kleinere Schrift
+        if {$yp != 0} {
+            set smallSize [expr {$fontSize * 0.7}]
+            $pdf setFont $smallSize $font
+            $pdf text $glyph -x $drawX -y $drawY
+            set w [$pdf getStringWidth $glyph]
+            $pdf setFont $fontSize $font
+        } else {
+            $pdf setFont $fontSize $font
+            $pdf text $glyph -x $drawX -y $drawY
+            set w [$pdf getStringWidth $glyph]
+        }
+
+        # 4. X-Cursor weiter, wenn advance=1
+        if {$advance} {
+            set xpos [expr {$drawX + $w}]
+        }
+    }
+
+    return $xpos
+}
+
+
+# ----------------------------------------------------------------
+# renderLatex -- box-model LaTeX-subset renderer
+# ----------------------------------------------------------------
+# Complements renderFormula (linear token list) with a recursive box
+# model: grouped/nested ^{} _{}, \frac, \sqrt, \int/\sum/\prod with
+# stacked limits. Pure Tcl on pdf4tcl primitives (text + line).
+#
+# Supported subset:
+#   - plain chars, + - = ( ) ...
+#   - \alpha..\omega, \infty, \pi, \le, \forall, \to ... (via mathSymbol)
+#   - ^{...} _{...} grouped super/subscript (also single token x^2)
+#   - \frac{num}{den}, \sqrt{...}
+#   - \int \sum \prod with _{lower} ^{upper} as stacked limits
+#   - \, \; \: thin spaces ; { } grouping
+#
+# Usage:
+#   pdf4tcllib::math::renderLatex $pdf $x $y $latex ?-size 12? ?-font name?
+#   -> returns total advance width; baseline at $y.
+#
+# Note: not a full LaTeX math mode (no \left\right sizing, matrices,
+# \text). Measure helpers (_latexMeasure*) expose w/h/d so callers can
+# centre or page-fit display formulas before drawing.
+
+namespace eval ::pdf4tcllib::math {
+    namespace export renderLatex measureLatex
+    # Encoding-safe fallback for names mathSymbol lacks. \uXXXX escapes
+    # are independent of how this file is sourced.
+    variable latexFallback
+    array set latexFallback [list \
+        neq         \u2260 \
+        ne          \u2260 \
+        leftrightarrow \u2194 \
+        Leftrightarrow \u21d4 \
+        Rightarrow  \u21d2 \
+        Leftarrow   \u21d0 \
+        rightarrow  \u2192 \
+        leftarrow   \u2190 \
+        mp          \u2213 \
+        notin       \u2209 \
+        emptyset    \u2205 \
+        cdots       \u22ef \
+        ldots       \u2026 ]
+}
+
+proc ::pdf4tcllib::math::_latexSymbol {name} {
+    variable latexFallback
+    # Primary: reuse the text symbol table (alpha, pi, infty, int, le ...)
+    set g ""
+    catch { set g [::pdf4tcllib::text::mathSymbol $name] }
+    if {$g ne ""} { return $g }
+    if {[info exists latexFallback($name)]} { return $latexFallback($name) }
+    return $name
+}
+
+# ---- Tokenizer ----
+proc ::pdf4tcllib::math::_latexTokenize {s} {
+    set toks {}
+    set i 0; set n [string length $s]
+    while {$i < $n} {
+        set c [string index $s $i]
+        if {$c eq "\\"} {
+            set j [expr {$i+1}]
+            if {[string match {[A-Za-z]} [string index $s $j]]} {
+                set k $j
+                while {$k < $n && [string match {[A-Za-z]} [string index $s $k]]} { incr k }
+                lappend toks [list cmd [string range $s $j [expr {$k-1}]]]
+                set i $k
+            } else {
+                set p [string index $s $j]
+                if {$p in {, ; :}} {
+                    lappend toks [list space {}]
+                } else {
+                    lappend toks [list char $p]
+                }
+                set i [expr {$j+1}]
+            }
+        } elseif {$c eq "\{"} { lappend toks [list open {}];  incr i
+        } elseif {$c eq "\}"} { lappend toks [list close {}]; incr i
+        } elseif {$c eq "^"}  { lappend toks [list sup {}];   incr i
+        } elseif {$c eq "_"}  { lappend toks [list sub {}];   incr i
+        } elseif {$c eq " "}  { incr i
+        } else                { lappend toks [list char $c];  incr i }
+    }
+    return $toks
+}
+
+# ---- Parser: tokens -> list of atoms ----
+proc ::pdf4tcllib::math::_latexParseGroup {toksVar} {
+    upvar 1 $toksVar toks
+    set atoms {}
+    while {[llength $toks]} {
+        set t [lindex $toks 0]
+        lassign $t kind val
+        if {$kind eq "close"} { set toks [lrange $toks 1 end]; break }
+        set toks [lrange $toks 1 end]
+        switch -- $kind {
+            char  { lappend atoms [list sym $val] }
+            space { lappend atoms [list space {}] }
+            open  { lappend atoms [list grp [_latexParseGroup toks]] }
+            sup   { _latexAttachScript atoms sup toks }
+            sub   { _latexAttachScript atoms sub toks }
+            cmd {
+                switch -- $val {
+                    frac {
+                        set num [_latexParseArg toks]; set den [_latexParseArg toks]
+                        lappend atoms [list frac $num $den]
+                    }
+                    sqrt {
+                        lappend atoms [list sqrt [_latexParseArg toks]]
+                    }
+                    int - sum - prod {
+                        lappend atoms [list bigop $val {} {}]
+                    }
+                    default { lappend atoms [list sym [_latexSymbol $val]] }
+                }
+            }
+        }
+    }
+    return $atoms
+}
+
+# Parse one argument: either {group} or a single token
+proc ::pdf4tcllib::math::_latexParseArg {toksVar} {
+    upvar 1 $toksVar toks
+    if {![llength $toks]} { return {} }
+    set t [lindex $toks 0]; lassign $t kind val
+    set toks [lrange $toks 1 end]
+    switch -- $kind {
+        open { return [_latexParseGroup toks] }
+        char { return [list [list sym $val]] }
+        cmd  {
+            switch -- $val {
+                frac { set num [_latexParseArg toks]; set den [_latexParseArg toks]
+                       return [list [list frac $num $den]] }
+                sqrt { return [list [list sqrt [_latexParseArg toks]]] }
+                int - sum - prod { return [list [list bigop $val {} {}]] }
+                default { return [list [list sym [_latexSymbol $val]]] }
+            }
+        }
+        default { return {} }
+    }
+}
+
+# Attach a sup/sub to the preceding atom (or to a bigop as a limit)
+proc ::pdf4tcllib::math::_latexAttachScript {atomsVar which toksVar} {
+    upvar 1 $atomsVar atoms
+    upvar 1 $toksVar toks
+    set arg [_latexParseArg toks]
+    if {![llength $atoms]} { lappend atoms [list sym ""] }
+    set last [lindex $atoms end]
+    lassign $last lk
+    if {$lk eq "bigop"} {
+        lassign $last _ op lower upper
+        if {$which eq "sub"} { set lower $arg } else { set upper $arg }
+        lset atoms end [list bigop $op $lower $upper]
+        return
+    }
+    if {$lk eq "scripted"} {
+        lassign $last _ base sub sup
+        if {$which eq "sub"} { set sub $arg } else { set sup $arg }
+        lset atoms end [list scripted $base $sub $sup]
+        return
+    }
+    if {$which eq "sub"} {
+        lset atoms end [list scripted $last $arg {}]
+    } else {
+        lset atoms end [list scripted $last {} $arg]
+    }
+}
+
+# ---- Measure (returns {width heightAboveBaseline depthBelow}) ----
+proc ::pdf4tcllib::math::_latexMeasureList {pdf font size atoms} {
+    set w 0.0; set h [expr {$size*0.7}]; set d [expr {$size*0.2}]
+    foreach a $atoms {
+        lassign [_latexMeasureAtom $pdf $font $size $a] aw ah ad
+        set w [expr {$w + $aw}]
+        if {$ah > $h} { set h $ah }
+        if {$ad > $d} { set d $ad }
+    }
+    return [list $w $h $d]
+}
+
+proc ::pdf4tcllib::math::_latexMeasureAtom {pdf font size a} {
+    set kind [lindex $a 0]
+    switch -- $kind {
+        sym {
+            set g [lindex $a 1]
+            $pdf setFont $size $font
+            return [list [$pdf getStringWidth $g] [expr {$size*0.72}] [expr {$size*0.20}]]
+        }
+        space { return [list [expr {$size*0.3}] 0 0] }
+        grp   { return [_latexMeasureList $pdf $font $size [lindex $a 1]] }
+        scripted {
+            lassign $a _ base sub sup
+            lassign [_latexMeasureAtom $pdf $font $size $base] bw bh bd
+            set ss [expr {$size*0.7}]
+            set sw 0.0; set extraH 0; set extraD 0
+            if {[llength $sup]} {
+                lassign [_latexMeasureList $pdf $font $ss $sup] supw suph supd
+                if {$supw>$sw} { set sw $supw }
+                set extraH [expr {$bh*0.5}]
+            }
+            if {[llength $sub]} {
+                lassign [_latexMeasureList $pdf $font $ss $sub] subw subh subd
+                if {$subw>$sw} { set sw $subw }
+                set extraD [expr {$bd+$ss*0.4}]
+            }
+            return [list [expr {$bw+$sw}] [expr {$bh+$extraH}] [expr {$bd+$extraD}]]
+        }
+        frac {
+            lassign $a _ num den
+            lassign [_latexMeasureList $pdf $font [expr {$size*0.85}] $num] nw nh nd
+            lassign [_latexMeasureList $pdf $font [expr {$size*0.85}] $den] dw dh dd
+            return [list [expr {max($nw,$dw)+4}] [expr {$nh+$nd+2+$size*0.3}] [expr {$dh+$dd+2}]]
+        }
+        sqrt {
+            lassign $a _ arg
+            lassign [_latexMeasureList $pdf $font $size $arg] aw ah ad
+            return [list [expr {$aw+$size*0.7+2}] [expr {$ah+2}] $ad]
+        }
+        bigop {
+            return [list [expr {$size*1.1}] [expr {$size*1.0}] [expr {$size*1.05}]]
+        }
+    }
+    return [list 0 0 0]
+}
+
+# ---- Draw (baseline at $y; returns advance x) ----
+proc ::pdf4tcllib::math::_latexDrawList {pdf font size x y atoms} {
+    set cx $x
+    foreach a $atoms {
+        set cx [_latexDrawAtom $pdf $font $size $cx $y $a]
+    }
+    return $cx
+}
+
+proc ::pdf4tcllib::math::_latexDrawAtom {pdf font size x y a} {
+    set kind [lindex $a 0]
+    switch -- $kind {
+        sym {
+            set g [lindex $a 1]
+            $pdf setFont $size $font
+            $pdf text $g -x $x -y $y
+            return [expr {$x+[$pdf getStringWidth $g]}]
+        }
+        space { return [expr {$x+$size*0.3}] }
+        grp   { return [_latexDrawList $pdf $font $size $x $y [lindex $a 1]] }
+        scripted {
+            lassign $a _ base sub sup
+            set bx [_latexDrawAtom $pdf $font $size $x $y $base]
+            set ss [expr {$size*0.7}]
+            if {[llength $sup]} { _latexDrawList $pdf $font $ss $bx [expr {$y-$size*0.45}] $sup }
+            if {[llength $sub]} { _latexDrawList $pdf $font $ss $bx [expr {$y+$size*0.28}] $sub }
+            lassign [_latexMeasureAtom $pdf $font $size $a] aw ah ad
+            return [expr {$x+$aw}]
+        }
+        frac {
+            lassign $a _ num den
+            set fs [expr {$size*0.85}]
+            lassign [_latexMeasureList $pdf $font $fs $num] nw nh nd
+            lassign [_latexMeasureList $pdf $font $fs $den] dw dh dd
+            set w [expr {max($nw,$dw)+4}]
+            set midY [expr {$y-$size*0.25}]
+            _latexDrawList $pdf $font $fs [expr {$x+($w-$nw)/2.0}] [expr {$midY-2-$nd}] $num
+            _latexDrawList $pdf $font $fs [expr {$x+($w-$dw)/2.0}] [expr {$midY+2+$dh}] $den
+            $pdf setLineWidth 0.6
+            $pdf line $x $midY [expr {$x+$w}] $midY
+            return [expr {$x+$w}]
+        }
+        sqrt {
+            lassign $a _ arg
+            set radW [expr {$size*0.6}]
+            lassign [_latexMeasureList $pdf $font $size $arg] aw ah ad
+            set topY [expr {$y-$ah}]
+            $pdf setLineWidth 0.7
+            $pdf line $x [expr {$y-$size*0.25}] [expr {$x+$radW*0.4}] [expr {$y+$ad*0.5}]
+            $pdf line [expr {$x+$radW*0.4}] [expr {$y+$ad*0.5}] [expr {$x+$radW*0.65}] $topY
+            $pdf line [expr {$x+$radW*0.65}] $topY [expr {$x+$radW+$aw+2}] $topY
+            set ax [_latexDrawList $pdf $font $size [expr {$x+$radW+1}] $y $arg]
+            return [expr {$ax+1}]
+        }
+        bigop {
+            lassign $a _ op lower upper
+            set bs [expr {$size*1.6}]
+            $pdf setFont $bs $font
+            set g [_latexSymbol $op]
+            set ow [$pdf getStringWidth $g]
+            lassign [_latexMeasureAtom $pdf $font $size $a] aw ah ad
+            $pdf text $g -x [expr {$x+($aw-$ow)/2.0}] -y [expr {$y+$size*0.35}]
+            set ls [expr {$size*0.62}]
+            if {[llength $upper]} {
+                lassign [_latexMeasureList $pdf $font $ls $upper] uw uh ud
+                _latexDrawList $pdf $font $ls [expr {$x+($aw-$uw)/2.0}] [expr {$y-$size*0.95}] $upper
+            }
+            if {[llength $lower]} {
+                lassign [_latexMeasureList $pdf $font $ls $lower] lw lh ld
+                # under-limit lowered (0.95 -> 1.18) so e.g. \sum_{n=1} is not
+                # cramped against the operator; measure depth raised to match.
+                _latexDrawList $pdf $font $ls [expr {$x+($aw-$lw)/2.0}] [expr {$y+$size*1.18}] $lower
+            }
+            return [expr {$x+$aw+1}]
+        }
+    }
+    return $x
+}
+
+proc ::pdf4tcllib::math::measureLatex {pdf latex args} {
+    # Returns {width heightAboveBaseline depthBelow} for a LaTeX-subset
+    # string, so callers can centre or page-fit before renderLatex.
+    array set opt {-size 12 -font ""}
+    array set opt $args
+    set font $opt(-font)
+    if {$font eq ""} {
+        if {[::pdf4tcllib::fonts::hasTtf]} {
+            set font [::pdf4tcllib::fonts::fontSans]
+        } else {
+            set font Helvetica
+        }
+    }
+    set toks [_latexTokenize $latex]
+    set atoms [_latexParseGroup toks]
+    return [_latexMeasureList $pdf $font $opt(-size) $atoms]
+}
+
+proc ::pdf4tcllib::math::renderLatex {pdf x y latex args} {
+    array set opt {-size 12 -font ""}
+    array set opt $args
+    set font $opt(-font)
+    if {$font eq ""} {
+        if {[::pdf4tcllib::fonts::hasTtf]} {
+            set font [::pdf4tcllib::fonts::fontSans]
+        } else {
+            set font Helvetica
+        }
+    }
+    set toks [_latexTokenize $latex]
+    set atoms [_latexParseGroup toks]
+    return [_latexDrawList $pdf $font $opt(-size) $x $y $atoms]
+}
+
 
 
 # ================================================================
@@ -2753,3 +3407,39 @@ proc ::pdf4tcllib::form::sumLine {pdf ctx yVar colWidths label value} {
 # Tablelist-Export: package require pdf4tcltable
 # TextWidget-Export: package require pdf4tcltext
 # ============================================================
+
+
+# --- Unicode-safe bookmark/metadata titles -------------------------------
+# pdf4tcl's ::pdf4tcl::SafeQuoteString replaces every codepoint > U+00FF with
+# "?" (a Tcl-9 binary-channel workaround). That breaks em dash, typographic
+# quotes, Greek, etc. in PDF bookmark titles and document metadata -- visible
+# in a viewer's outline (e.g. Okular). As the Unicode-safety layer over
+# pdf4tcl, pdf4tcllib installs a Unicode-correct version (UTF-16BE hex string
+# with BOM) once pdf4tcl is loaded. Idempotent; pdf4tcl itself stays untouched.
+namespace eval ::pdf4tcllib { variable _unicodeTitlesInstalled 0 }
+proc ::pdf4tcllib::_installUnicodeTitles {} {
+    variable _unicodeTitlesInstalled
+    if {$_unicodeTitlesInstalled} return
+    if {[info commands ::pdf4tcl::SafeQuoteString] eq ""} return
+    proc ::pdf4tcl::SafeQuoteString {string} {
+        if {[regexp {[^\x00-\xFF]} $string]} {
+            set hex "FEFF"
+            foreach ch [split $string ""] {
+                scan $ch %c cp
+                if {$cp > 0xFFFF} {
+                    set cp [expr {$cp - 0x10000}]
+                    append hex [format %04X [expr {0xD800 + ($cp >> 10)}]]
+                    append hex [format %04X [expr {0xDC00 + ($cp & 0x3FF)}]]
+                } else {
+                    append hex [format %04X $cp]
+                }
+            }
+            return "<$hex>"
+        }
+        return [::pdf4tcl::QuoteString $string]
+    }
+    set _unicodeTitlesInstalled 1
+}
+# Try once at load time (no-op if pdf4tcl is not yet present -- the
+# fonts::init hook installs it later, after pdf4tcl is required).
+::pdf4tcllib::_installUnicodeTitles

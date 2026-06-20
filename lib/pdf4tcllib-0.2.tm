@@ -1778,7 +1778,7 @@ proc ::pdf4tcllib::math::_latexMeasureAtom {pdf font size a} {
             return [list [expr {$aw+$size*0.7+2}] [expr {$ah+2}] $ad]
         }
         bigop {
-            return [list [expr {$size*1.1}] [expr {$size*1.0}] [expr {$size*0.7}]]
+            return [list [expr {$size*1.1}] [expr {$size*1.0}] [expr {$size*1.05}]]
         }
     }
     return [list 0 0 0]
@@ -1853,7 +1853,9 @@ proc ::pdf4tcllib::math::_latexDrawAtom {pdf font size x y a} {
             }
             if {[llength $lower]} {
                 lassign [_latexMeasureList $pdf $font $ls $lower] lw lh ld
-                _latexDrawList $pdf $font $ls [expr {$x+($aw-$lw)/2.0}] [expr {$y+$size*0.95}] $lower
+                # under-limit lowered (0.95 -> 1.18) so e.g. \sum_{n=1} is not
+                # cramped against the operator; measure depth raised to match.
+                _latexDrawList $pdf $font $ls [expr {$x+($aw-$lw)/2.0}] [expr {$y+$size*1.18}] $lower
             }
             return [expr {$x+$aw+1}]
         }
