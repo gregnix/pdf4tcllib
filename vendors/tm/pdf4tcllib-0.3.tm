@@ -34,10 +34,10 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.2
+package provide pdf4tcllib 0.3
 
 namespace eval ::pdf4tcllib {
-    variable version 0.2
+    variable version 0.3
 }
 
 proc ::pdf4tcllib::version {} {
@@ -1121,11 +1121,35 @@ proc ::pdf4tcllib::text::width {text fontSize fontName {pdf {}}} {
     return [expr {$len * $fontSize * $factor}]
 }
 
-proc ::pdf4tcllib::text::wrap {line maxW fontSize fontName {codeContinuation 0} {pdf {}}} {
+proc ::pdf4tcllib::text::_hardBreak {word maxW fontSize fontName {pdf {}}} {
+    # Greedily splits a single over-wide word into pieces that each fit maxW.
+    # Always emits at least one character per piece, so a single glyph wider
+    # than the column cannot loop forever. Used by wrap when hardBreak is on,
+    # so long space-less tokens (paths, dotted names) survive instead of being
+    # truncated.
+    set pieces {}
+    set cur ""
+    foreach ch [split $word ""] {
+        set cand "$cur$ch"
+        if {$cur eq "" || [width $cand $fontSize $fontName $pdf] <= $maxW} {
+            set cur $cand
+        } else {
+            lappend pieces $cur
+            set cur $ch
+        }
+    }
+    if {$cur ne ""} { lappend pieces $cur }
+    if {[llength $pieces] == 0} { set pieces [list ""] }
+    return $pieces
+}
+
+proc ::pdf4tcllib::text::wrap {line maxW fontSize fontName {codeContinuation 0} {pdf {}} {hardBreak 0}} {
     # Wraps a line at word boundaries.
     #
     # Returns a list of sub-lines that each fit within maxW.
-    # Zu lange Woerter werden an maxW abgeschnitten.
+    # hardBreak 0 (default): over-wide words are truncated (unchanged legacy
+    #   behaviour). hardBreak 1: over-wide words are broken character-wise so
+    #   nothing is lost (needed for table cells with long path/dotted tokens).
     #
     # codeContinuation: if 1, wrapped code lines get
     # with " \" am Ende markiert (Tcl-Stil).
@@ -1159,8 +1183,17 @@ proc ::pdf4tcllib::text::wrap {line maxW fontSize fontName {codeContinuation 0} 
                 lappend lines $current
             }
             # Check word alone
-            if {[width $word $fontSize $fontName] > $wrapMaxW} {
-                set current [truncate $word $wrapMaxW $fontSize $fontName]
+            if {[width $word $fontSize $fontName $pdf] > $wrapMaxW} {
+                if {$hardBreak} {
+                    # break char-wise; flush all but the last piece as full
+                    # lines, keep the last as the running line so following
+                    # words may still join it.
+                    set pieces [_hardBreak $word $wrapMaxW $fontSize $fontName $pdf]
+                    foreach p [lrange $pieces 0 end-1] { lappend lines $p }
+                    set current [lindex $pieces end]
+                } else {
+                    set current [truncate $word $wrapMaxW $fontSize $fontName $pdf]
+                }
             } else {
                 set current $word
             }
@@ -2270,7 +2303,7 @@ namespace eval ::pdf4tcllib::table {}
 # Oeffentliche API
 # ============================================================
 
-proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar pageW pageH margin fontSize lineH {debug 0}} {
+proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar pageW pageH margin fontSize lineH {debug 0} {pageBreakCmd {}}} {
     # Renders a table into the PDF.
     #
     # tableData akzeptiert zwei Formate:
@@ -2318,15 +2351,22 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
     set totalW 0
     foreach w $colWidths { set totalW [expr {$totalW + $w}] }
 
-    set cellH   [expr {int($fontSize * 2.0)}]
     set cellPad 4
 
-    # -- Check page break --
-    set tableMinH [expr {$cellH * (1 + min([llength $rows], 2))}]
     set orient [expr {$yTop < $yBot}]
-    if {$orient ? (($y + $tableMinH) > $yBot) : (($y - $tableMinH) < $yBot)} {
-        _pageBreak $pdf pageNo $pageW $pageH $margin $fontSize $orient
-        set y $yTop
+
+    # -- Check page break (header + first data row, measured) --
+    set firstRowH 0
+    if {$hasHdr} {
+        set firstRowH [expr {$firstRowH + \
+            [_rowHeight $header $colWidths $cellPad $fontSize $fontSansBold $lineH $pdf]}]
+    }
+    if {[llength $rows] > 0} {
+        set firstRowH [expr {$firstRowH + \
+            [_rowHeight [lindex $rows 0] $colWidths $cellPad $fontSize $fontSans $lineH $pdf]}]
+    }
+    if {$orient ? (($y + $firstRowH) > $yBot) : (($y - $firstRowH) < $yBot)} {
+        set y [_doPageBreak $pdf pageNo $pageW $pageH $margin $fontSize $orient $pageBreakCmd $yTop]
     }
 
     set tableStartY $y
@@ -2335,15 +2375,9 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
 
     # -- Header --
     if {$hasHdr} {
-        $pdf setLineWidth 0.5
-        $pdf setFillColor 0.88 0.88 0.88
-        $pdf rectangle $x0 $y $totalW $cellH -filled 1
-        $pdf setFillColor 0.0 0.0 0.0
-
-        $pdf setFont $fontSize $fontSansBold
-        _drawCells $pdf $x0 $y $cellH $colWidths $aligns $cellPad $fontSize $fontSansBold $header
-
-        set y [expr {$orient ? ($y + $cellH) : ($y - $cellH)}]
+        set hH [_drawHeaderRow $pdf $x0 $y $totalW $orient $colWidths $aligns \
+            $cellPad $fontSize $fontSansBold $header $lineH]
+        set y [expr {$orient ? ($y + $hH) : ($y - $hH)}]
         lappend rowYs $y
         set hdrBottom $y
     }
@@ -2352,51 +2386,43 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
     $pdf setFont $fontSize $fontSans
     set rowIdx 0
     foreach row $rows {
-        # Page break
-        if {$orient ? (($y + $cellH) > $yBot) : (($y - $cellH) < $yBot)} {
-            _drawVLines $pdf $x0 $tableStartY $y $colWidths
-            _pageBreak $pdf pageNo $pageW $pageH $margin $fontSize $orient
-            set y $yTop
-            $pdf setFont $fontSize $fontSans
+        set rH [_rowHeight $row $colWidths $cellPad $fontSize $fontSans $lineH $pdf]
+
+        # Page break, measured against THIS row's real height
+        if {$orient ? (($y + $rH) > $yBot) : (($y - $rH) < $yBot)} {
+            _drawSegmentLines $pdf $x0 $tableStartY $y $hdrBottom $rowYs $totalW $colWidths
+            set y [_doPageBreak $pdf pageNo $pageW $pageH $margin $fontSize $orient $pageBreakCmd $yTop]
             $pdf setLineWidth 0.5
             set tableStartY $y
             set rowYs [list $y]
             set hdrBottom ""
+            # repeat the column header at the top of the continuation page
+            if {$hasHdr} {
+                set hH [_drawHeaderRow $pdf $x0 $y $totalW $orient $colWidths $aligns \
+                    $cellPad $fontSize $fontSansBold $header $lineH]
+                set y [expr {$orient ? ($y + $hH) : ($y - $hH)}]
+                lappend rowYs $y
+                set hdrBottom $y
+            }
+            $pdf setFont $fontSize $fontSans
         }
 
         # Zebra-Streifen
         if {$rowIdx % 2 == 1} {
             $pdf setFillColor 0.97 0.97 0.97
-            $pdf rectangle $x0 $y $totalW $cellH -filled 1
+            $pdf rectangle $x0 $y $totalW $rH -filled 1
             $pdf setFillColor 0.0 0.0 0.0
         }
 
-        _drawCells $pdf $x0 $y $cellH $colWidths $aligns $cellPad $fontSize $fontSans $row
-        set y [expr {$orient ? ($y + $cellH) : ($y - $cellH)}]
+        _drawCellsWrapped $pdf $x0 $y $rH $orient $colWidths $aligns $cellPad \
+            $fontSize $fontSans $row $lineH
+        set y [expr {$orient ? ($y + $rH) : ($y - $rH)}]
         lappend rowYs $y
         incr rowIdx
     }
 
-    # -- Linien zeichnen --
-    $pdf setStrokeColor 0.6 0.6 0.6
-
-    # Obere Linie
-    $pdf line $x0 $tableStartY [expr {$x0 + $totalW}] $tableStartY
-
-    # Header-Trennlinie (dicker)
-    if {$hdrBottom ne ""} {
-        $pdf setLineWidth 1.0
-        $pdf line $x0 $hdrBottom [expr {$x0 + $totalW}] $hdrBottom
-        $pdf setLineWidth 0.5
-    }
-
-    # lines-Trennlinien
-    foreach ly [lrange $rowYs 2 end] {
-        $pdf line $x0 $ly [expr {$x0 + $totalW}] $ly
-    }
-
-    # Vertikale Linien
-    _drawVLines $pdf $x0 $tableStartY $y $colWidths
+    # -- Grid lines for the final (or only) page segment --
+    _drawSegmentLines $pdf $x0 $tableStartY $y $hdrBottom $rowYs $totalW $colWidths
 
     # Reset
     $pdf setStrokeColor 0.0 0.0 0.0
@@ -2408,6 +2434,40 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
 # Private Helfer
 # ============================================================
 
+proc ::pdf4tcllib::table::_drawHeaderRow {pdf x0 y totalW orient colWidths aligns cellPad fontSize fontBold header lineH} {
+    # Draws the header row (grey background + bold cells) at y and returns its
+    # height. Used for the first page and, repeated, at the top of every
+    # continuation page.
+    set hH [_rowHeight $header $colWidths $cellPad $fontSize $fontBold $lineH $pdf]
+    $pdf setLineWidth 0.5
+    $pdf setFillColor 0.88 0.88 0.88
+    $pdf rectangle $x0 $y $totalW $hH -filled 1
+    $pdf setFillColor 0.0 0.0 0.0
+    $pdf setFont $fontSize $fontBold
+    _drawCellsWrapped $pdf $x0 $y $hH $orient $colWidths $aligns $cellPad \
+        $fontSize $fontBold $header $lineH
+    return $hH
+}
+
+proc ::pdf4tcllib::table::_drawSegmentLines {pdf x0 tableStartY y hdrBottom rowYs totalW colWidths} {
+    # Draws the grid lines for one on-page table segment: top border, header
+    # separator (thicker), row separators and the vertical column lines. Called
+    # once per page (at each page break and once at the end) so every page of a
+    # multi-page table gets a complete frame, not just the last one.
+    $pdf setStrokeColor 0.6 0.6 0.6
+    $pdf setLineWidth 0.5
+    $pdf line $x0 $tableStartY [expr {$x0 + $totalW}] $tableStartY
+    if {$hdrBottom ne ""} {
+        $pdf setLineWidth 1.0
+        $pdf line $x0 $hdrBottom [expr {$x0 + $totalW}] $hdrBottom
+        $pdf setLineWidth 0.5
+    }
+    foreach ly [lrange $rowYs 2 end] {
+        $pdf line $x0 $ly [expr {$x0 + $totalW}] $ly
+    }
+    _drawVLines $pdf $x0 $tableStartY $y $colWidths
+}
+
 proc ::pdf4tcllib::table::_isDictFormat {tableData} {
     # Checks ob tableData ein Dict with keys header/rows/aligns ist.
     if {[catch {dict get $tableData rows}]} { return 0 }
@@ -2416,42 +2476,65 @@ proc ::pdf4tcllib::table::_isDictFormat {tableData} {
 }
 
 proc ::pdf4tcllib::table::_calcColWidths {header aligns rows maxW fontSize fontSans fontSansBold {pdf {}}} {
-    # Calculates column widths based on content.
+    # Calculates column widths based on content, robust against one column
+    # with occasional very long cells dominating the table:
+    #   - desired = natural max width, capped at cap (no column eats the line)
+    #   - floor   = header width (a header never collapses) within [absMin,cap]
+    #   - distribute: grow proportionally if room, else shrink only the
+    #     above-floor (flexible) portion so floors stay intact.
     set nCols [llength $header]
     if {$nCols == 0 && [llength $rows] > 0} {
         set nCols [llength [lindex $rows 0]]
     }
     if {$nCols == 0} { return {} }
-    set minW [expr {$maxW / $nCols}]
 
-    # Maximale width pro column
-    set maxWidths {}
+    set pad    20
+    set cap    [expr {$maxW * 0.40}]
+    set absMin [expr {$fontSize * 2.0}]
+
+    set desired {}
+    set floors  {}
     for {set i 0} {$i < $nCols} {incr i} {
-        set colMax 0
+        set hW 0
         if {[llength $header] > 0} {
-            set colMax [::pdf4tcllib::text::width [lindex $header $i] $fontSize $fontSansBold $pdf]
+            set hW [::pdf4tcllib::text::width [lindex $header $i] $fontSize $fontSansBold $pdf]
         }
+        set cMax $hW
         foreach row $rows {
-            set cellW [::pdf4tcllib::text::width [lindex $row $i] $fontSize $fontSans $pdf]
-            if {$cellW > $colMax} { set colMax $cellW }
+            set cw [::pdf4tcllib::text::width [lindex $row $i] $fontSize $fontSans $pdf]
+            if {$cw > $cMax} { set cMax $cw }
         }
-        lappend maxWidths [expr {$colMax + 20}]  ;# Padding (2*cellPad + Sicherheit)
+        set d [expr {$cMax + $pad}]
+        if {$d > $cap} { set d $cap }
+        set f [expr {$hW + $pad}]
+        if {$f > $cap}    { set f $cap }
+        if {$f < $absMin} { set f $absMin }
+        if {$d < $f}      { set d $f }
+        lappend desired $d
+        lappend floors  $f
     }
 
-    # Auf maxW normieren
     set total 0.0
-    foreach w $maxWidths { set total [expr {$total + $w}] }
+    foreach d $desired { set total [expr {$total + $d}] }
+
     set colWidths {}
     if {$total <= $maxW} {
-        # Gleichmaessig auffuellen
-        set extra [expr {($maxW - $total) / $nCols}]
-        foreach w $maxWidths {
-            lappend colWidths [expr {int($w + $extra)}]
+        set extra [expr {$maxW - $total}]
+        foreach d $desired {
+            lappend colWidths [expr {int($d + $extra * $d / $total)}]
         }
     } else {
-        # Proportional schrumpfen
-        foreach w $maxWidths {
-            lappend colWidths [expr {int($w * $maxW / $total)}]
+        set fixed 0.0
+        foreach f $floors { set fixed [expr {$fixed + $f}] }
+        set flex  [expr {$total - $fixed}]
+        set avail [expr {$maxW - $fixed}]
+        if {$flex <= 0 || $avail <= 0} {
+            set sc [expr {$maxW / $total}]
+            foreach d $desired { lappend colWidths [expr {int($d * $sc)}] }
+        } else {
+            foreach d $desired f $floors {
+                lappend colWidths [expr {int($f + ($d - $f) * $avail / $flex)}]
+            }
         }
     }
 
@@ -2484,6 +2567,49 @@ proc ::pdf4tcllib::table::_drawCells {pdf x0 y0 cellH colWidths aligns cellPad f
     }
 }
 
+proc ::pdf4tcllib::table::_rowHeight {row colWidths cellPad fontSize fontName lineH pdf} {
+    # Measures the height a row needs once each cell is wrapped (hardBreak on)
+    # to its inner column width: max wrapped line count over the cells.
+    set maxLines 1
+    foreach text $row colW $colWidths {
+        set availW [expr {$colW - 2 * $cellPad}]
+        set n [llength [::pdf4tcllib::text::wrap $text $availW $fontSize $fontName 0 $pdf 1]]
+        if {$n > $maxLines} { set maxLines $n }
+    }
+    return [expr {$maxLines * $lineH + 2 * $cellPad}]
+}
+
+proc ::pdf4tcllib::table::_drawCellsWrapped {pdf x0 y rowH orient colWidths aligns cellPad fontSize fontName texts lineH} {
+    # Draws one table row with per-cell wrapping (hardBreak on) and alignment,
+    # top-aligned within the row band. Honours the orient flag so it works in
+    # both top-left (orient=1) and bottom-left (orient=0) coordinate systems.
+    set x $x0
+    foreach text $texts colW $colWidths align $aligns {
+        set availW [expr {$colW - 2 * $cellPad}]
+        set lines [::pdf4tcllib::text::wrap $text $availW $fontSize $fontName 0 $pdf 1]
+        if {$orient} {
+            set base [expr {$y + $cellPad + $fontSize}] ; set step $lineH
+        } else {
+            set base [expr {$y + $rowH - $cellPad - $fontSize}] ; set step [expr {-$lineH}]
+        }
+        foreach ln $lines {
+            set ln [::pdf4tcllib::unicode::sanitize $ln]
+            if {$align eq "center"} {
+                set tw [::pdf4tcllib::text::width $ln $fontSize $fontName $pdf]
+                set tx [expr {$x + ($colW - $tw) / 2.0}]
+            } elseif {$align eq "right"} {
+                set tw [::pdf4tcllib::text::width $ln $fontSize $fontName $pdf]
+                set tx [expr {$x + $colW - $cellPad - $tw}]
+            } else {
+                set tx [expr {$x + $cellPad}]
+            }
+            ::pdf4tcllib::unicode::safeText $pdf $ln -x $tx -y $base
+            set base [expr {$base + $step}]
+        }
+        set x [expr {$x + $colW}]
+    }
+}
+
 proc ::pdf4tcllib::table::_drawVLines {pdf x0 yStart yEnd colWidths} {
     # Draws vertikale Trennlinien.
     set x $x0
@@ -2492,6 +2618,28 @@ proc ::pdf4tcllib::table::_drawVLines {pdf x0 yStart yEnd colWidths} {
         set x [expr {$x + $colW}]
         $pdf line $x $yStart $x $yEnd
     }
+}
+
+proc ::pdf4tcllib::table::_doPageBreak {pdf pageNoVar pageW pageH margin fontSize orient pageBreakCmd yTop} {
+    # Performs a page break during table rendering and returns the new top y.
+    #
+    # If pageBreakCmd is non-empty the host owns pagination: the callback is
+    # evaluated at global scope and must finish the current page (footer),
+    # start the next one (header), advance the host's own page counter and
+    # return the new top y. table::render then continues from that y and does
+    # NOT touch pageNoVar. This keeps a host's header/footer template
+    # consistent across table-spanning page breaks.
+    #
+    # If pageBreakCmd is empty the legacy internal break is used (writes a
+    # "- N -" marker via _pageBreak and returns yTop). Behaviour unchanged.
+    upvar $pageNoVar pageNo
+    if {$pageBreakCmd ne ""} {
+        set newY [uplevel #0 $pageBreakCmd]
+        if {$newY eq ""} { set newY $yTop }
+        return $newY
+    }
+    _pageBreak $pdf pageNo $pageW $pageH $margin $fontSize $orient
+    return $yTop
 }
 
 proc ::pdf4tcllib::table::_pageBreak {pdf pageNoVar pageW pageH margin fontSize {orient 0}} {

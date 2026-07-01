@@ -78,4 +78,53 @@ test table-colw-wide-col "Breite Spalte bekommt mehr Platz" -body {
     expr {[lindex $widths 1] > [lindex $widths 0]}
 } -result 1
 
+# ============================================================
+# table::render -- pageBreakCmd hook (host-driven pagination)
+# ============================================================
+
+proc ::tblHookCb {} {
+    incr ::pb_calls
+    $::pb_pdf endPage
+    $::pb_pdf startPage
+    return $::pb_top
+}
+
+test table-pagebreak-hook "pageBreakCmd drives pagination; internal pageNo untouched" -setup {
+    set ::pb_calls 0
+} -body {
+    set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true]
+    $pdf startPage
+    set margin 40.0 ; set pageW 595.0 ; set pageH 842.0
+    set x0 $margin ; set maxW [expr {$pageW - 2 * $margin}]
+    set yTop $margin ; set yBot [expr {$yTop + 120}]  ;# tiny band -> forces breaks
+    set ::pb_pdf $pdf ; set ::pb_top $yTop
+    set y $yTop ; set internalPageNo 1
+    set rows {}
+    for {set i 0} {$i < 40} {incr i} { lappend rows [list "row$i" "value-$i" [expr {$i * 7}]] }
+    set tableData [dict create header {Key Value Num} rows $rows aligns {left left right}]
+    pdf4tcllib::table::render $pdf $tableData $x0 y $maxW $yTop $yBot internalPageNo \
+        $pageW $pageH $margin 9 12 0 {::tblHookCb}
+    $pdf destroy
+    # callback fired, and render left the internal page counter alone
+    list [expr {$::pb_calls > 0}] $internalPageNo
+} -result {1 1} -cleanup {
+    unset -nocomplain ::pb_calls ::pb_pdf ::pb_top
+}
+
+test table-pagebreak-legacy "no pageBreakCmd: internal pagination increments" -body {
+    set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true]
+    $pdf startPage
+    set margin 40.0 ; set pageW 595.0 ; set pageH 842.0
+    set x0 $margin ; set maxW [expr {$pageW - 2 * $margin}]
+    set yTop $margin ; set yBot [expr {$yTop + 120}]
+    set y $yTop ; set pno 1
+    set rows {}
+    for {set i 0} {$i < 40} {incr i} { lappend rows [list "row$i" "value-$i" $i] }
+    set tableData [dict create header {Key Value Num} rows $rows aligns {left left right}]
+    pdf4tcllib::table::render $pdf $tableData $x0 y $maxW $yTop $yBot pno \
+        $pageW $pageH $margin 9 12
+    $pdf destroy
+    expr {$pno > 1}
+} -result 1
+
 cleanupTests
