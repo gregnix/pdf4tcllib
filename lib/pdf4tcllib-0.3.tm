@@ -650,7 +650,19 @@ proc ::pdf4tcllib::fonts::_buildSubset {} {
 #   pdf4tcllib::unicode::safeText $pdfObj $text -x 50 -y 100
 
 
-namespace eval ::pdf4tcllib::unicode {}
+namespace eval ::pdf4tcllib::unicode {
+    variable _warned
+    array set _warned {}
+}
+
+# One-time warning to stderr (deduplicated by key) so a catch-based fallback
+# does not hide that characters were substituted or dropped.
+proc ::pdf4tcllib::unicode::_warnOnce {key msg} {
+    variable _warned
+    if {[info exists _warned($key)]} { return }
+    set _warned($key) 1
+    puts stderr "pdf4tcllib::unicode: $msg"
+}
 
 # ============================================================
 # Oeffentliche API
@@ -1033,7 +1045,10 @@ proc ::pdf4tcllib::unicode::safeText {pdf txt args} {
     set clean [sanitize $txt -mono $mono]
 
     if {[catch {$pdf text $clean {*}$passArgs} err]} {
-        # Notfall: Alles on druckbares ASCII reduzieren
+        # Notfall: Alles on druckbares ASCII reduzieren. Das ersetzt Zeichen,
+        # daher sichtbar machen statt Glyphen still zu verlieren.
+        _warnOnce safeText-fallback "safeText: '\$pdf text' failed ($err);\
+ falling back to ASCII (non-ASCII characters replaced with '?')"
         set safe ""
         foreach c [split $clean ""] {
             set cp [scan $c %c]
@@ -1044,7 +1059,11 @@ proc ::pdf4tcllib::unicode::safeText {pdf txt args} {
                 append safe "?"
             }
         }
-        catch {$pdf text $safe {*}$passArgs}
+        if {[catch {$pdf text $safe {*}$passArgs} err2]} {
+            # even the ASCII fallback failed -> nothing was drawn; surface it
+            _warnOnce safeText-failed "safeText: ASCII fallback also failed\
+ ($err2); text was not drawn"
+        }
     }
 }
 
@@ -1458,6 +1477,17 @@ proc ::pdf4tcllib::text::mathSymbolNames {} {
 
 namespace eval ::pdf4tcllib::math {
     namespace export renderFormula analyseFormula
+    variable _warned
+    array set _warned {}
+}
+
+# One-time warning (per unknown symbol) so an unresolved LaTeX command that
+# falls through to its raw name does not pass unnoticed.
+proc ::pdf4tcllib::math::_warnUnknown {name} {
+    variable _warned
+    if {[info exists _warned($name)]} { return }
+    set _warned($name) 1
+    puts stderr "pdf4tcllib::math: unknown symbol '\\$name' rendered as literal text"
 }
 
 # ----------------------------------------------------------------
@@ -1641,6 +1671,7 @@ proc ::pdf4tcllib::math::_latexSymbol {name} {
     catch { set g [::pdf4tcllib::text::mathSymbol $name] }
     if {$g ne ""} { return $g }
     if {[info exists latexFallback($name)]} { return $latexFallback($name) }
+    _warnUnknown $name
     return $name
 }
 
