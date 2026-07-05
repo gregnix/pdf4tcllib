@@ -79,6 +79,15 @@ Requires `fonts::init -cid 1` to render Greek and math symbols.
 ### Changed
 - `tests/run_all.tcl` -- now requires `pdf4tcllib 0.2` (was 0.1, stale).
 
+### Fixed
+- `unicode::safeText` -- the emergency ASCII reduction (non-ASCII -> `?`)
+  and a total failure of the fallback `$pdf text` call were swallowed
+  silently. Both now emit a one-time stderr warning (`_warnOnce`), so
+  character substitution and "text not drawn" no longer pass unnoticed.
+- `math::_latexSymbol` -- an unknown LaTeX command that falls through to its
+  raw name now emits a one-time warning per symbol instead of rendering it
+  silently as literal text.
+
 ---
 
 ## 0.2 (current)
