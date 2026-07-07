@@ -12,14 +12,6 @@ pdf4tcllib fills the most common gaps in pdf4tcl:
 - **Form layout** -- label+field, sections, order tables (`form` namespace)
 
 
-## Status
-
-> **Educational material.**
-> This library and its examples are designed for learning and training purposes --
-> exploring pdf4tcl features, understanding PDF generation patterns, and
-> experimenting with Tcl/Tk. Feedback and contributions are welcome.
-
-
 ## Installation
 
 Single file -- no subdirectory needed:
@@ -27,16 +19,24 @@ Single file -- no subdirectory needed:
 ```
 myproject/
   tm/
-    pdf4tcllib-0.2.tm   (single file, all 9 modules)
+    pdf4tcllib-0.3.tm   (single file, all 10 modules)
 ```
 
 ```tcl
 tcl::tm::path add /path/to/tm
-package require pdf4tcllib 0.2
+package require pdf4tcllib 0.3
 ```
 
-All modules (fonts, unicode, text, table, page, drawing, units, image, form)
-are contained in one file. The only external dependency is pdf4tcl.
+All modules (fonts, unicode, text, math, table, page, drawing, units, image, form)
+are contained in one file. Optional sibling modules:
+
+```
+lib/pdf4tcltable-0.2.tm   Tablelist -> PDF
+lib/pdf4tcltext-0.1.tm    Tk text   -> PDF
+lib/pdf4tclforms-0.1.2.tm   AcroForm layouts (declarative specs + templates)
+```
+
+The only external dependency is pdf4tcl.
 
 ### Requirements
 
@@ -54,7 +54,7 @@ fonts (Helvetica, Courier) remain usable.
 ## Quick start
 
 ```tcl
-package require pdf4tcllib 0.2
+package require pdf4tcllib 0.3
 
 # Initialize fonts (searches for TTF automatically)
 pdf4tcllib::fonts::init
@@ -277,11 +277,37 @@ pdf4tcllib::form::row        $pdf $ctx y {
 pdf4tcllib::form::separator  $pdf $ctx y
 pdf4tcllib::form::orderTable $pdf $ctx y \
     {"Pos" "Item" "Qty" "Price"} {30 200 50 80} {} -emptyRows 5
+# add -cellForm f_pos to make every table cell a fillable field
 pdf4tcllib::form::sumLine    $pdf $ctx y {30 200 50 80} "Total:" ""
 ```
 
 Note: `addForm` does not support CID fonts. The `form` namespace uses
 Helvetica; only WinAnsi characters are reliable in form fields.
+
+### pdf4tclforms -- fillable PDF forms (optional module)
+
+```tcl
+package require pdf4tclforms 0.1.2
+
+set ctx [pdf4tcllib::page::context a4 -margin 25]
+set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
+$pdf startPage
+set y [dict get $ctx top]
+
+# Built-in templates: callnote | inventory | checklist | order
+# Or pass your own dict spec (see examples/advanced/61_pdf4tclforms_schema.tcl)
+pdf4tclforms::renderSchema $pdf $ctx [pdf4tclforms::template callnote] -yvar y
+
+$pdf endPage
+$pdf write -file anrufernotiz.pdf
+$pdf destroy
+```
+
+See `examples/advanced/60_pdf4tclforms_demo.tcl` (four sample PDFs: callnote, inventory, checklist, order)
+and `examples/advanced/61_pdf4tclforms_schema.tcl` (custom schema without template).
+Custom schemas: Wartungsprotokoll (61), Fehlermeldung (62).
+Order form with a live subtotal, VAT and total: `examples/advanced/63_pdf4tclforms_bestellung.tcl`.
+Full API reference: `docs/pdf4tclforms.md`.
 
 
 ## Examples

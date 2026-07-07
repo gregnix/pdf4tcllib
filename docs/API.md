@@ -735,6 +735,17 @@ pdf4tcllib::form::configure \
 | sectionGap | 10 | Gap after section header |
 | labelW | 90 | Default label width in pt |
 
+### form::fieldHeight / form::rowHeight
+
+Config accessors. `fieldHeight` returns the configured field height (`fieldH`);
+`rowHeight` returns the full height of a form row (`fieldH + rowGap`). Useful to
+compute layout / page-break space.
+
+```tcl
+set fh [pdf4tcllib::form::fieldHeight]
+set rh [pdf4tcllib::form::rowHeight]
+```
+
 ### form::section
 
 Gray section header with title. Advances `y`.
@@ -797,7 +808,8 @@ pdf4tcllib::form::separator $pdf $ctx y 8  ;# larger gap
 
 ### form::orderTable
 
-Table with header row, zebra stripes and optional empty rows.
+Table with header row, zebra stripes and optional empty rows. Body cells are
+static text by default, or fillable AcroForm fields with `-cellForm`.
 
 ```tcl
 pdf4tcllib::form::orderTable $pdf $ctx y \
@@ -805,6 +817,11 @@ pdf4tcllib::form::orderTable $pdf $ctx y \
     {30 200 50 80} \
     {} \
     -emptyRows 5
+
+# Editable variant: every body cell becomes a text field (id = prefix_row_col)
+pdf4tcllib::form::orderTable $pdf $ctx y \
+    {"Pos" "Item" "Qty" "Price"} {30 200 50 80} {} \
+    -emptyRows 5 -cellForm f_pos
 ```
 
 | Argument | Meaning |
@@ -815,14 +832,31 @@ pdf4tcllib::form::orderTable $pdf $ctx y \
 | -emptyRows N | Number of blank input rows (default: 0) |
 | -rowh N | Row height (default: fieldH from config) |
 | -headerBg {r g b} | Header background color |
+| -cellForm idPrefix | Render body cells as fillable text fields (id = idPrefix_row_col); data rows are pre-filled. Without it: static text. |
+| -cellOpts {col {opts} …} | Extra addForm options per column index (only with -cellForm), e.g. `{3 {-align right -format {number …}}}` |
 
 ### form::sumLine
 
-Sum row at the end of an order table.
+Sum row at the end of an order table. The value is static text by default, or a
+right-aligned calculated field with `-id`/`-calculate`/`-init`.
 
 ```tcl
+# static value
 pdf4tcllib::form::sumLine $pdf $ctx y {30 200 50 80} "Total:" "0.00 EUR"
+
+# calculated: live sum over other fields (needs pdf4tcl 0.9.4.32+)
+pdf4tcllib::form::sumLine $pdf $ctx y {30 200 50 80} "Total:" "" \
+    -id f_total -calculate {sum {pos1 pos2 pos3}} -init "0"
 ```
+
+| Argument | Meaning |
+|---|---|
+| colWidths | Column widths; label/value use the last two columns |
+| label | Right-aligned bold label |
+| value | Static text (used only without `-id`) |
+| -id id | Render the value cell as a right-aligned form field |
+| -calculate {op {fields}} | Live calculation via AFSimple_Calculate (op: sum/product/average/min/max); sets /CO + /NeedAppearances |
+| -init value | Static pre-value shown in non-JS viewers |
 
 ### Complete example
 

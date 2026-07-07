@@ -45,6 +45,15 @@ proc ::pdf4tcllib::version {} {
     return $version
 }
 
+# Tcl 8.6 compatibility shim for [dict getdef] (Tcl 8.7/9+).
+# Single-key only -- no nested key path. Sufficient for internal use.
+proc ::pdf4tcllib::_dictGetdef {d key default} {
+    if {[dict exists $d $key]} {
+        return [dict get $d $key]
+    }
+    return $default
+}
+
 proc ::pdf4tcllib::validate_pdf {file} {
     # Checks if a PDF file is valid.
     # Returns a dict: valid (0/1), size, error.
@@ -3224,6 +3233,9 @@ namespace eval ::pdf4tcllib::form {
         sectionGap        10
         labelW            90
     }
+
+    namespace export configure fieldHeight rowHeight section labelField row
+    namespace export separator orderTable sumLine
 }
 
 # -- Konfiguration -------------------------------------------
@@ -3290,7 +3302,7 @@ proc ::pdf4tcllib::form::section {pdf ctx yVar title} {
     lassign $CFG(labelColor) tr tg tb
     $pdf setFillColor $tr $tg $tb
     set textY [expr {$y + $CFG(fieldH) - 2}]
-    $pdf text $title -x [expr {$x + 4}] -y $textY
+    ::pdf4tcllib::unicode::safeText $pdf $title -x [expr {$x + 4}] -y $textY
 
     $pdf setFillColor 0 0 0
     $pdf setStrokeColor 0 0 0
@@ -3337,7 +3349,7 @@ proc ::pdf4tcllib::form::labelField {pdf ctx yVar label ftype args} {
     lassign $CFG(labelColor) lr lg lb
     $pdf setFillColor $lr $lg $lb
     set textY [expr {$y + $fieldH - 2}]
-    $pdf text $label -x $x -y $textY
+    ::pdf4tcllib::unicode::safeText $pdf $label -x $x -y $textY
 
     # Feld
     $pdf setFont $CFG(fontSize) $CFG(fontFamily)
@@ -3377,12 +3389,25 @@ proc ::pdf4tcllib::form::row {pdf ctx yVar fields} {
     set maxH $CFG(fieldH)
 
     foreach fdef $fields {
-        set label   [dict getdef $fdef label   ""]
-        set ftype   [dict getdef $fdef type    text]
-        set totalW  [dict getdef $fdef width   100]
-        set labelW  [dict getdef $fdef labelw  $CFG(labelW)]
-        set fieldH  [dict getdef $fdef fieldh  $CFG(fieldH)]
-        set gap     [dict getdef $fdef gap     $CFG(labelGap)]
+        set label   [pdf4tcllib::_dictGetdef $fdef label   ""]
+        set ftype   [pdf4tcllib::_dictGetdef $fdef type    text]
+        set totalW  [pdf4tcllib::_dictGetdef $fdef width   100]
+        set fieldH  [pdf4tcllib::_dictGetdef $fdef fieldh  $CFG(fieldH)]
+        set gap     [pdf4tcllib::_dictGetdef $fdef gap     $CFG(labelGap)]
+
+        # Label-Spalte: explizites labelw gewinnt; sonst an die Label-Textbreite
+        # anpassen. In einer Zeile werden kurze Labels dicht gepackt -- die feste
+        # Stack-Spalte CFG(labelW) waere hier zu breit und wuerde bei kleinem
+        # width das Feld auf 0/negativ druecken (Feld ueberschreibt dann das
+        # naechste Label).
+        if {[dict exists $fdef labelw]} {
+            set labelW [dict get $fdef labelw]
+        } elseif {$label eq ""} {
+            set labelW 0
+        } else {
+            set labelW [expr {[pdf4tcllib::text::width $label \
+                $CFG(fontSizeLabel) $CFG(fontFamily)] + 6}]
+        }
 
         if {$fieldH > $maxH} { set maxH $fieldH }
 
@@ -3393,8 +3418,13 @@ proc ::pdf4tcllib::form::row {pdf ctx yVar fields} {
         if {[dict exists $fdef options]} { lappend addArgs -options [dict get $fdef options] }
         if {[dict exists $fdef readonly]} { lappend addArgs -readonly [dict get $fdef readonly] }
         if {[dict exists $fdef multiline]} { lappend addArgs -multiline [dict get $fdef multiline] }
+        # Appearance / calculation / formatting / raw JS (pdf4tcl 0.9.4.30+ / .32+ / .33+ / .34+)
+        foreach k {align color borderwidth bordercolor bgcolor calculate format js} {
+            if {[dict exists $fdef $k]} { lappend addArgs -$k [dict get $fdef $k] }
+        }
 
         set fieldW [expr {$totalW - $labelW - $gap}]
+        if {$fieldW < 12} { set fieldW 12 }
 
         # Label
         if {$label ne ""} {
@@ -3402,7 +3432,7 @@ proc ::pdf4tcllib::form::row {pdf ctx yVar fields} {
             lassign $CFG(labelColor) lr lg lb
             $pdf setFillColor $lr $lg $lb
             set textY [expr {$y + $fieldH - 2}]
-            $pdf text $label -x $x -y $textY
+            ::pdf4tcllib::unicode::safeText $pdf $label -x $x -y $textY
         }
 
         # Feld
@@ -3410,7 +3440,10 @@ proc ::pdf4tcllib::form::row {pdf ctx yVar fields} {
         set fx [expr {$x + $labelW + $gap}]
         $pdf addForm $ftype $fx $y $fieldW $fieldH {*}$addArgs
 
-        set x [expr {$x + $totalW + $CFG(labelGap)}]
+        # Naechstes Paar: mindestens totalW, aber nie weniger als tatsaechlich
+        # belegt (schuetzt vor Overlap wenn das Feld geclampt wurde).
+        set consumed [expr {$labelW + $gap + $fieldW}]
+        set x [expr {$x + max($totalW, $consumed) + $CFG(labelGap)}]
     }
 
     $pdf setFillColor 0 0 0
@@ -3451,6 +3484,9 @@ proc ::pdf4tcllib::form::orderTable {pdf ctx yVar headers colWidths \
     #   -emptyRows N   Anzahl zusaetzlicher Leerzeilen (Standard: 0)
     #   -rowh      N   Zeilenhoehe (Standard: aus CFG)
     #   -headerBg  {r g b}  Header-Hintergrundfarbe
+    #   -cellForm  idPrefix  Zellen als ausfuellbare AcroForm-Textfelder
+    #                        (id = idPrefix_zeile_spalte). Ohne: statischer Text.
+    #   -cellOpts  {col {addForm-opts} ...}  Zusatzoptionen je Spalte (nur mit -cellForm)
     upvar 1 $yVar y
     variable CFG
 
@@ -3458,11 +3494,16 @@ proc ::pdf4tcllib::form::orderTable {pdf ctx yVar headers colWidths \
     set emptyRows 0
     set rowH $CFG(fieldH)
     set headerBg {0.20 0.30 0.50}
+    set cellForm ""
+    set cellOpts {}
     foreach {k v} $args {
         switch -- $k {
             -emptyRows { set emptyRows $v }
             -rowh      { set rowH $v }
             -headerBg  { set headerBg $v }
+            -cellForm  { set cellForm $v }
+            -cellOpts  { set cellOpts $v }
+            default    { error "orderTable: unbekannte Option $k" }
         }
     }
 
@@ -3480,7 +3521,7 @@ proc ::pdf4tcllib::form::orderTable {pdf ctx yVar headers colWidths \
     foreach header $headers cw $colWidths {
         if {$header eq "" || $cw eq ""} continue
         set textY [expr {$y + $rowH - 2}]
-        $pdf text $header -x [expr {$cx + 3}] -y $textY
+        ::pdf4tcllib::unicode::safeText $pdf $header -x [expr {$cx + 3}] -y $textY
         set cx [expr {$cx + $cw}]
     }
 
@@ -3492,45 +3533,52 @@ proc ::pdf4tcllib::form::orderTable {pdf ctx yVar headers colWidths \
 
     ::pdf4tcllib::page::_advance $ctx y [expr {$rowH + 2}]
 
-    # Datenzeilen
-    set rowIdx 0
-    foreach row $data {
+    # Datenzeilen + Leerzeilen (eine Schleife; -cellForm -> AcroForm-Felder)
+    set nData [llength $data]
+    set nRows [expr {$nData + $emptyRows}]
+    for {set r 0} {$r < $nRows} {incr r} {
         # Zebra-Streifen
-        if {$rowIdx % 2 == 1} {
+        if {$r % 2 == 1} {
             $pdf setFillColor 0.95 0.95 0.95
             $pdf rectangle $x $y $totalW $rowH -filled 1
             $pdf setFillColor 0 0 0
         }
 
-        $pdf setFont $CFG(fontSize) $CFG(fontFamily)
+        set row {}
+        if {$r < $nData} { set row [lindex $data $r] }
+
+        if {$cellForm eq ""} {
+            $pdf setFont $CFG(fontSize) $CFG(fontFamily)
+        }
         set cx $x
-        foreach cell $row cw $colWidths {
-            if {$cw eq ""} continue
-            if {$cell ne ""} {
-                set textY [expr {$y + $rowH - 2}]
-                $pdf text [string range $cell 0 40] \
-                    -x [expr {$cx + 3}] -y $textY
+        set colIdx 0
+        foreach cw $colWidths {
+            if {$cw eq ""} { incr colIdx; continue }
+            set cell ""
+            if {$colIdx < [llength $row]} { set cell [lindex $row $colIdx] }
+            if {$cellForm ne ""} {
+                set pad 2
+                set fw [expr {$cw - 2 * $pad}]
+                set fh [expr {$rowH - 2 * $pad}]
+                if {$fw < 8} { set fw 8 }
+                if {$fh < 8} { set fh 8 }
+                set copt {}
+                if {[dict exists $cellOpts $colIdx]} {
+                    set copt [dict get $cellOpts $colIdx]
+                }
+                $pdf addForm text [expr {$cx + $pad}] [expr {$y + $pad}] $fw $fh \
+                    -id "${cellForm}_${r}_${colIdx}" -init $cell {*}$copt
+            } elseif {$cell ne ""} {
+                ::pdf4tcllib::unicode::safeText $pdf [string range $cell 0 40] \
+                    -x [expr {$cx + 3}] -y [expr {$y + $rowH - 2}]
             }
             set cx [expr {$cx + $cw}]
+            incr colIdx
         }
 
         $pdf setStrokeColor $fr $fg $fb
         $pdf rectangle $x $y $totalW $rowH
         ::pdf4tcllib::page::_advance $ctx y $rowH
-        incr rowIdx
-    }
-
-    # Leerzeilen
-    for {set i 0} {$i < $emptyRows} {incr i} {
-        if {$rowIdx % 2 == 1} {
-            $pdf setFillColor 0.95 0.95 0.95
-            $pdf rectangle $x $y $totalW $rowH -filled 1
-            $pdf setFillColor 0 0 0
-        }
-        $pdf setStrokeColor $fr $fg $fb
-        $pdf rectangle $x $y $totalW $rowH
-        ::pdf4tcllib::page::_advance $ctx y $rowH
-        incr rowIdx
     }
 
     $pdf setStrokeColor 0 0 0
@@ -3540,11 +3588,32 @@ proc ::pdf4tcllib::form::orderTable {pdf ctx yVar headers colWidths \
 
 # -- sumLine -------------------------------------------------
 
-proc ::pdf4tcllib::form::sumLine {pdf ctx yVar colWidths label value} {
+proc ::pdf4tcllib::form::sumLine {pdf ctx yVar colWidths label value args} {
     # Zeichnet eine Summenzeile am Ende einer Bestelltabelle.
     # label und value werden rechtbuendig in den letzten zwei Spalten gesetzt.
+    #
+    # Ohne Optionen: value ist statischer Text.
+    # Mit -id: die Wert-Zelle wird ein rechtsbuendiges AcroForm-Textfeld
+    #   (optional mit -calculate {op {felder}} -> Live-Summe, und -init als
+    #   statischer Vorabwert). Benoetigt pdf4tcl 0.9.4.32+ fuer -calculate.
     upvar 1 $yVar y
     variable CFG
+
+    set fid ""
+    set calc ""
+    set finit ""
+    set ffmt ""
+    set fjs ""
+    foreach {k v} $args {
+        switch -- $k {
+            -id        { set fid $v }
+            -calculate { set calc $v }
+            -init      { set finit $v }
+            -format    { set ffmt $v }
+            -js        { set fjs $v }
+            default    { error "sumLine: unbekannte Option $k" }
+        }
+    }
 
     set x      [dict get $ctx SX]
     set rowH   $CFG(fieldH)
@@ -3560,12 +3629,28 @@ proc ::pdf4tcllib::form::sumLine {pdf ctx yVar colWidths label value} {
     set labelX [expr {$x + $totalW - [lindex $colWidths end] \
                        - [lindex $colWidths end-1] - 4}]
     set textY  [expr {$y + $rowH - 2}]
-    $pdf text $label -x $labelX -y $textY -align right
+    ::pdf4tcllib::unicode::safeText $pdf $label -x $labelX -y $textY -align right
 
-    # Wert
-    $pdf setFont $CFG(fontSize) $CFG(fontFamily)
-    set valX [expr {$x + $totalW - 4}]
-    $pdf text $value -x $valX -y $textY -align right
+    # Wert: statischer Text oder (mit -id) ein berechnetes Feld
+    if {$fid ne ""} {
+        set lastW [lindex $colWidths end]
+        set pad 2
+        set fw [expr {$lastW - 2 * $pad}]
+        set fh [expr {$rowH - 2 * $pad}]
+        if {$fw < 8} { set fw 8 }
+        if {$fh < 8} { set fh 8 }
+        set fx [expr {$x + $totalW - $lastW + $pad}]
+        set aa {}
+        if {$calc ne ""} { lappend aa -calculate $calc }
+        if {$ffmt ne ""} { lappend aa -format $ffmt }
+        if {$fjs ne ""}  { lappend aa -js $fjs }
+        $pdf addForm text $fx [expr {$y + $pad}] $fw $fh \
+            -id $fid -align right -init $finit {*}$aa
+    } else {
+        $pdf setFont $CFG(fontSize) $CFG(fontFamily)
+        set valX [expr {$x + $totalW - 4}]
+        ::pdf4tcllib::unicode::safeText $pdf $value -x $valX -y $textY -align right
+    }
 
     lassign $CFG(fieldBorder) fr fg fb
     $pdf setStrokeColor $fr $fg $fb

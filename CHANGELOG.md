@@ -5,7 +5,33 @@ and module headers.
 
 ---
 
-## 0.3 (planned)
+## pdf4tclforms 0.1.2
+
+### Added
+- New field types `radio` (radio-button group: `group`,
+  `options {{value label} ...}`, optional preselected `init`) and `buttons`
+  (horizontal push-button bar, `items {{id caption action ?url?} ...}`, for
+  Submit/Reset).
+- Editable combobox (`editable`), multi-select and sorted listbox
+  (`multiselect`/`sort`), and a `signature` field type (`placeholder`,
+  `fieldh`, `readonly`).
+
+### Changed
+- `sums` entries gained `id`/`calculate`/`over`/`format`/`js` for live,
+  currency-formatted (and JS-computed, e.g. VAT/total) sum lines;
+  `over {idPrefix col count}` totals an editable table column.
+- Field keys `align`/`color`/`border*`/`bgcolor`/`calculate`/`format`/`js`
+  are passed through to `addForm` for single fields, `row` fields and editable
+  table columns (the table `columns` key). Requires pdf4tcl 0.9.4.34+.
+
+### Fixed
+- Multiline fields put the label on its own line above and the field at full
+  width below (a long label no longer runs into the field box); demo 62
+  (`Fehlermeldung`) spans multiple pages with `-pagebreak 1`.
+
+---
+
+## pdf4tcllib 0.3
 
 ### Added
 
@@ -78,8 +104,30 @@ Requires `fonts::init -cid 1` to render Greek and math symbols.
 
 ### Changed
 - `tests/run_all.tcl` -- now requires `pdf4tcllib 0.2` (was 0.1, stale).
+- `form::orderTable` -- new `-cellForm idPrefix` option renders each body cell
+  (data rows *and* empty rows) as a fillable AcroForm text field
+  (`id = idPrefix_row_col`) instead of static text. This makes `orderTable`
+  the single table renderer for both static and editable tables. The static
+  path is byte-for-byte unchanged (verified: 0-pixel diff old vs new incl.
+  long-text truncation, data rows and empty rows).
+- `form::sumLine` -- optional `-id`/`-calculate`/`-init`/`-format`/`-js`: the
+  value cell can be a right-aligned calculated form field (live sum via
+  `AFSimple_Calculate`, `/CO` + `/NeedAppearances`), number-formatted
+  (`AFNumber_Format`) or driven by raw JavaScript. Needs pdf4tcl 0.9.4.32+
+  (`-format` 0.9.4.33+, `-js` 0.9.4.34+). Existing 5-argument calls unchanged.
+- `form::orderTable` -- new `-cellOpts {col {opts} …}`: per-column addForm
+  options for editable cells (e.g. right-aligned, currency-formatted amount
+  columns). Exposed by pdf4tclforms as the table `columns` key.
 
 ### Fixed
+- Form labels/titles/headers/sum values now go through
+  `unicode::safeText`, so text with characters beyond Latin-1 (e.g. the Euro
+  sign in a label) no longer aborts rendering -- especially on Tcl 9, where such
+  code points are rejected on the binary channel. Plain Latin-1 labels are
+  byte-for-byte unchanged (0-pixel diff verified). Applies to `form::section`,
+  `labelField`, `row`, `orderTable` (headers + static cells), `sumLine`, and the
+  pdf4tclforms field/checkbox/radio renderers.
+
 - `unicode::safeText` -- the emergency ASCII reduction (non-ASCII -> `?`)
   and a total failure of the fallback `$pdf text` call were swallowed
   silently. Both now emit a one-time stderr warning (`_warnOnce`), so
@@ -87,10 +135,23 @@ Requires `fonts::init -cid 1` to render Greek and math symbols.
 - `math::_latexSymbol` -- an unknown LaTeX command that falls through to its
   raw name now emits a one-time warning per symbol instead of rendering it
   silently as literal text.
+- `form::row` -- used `dict getdef`, which is Tcl 8.7/9+ only, so the whole
+  `form::` layer crashed on Tcl 8.6. Replaced with a compatibility shim
+  `::pdf4tcllib::_dictGetdef` (single-key). Verified on 8.6.14 and 9.0.2.
+- `form::` procs (`configure`, `section`, `labelField`, `row`, `separator`,
+  `orderTable`, `sumLine`, `fieldHeight`, `rowHeight`) are now exported, so
+  they can be reached via `namespace import` -- not just fully qualified.
+- `form::row` -- the label column was a fixed `CFG(labelW)` (90pt). With the
+  small per-pair `width` values that the form schemas use, this left the field
+  0pt or negative wide, so the field box overwrote the next pair's label
+  (visible in the callnote/order templates and demos 61/62). The label column
+  now sizes to the actual label text width (explicit `labelw` still wins), the
+  field width is clamped to a sane minimum, and the pair advance never
+  underruns the drawn content.
 
 ---
 
-## 0.2 (current)
+## pdf4tcllib 0.2
 
 Educational/training library for pdf4tcl, single-file `.tm` deployment.
 
@@ -120,7 +181,7 @@ Nine modules merged into one `pdf4tcllib-0.2.tm`:
 
 ---
 
-## 0.1 (initial)
+## pdf4tcllib 0.1
 
 Per-module split: `pdf4tcltext-0.1.tm`, `pdf4tcltable-0.1.tm`,
 `cheatsheet-0.1.tm`. Foundation for 0.2 consolidation.
