@@ -33,10 +33,11 @@ Dependency: pdf4tcl (in `vendors/pkg/` or system-wide).
 | page    | Page context, grid, orientation, header, footer, debugGrid |
 | text    | Unicode-safe text, line wrapping, sub/superscript, math symbols |
 | math    | Inline math formula rendering (eqn-notation, Wiki-style) |
-| table   | Tables (simpleTable + render) |
+| table   | Tables: draw (recommended), simpleTable, render |
 | drawing | Shapes, gradients, text transformations, roundedRect |
 | unicode | Sanitization, emoji fallbacks, BOM removal |
 | image   | Image embedding with automatic page breaks |
+| units   | Unit conversion: mm/cm/inch <-> points |
 | form    | Form layout: label+field, sections, order tables |
 | core    | readFile, version, validate_pdf |
 
@@ -441,6 +442,34 @@ the raw LaTeX-style string).
 
 ---
 
+## unicode
+
+Guards against pdf4tcl crashes on characters outside the active font and
+normalizes input. Every drawing path in the library routes text through it.
+
+```tcl
+# Sanitize and draw (passes -x/-y/-align through to $pdf text)
+pdf4tcllib::unicode::safeText $pdf "Total: 5 EUR" -x $x -y $y
+
+# Sanitize a string without drawing
+set clean [pdf4tcllib::unicode::sanitize $raw]
+
+# Read a file, strip the BOM and apply emoji fallbacks
+set text [pdf4tcllib::unicode::readFile report.md]
+```
+
+| Proc | Purpose |
+|------|---------|
+| `safeText pdf text ?-x -y -align …?` | Sanitize, then draw; forwards options to `$pdf text` |
+| `sanitize text` | Return the cleaned string (box-drawing, symbols, `€` → replacements) |
+| `readFile path` | Read a file, remove the BOM, apply emoji fallbacks |
+| `preprocessBytes bytes` | Low-level byte preprocessing |
+
+With TTF/CID fonts loaded (`fonts::init -cid 1`) most characters render
+directly; without them `sanitize` maps them to ASCII/WinAnsi equivalents.
+See the [text](#text) section for `safeText` usage in context.
+
+---
 ## math
 
 Inline math formula rendering -- port of Arjen Markus' canvas-based
@@ -551,7 +580,7 @@ By design, since these require 2D layout that exceeds inline rendering:
 - **Fractions** with horizontal bar (`\frac{a}{b}`) -- write `(a)/(b)`
   inline instead
 - **Square roots with vinculum** -- write `sqrt(x+y)` with parens
-- **Matrices** -- use `pdf4tcllib::table::render` for 2D layouts
+- **Matrices** -- use `pdf4tcllib::table::draw` for 2D layouts
 - **Multi-line equations** -- align manually with multiple
   `renderFormula` calls
 
@@ -643,52 +672,143 @@ pdf4tcllib::drawing::separator $pdf $x $y $w ?color? ?lineWidth?
 
 ## table
 
-### simpleTable (high-level)
+Three table APIs, from high-level to low-level:
 
-One call, automatic column widths:
+| Proc | Use it for |
+|------|-----------|
+| **`table::draw`** | The recommended data-driven renderer: styling, zebra, per-cell/row colors and fonts, tree indent, footer, and automatic page breaks. Tk-free. |
+| `table::simpleTable` | A quick table with fixed column widths in points. |
+| `table::render` | Low-level engine (Markdown-style data, many positional args). `table::draw` wraps this. |
+
+### table::draw (recommended)
 
 ```tcl
-set headers {Name Age City}
-set rows {
-    {Alice 30 Berlin}
-    {Bob   25 Hamburg}
-    {Carol 35 Munich}
-}
-pdf4tcllib::table::simpleTable $pdf $ctx $headers $rows
+::pdf4tcllib::table::draw pdf x y cols data ?option value ...?
 ```
 
-Features: automatic equal column widths, gray header background,
-zebra stripes, border lines.
-
-### table::render (low-level)
-
-Full control over column widths, alignment and colors:
+`cols` is a per-column option list, `data` is a list of rows of plain
+cell strings. Styling is addressed by index (`-cellstyles`, `-rowstyles`),
+so `data` stays free of markup.
 
 ```tcl
 set cols {
-    {width 40  align left   header "No."}
-    {width 120 align left   header "Item"}
-    {width 60  align right  header "Price"}
+    {-header "No."   -width 40   -align right}
+    {-header "Item"  -width auto -align left}
+    {-header "Price" -width 60   -align right}
 }
 set data {
     {1 "Laptop" "1,299.00"}
     {2 "Mouse"  "29.90"}
 }
-pdf4tcllib::table::render $pdf $x $y $cols $data
+
+set y [pdf4tcllib::table::draw $pdf $x $y $cols $data \
+    -ctx        $ctx \
+    -zebra      1 \
+    -cellstyles {0,2 {-fg {0.8 0 0} -font bold}} \
+    -footer     {"" "Total" "1,328.90"} \
+    -yvar       y]
 ```
 
-### When to use which API
+With `-ctx` the table breaks across pages automatically and repeats the
+header row on each page. Returns the next Y position.
+
+Common options: `-ctx`, `-maxwidth`, `-header 0|1`, `-headerbg`, `-headerfg`,
+`-zebra` / `-zebracolor`, `-fontsize`, `-pad`, `-border`, `-rowheight`,
+`-cellstyles`, `-rowstyles`, `-rowindent`, `-footer` / `-footerbg` /
+`-footerbold`, `-yvar`, `-pagevar`.
+
+> Full reference: [`docs/table-draw.md`](table-draw.md).
+
+### simpleTable
+
+Fixed column widths (points); the first row is the header:
+
+```tcl
+set colWidths {140 200 140}
+set rows {
+    {Name  Email               Role}
+    {Alice alice@example.com   Admin}
+    {Bob   bob@example.com     User}
+}
+pdf4tcllib::table::simpleTable $pdf $x $y $colWidths $rows \
+    -zebra 1 -font_size 11
+```
+
+Signature: `simpleTable pdf x y col_widths rows ?-zebra 0|1 -pad N -header_bg {r g b} -row_height N -font_size N?`.
+Returns the Y position below the table.
+
+### table::render (low-level)
+
+The underlying engine. `tableData` is `{header aligns row1 row2 ...}`
+(a Markdown-style block); page breaks are driven by the caller-supplied
+context values:
+
+```tcl
+proc render {pdf tableData x0 yVar maxW yTop yBot pageNoVar \
+             pageW pageH margin fontSize lineH ?debug? ?pageBreakCmd?}
+```
+
+Prefer `table::draw`, which takes the same data more ergonomically
+(`-ctx $ctx` replaces the seven positional layout arguments).
+
+### When to use which
 
 | Situation | API |
 |---|---|
-| Quick data table | simpleTable |
-| Custom column widths | render |
-| Per-column alignment | render |
-| Order form, invoice | render |
-| Debug output, overview | simpleTable |
+| Styling, colors, footer, tree, page breaks | **draw** |
+| Fixed point widths, minimal setup | simpleTable |
+| Embedding in an existing low-level layout loop | render |
+| Tk `tablelist` widget → PDF | `pdf4tcltable` (separate package) |
 
 ---
 
+## units
+
+Convert between physical units and PDF points (1 pt = 1/72 inch).
+
+```tcl
+pdf4tcllib::units::mm   210   ;# 210 mm -> 595.28 pt  (A4 width)
+pdf4tcllib::units::cm   2.5   ;# 2.5 cm -> 70.87 pt
+pdf4tcllib::units::inch 1     ;# 1 inch -> 72.0 pt
+
+pdf4tcllib::units::to_mm   595 ;# 595 pt -> 209.90 mm
+pdf4tcllib::units::to_cm   72  ;# 72 pt  -> 2.54 cm
+pdf4tcllib::units::to_inch 144 ;# 144 pt -> 2.0 inch
+```
+
+`mm` / `cm` / `inch` take a value and return points; `to_mm` / `to_cm` /
+`to_inch` take points and return the value in that unit.
+
+---
+
+## image
+
+Insert a Tk image into the PDF, proportionally scaled to a maximum width,
+with automatic page breaks. Requires Tk (the image is a Tk photo/bitmap).
+
+```tcl
+set img [image create photo -file logo.png]
+
+pdf4tcllib::image::insert $pdf $img \
+    [dict get $ctx left] y \
+    [dict get $ctx text_w] \
+    [dict get $ctx top] [dict get $ctx bottom] pageNo \
+    [dict get $ctx page_w] [dict get $ctx page_h] \
+    [dict get $ctx margin] 10
+```
+
+- **insert** — centers the image across the full content width.
+- **insertAt** — the same, but at an explicit X position (`xPos` instead of `x`).
+
+Both scale the image proportionally to `maxW`, advance `yVar`, and start a new
+page (updating `pageNoVar`) if the image would not fit.
+
+```
+image::insert   pdf tkImg x    yVar maxW yTop yBot pageNoVar pageW pageH margin fontSize ?debug?
+image::insertAt pdf tkImg xPos yVar maxW yTop yBot pageNoVar pageW pageH margin fontSize ?debug?
+```
+
+---
 ## form
 
 The `form` namespace builds on top of `addForm` (pdf4tcl 0.9.4.1+) and

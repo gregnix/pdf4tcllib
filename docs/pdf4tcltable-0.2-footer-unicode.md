@@ -70,6 +70,13 @@ no per-call option needed.
 
 ### Font override options
 
+> **0.3 note:** In 0.3 the widget exporter delegates drawing to
+> `::pdf4tcllib::table::draw`, which selects the regular/bold face from the
+> fonts loaded via `pdf4tcllib::fonts::init`. The per-call `-font` / `-boldfont`
+> face overrides described below are **accepted but not currently applied** by
+> the 0.3 adapter — initialise the desired face set with `fonts::init` instead.
+> (Re-wiring these as `table::draw -fontreg/-fontbold` is planned.)
+
 | Option       | Default | Meaning                                            |
 |--------------|---------|----------------------------------------------------|
 | `-font`      | `{}`    | Override the regular face (else resolved as above).|
@@ -79,9 +86,9 @@ Per-row and per-cell `-font` settings from the widget are still honoured and
 mapped to the matching regular/bold/italic/mono face of the resolved font set.
 
 ```tcl
-::pdf4tcllib::tablelist::render $pdf .tbl $x $y \
-    -font [::pdf4tcllib::fonts::fontSans] \
-    -boldfont [::pdf4tcllib::fonts::fontSansBold]
+# 0.2 form (per-call override) -- in 0.3 prefer fonts::init:
+::pdf4tcllib::fonts::init -fontdir /usr/share/fonts/truetype/dejavu -cid 1
+::pdf4tcllib::tablelist::render $pdf .tbl $x $y -maxwidth 320
 ```
 
 ---

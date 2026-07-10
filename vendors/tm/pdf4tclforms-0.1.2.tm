@@ -56,7 +56,7 @@ proc ::pdf4tcllib::forms::_drawTitle {pdf ctx yVar title} {
     array set CFG [_cfg]
     set x [dict get $ctx SX]
     $pdf setFont 16 $CFG(fontFamilyBold)
-    $pdf text $title -x $x -y [expr {$y + 14}]
+    ::pdf4tcllib::unicode::safeText $pdf $title -x $x -y [expr {$y + 14}]
     ::pdf4tcllib::page::_advance $ctx y 28
 }
 
@@ -66,7 +66,7 @@ proc ::pdf4tcllib::forms::_labelWithRequired {pdf x y label required fieldH} {
     lassign $CFG(labelColor) lr lg lb
     $pdf setFillColor $lr $lg $lb
     set textY [expr {$y + $fieldH - 2}]
-    $pdf text $label -x $x -y $textY
+    ::pdf4tcllib::unicode::safeText $pdf $label -x $x -y $textY
     if {$required} {
         $pdf setFont 10 Helvetica-Oblique
         $pdf setFillColor 0.8 0 0
@@ -82,7 +82,8 @@ proc ::pdf4tcllib::forms::_fieldAddArgs {fdef} {
     # calculate pdf4tcl 0.9.4.32+, format pdf4tcl 0.9.4.33+.
     set addArgs {}
     foreach key {id init options readonly multiline required tooltip tabindex \
-                 align color borderwidth bordercolor bgcolor calculate format js} {
+                 align color borderwidth bordercolor bgcolor calculate format js \
+                 editable multiselect sort} {
         if {![dict exists $fdef $key]} { continue }
         set val [dict get $fdef $key]
         if {$key eq "required"} {
@@ -116,7 +117,7 @@ proc ::pdf4tcllib::forms::checkboxLine {pdf ctx yVar fdef {pagebreak 0}} {
     ::pdf4tcllib::forms::_addForm $pdf checkbutton $x $y $boxH $boxH $fdef
     if {$label ne ""} {
         $pdf setFont $CFG(fontSizeLabel) $CFG(fontFamily)
-        $pdf text $label -x [expr {$x + $boxH + 6}] -y [expr {$y + $boxH - 2}]
+        ::pdf4tcllib::unicode::safeText $pdf $label -x [expr {$x + $boxH + 6}] -y [expr {$y + $boxH - 2}]
         if {$required} {
             $pdf setFont 10 Helvetica-Oblique
             $pdf setFillColor 0.8 0 0
@@ -163,7 +164,7 @@ proc ::pdf4tcllib::forms::radioGroup {pdf ctx yVar fdef {pagebreak 0}} {
     if {$label ne ""} {
         lassign $CFG(labelColor) lr lg lb
         $pdf setFillColor $lr $lg $lb
-        $pdf text $label -x $x -y [expr {$y + $boxH - 3}]
+        ::pdf4tcllib::unicode::safeText $pdf $label -x $x -y [expr {$y + $boxH - 3}]
         if {$required} {
             set lw [pdf4tcllib::text::width $label $CFG(fontSizeLabel) $CFG(fontFamily)]
             $pdf setFillColor 0.8 0 0
@@ -186,7 +187,7 @@ proc ::pdf4tcllib::forms::radioGroup {pdf ctx yVar fdef {pagebreak 0}} {
         set aa [list -group $group -value $val]
         if {$default ne "" && $val eq $default} { lappend aa -init 1 }
         $pdf addForm radiobutton $curx $cury $boxH $boxH {*}$aa
-        $pdf text $txt -x [expr {$curx + $boxH + 4}] -y [expr {$cury + $boxH - 3}]
+        ::pdf4tcllib::unicode::safeText $pdf $txt -x [expr {$curx + $boxH + 4}] -y [expr {$cury + $boxH - 3}]
         set curx [expr {$curx + $w}]
     }
     ::pdf4tcllib::page::_advance $ctx y [expr {$totalH + $CFG(rowGap)}]
@@ -220,6 +221,37 @@ proc ::pdf4tcllib::forms::buttonBar {pdf ctx yVar fdef {pagebreak 0}} {
     ::pdf4tcllib::page::_advance $ctx y [expr {$bh + $CFG(rowGap)}]
 }
 
+# Signaturfeld: Beschriftung (label) darueber, dann eine hohe Signaturbox.
+# fdef: {type signature label "Unterschrift:" ?placeholder "…"? ?fieldh 45? ?readonly?}
+proc ::pdf4tcllib::forms::signatureLine {pdf ctx yVar fdef {pagebreak 0}} {
+    upvar 1 $yVar y
+    array set CFG [_cfg]
+    set label       [_getdef $fdef label ""]
+    set placeholder [_getdef $fdef placeholder ""]
+    set sigH        [_getdef $fdef fieldh 45]
+    set readonly    [_getdef $fdef readonly ""]
+    set x  [dict get $ctx SX]
+    set sw [dict get $ctx SW]
+    set lineH [expr {$CFG(fontSizeLabel) + 4}]
+    ::pdf4tcllib::forms::_ensureSpace $pdf $ctx y \
+        [expr {($label ne "" ? $lineH : 0) + $sigH + $CFG(rowGap)}] $pagebreak
+
+    if {$label ne ""} {
+        $pdf setFont $CFG(fontSizeLabel) $CFG(fontFamily)
+        lassign $CFG(labelColor) lr lg lb
+        $pdf setFillColor $lr $lg $lb
+        ::pdf4tcllib::unicode::safeText $pdf $label -x $x -y [expr {$y + $lineH - 2}]
+        $pdf setFillColor 0 0 0
+        ::pdf4tcllib::page::_advance $ctx y $lineH
+    }
+    set aa {}
+    if {[dict exists $fdef id]} { lappend aa -id [dict get $fdef id] }
+    if {$placeholder ne ""}     { lappend aa -label $placeholder }
+    if {$readonly ne ""}        { lappend aa -readonly $readonly }
+    $pdf addForm signature $x $y $sw $sigH {*}$aa
+    ::pdf4tcllib::page::_advance $ctx y [expr {$sigH + $CFG(rowGap)}]
+}
+
 # Ein Feld aus Dict-Spec (text, combobox, password, ...).
 proc ::pdf4tcllib::forms::field {pdf ctx yVar fdef {pagebreak 0}} {
     upvar 1 $yVar y
@@ -234,6 +266,9 @@ proc ::pdf4tcllib::forms::field {pdf ctx yVar fdef {pagebreak 0}} {
     }
     if {$ftype eq "buttons"} {
         return [buttonBar $pdf $ctx y $fdef $pagebreak]
+    }
+    if {$ftype eq "signature"} {
+        return [signatureLine $pdf $ctx y $fdef $pagebreak]
     }
 
     set label    [_getdef $fdef label ""]
@@ -257,7 +292,7 @@ proc ::pdf4tcllib::forms::field {pdf ctx yVar fdef {pagebreak 0}} {
             $pdf setFont $CFG(fontSizeLabel) $CFG(fontFamily)
             lassign $CFG(labelColor) lr lg lb
             $pdf setFillColor $lr $lg $lb
-            $pdf text $label -x $x -y [expr {$y + $lineH - 2}]
+            ::pdf4tcllib::unicode::safeText $pdf $label -x $x -y [expr {$y + $lineH - 2}]
             if {$required} {
                 set lw [pdf4tcllib::text::width $label \
                     $CFG(fontSizeLabel) $CFG(fontFamily)]

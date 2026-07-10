@@ -1,8 +1,8 @@
 # pdf4tcltable — Tablelist Widget PDF Export
 
-**Package:** `pdf4tcltable 0.2`  
-**File:** `pdf4tcltable-0.2.tm`  
-**Requires:** `pdf4tcllib 0.2`, `pdf4tcl 0.9.4.25+`, `tablelist_tile` (Csaba Nemethi)
+**Package:** `pdf4tcltable 0.3`  
+**File:** `pdf4tcltable-0.3.tm`  
+**Requires:** `pdf4tcllib 0.4`, `pdf4tcl 0.9.4.25+`, `tablelist_tile` (Csaba Nemethi)
 
 Exports a Tk `tablelist` widget directly to a formatted PDF table.
 Reads cell values, colors, fonts, and tree structure from the widget API —
@@ -10,6 +10,23 @@ not from the internal text widget.
 
 > **Note:** tablelist has no built-in CSV or PDF export. `dumptostring` /
 > `dumptofile` is a proprietary save/restore format, not an export format.
+
+## What's new in 0.3
+
+Since 0.3, `render` and `renderRange` are thin **adapters**: they read the
+widget (columns, values, per-cell/row colors and fonts, tree depth,
+stripe background, footer) and delegate the drawing to the Tk-free
+[`::pdf4tcllib::table::draw`](table-draw.md). Both paths share one extractor,
+and the duplicated drawing helpers were removed.
+
+- Output is compatible with 0.2 (same content, colors, tree, footer;
+  the grid rasterization is near-identical).
+- The `pdf4tcltable::render` / `pdf4tcltable::renderRange` **aliases are now
+  provided** (previously only the `pdf4tcllib::tablelist::*` procs existed).
+- Requires `pdf4tcllib 0.4` (for `table::draw`).
+
+For data you already hold in Tcl lists (no widget), call `table::draw`
+directly — it is the same engine without the Tk dependency.
 
 ---
 
@@ -20,7 +37,7 @@ tcl::tm::path add /path/to/lib
 package require pdf4tcltable
 ```
 
-`pdf4tcltable` automatically loads `pdf4tcllib 0.2` as a dependency.
+`pdf4tcltable` automatically loads `pdf4tcllib 0.4` as a dependency.
 The namespace `pdf4tcllib::tablelist` remains available alongside the
 `pdf4tcltable` aliases.
 

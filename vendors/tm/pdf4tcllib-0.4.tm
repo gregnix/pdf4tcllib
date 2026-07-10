@@ -34,7 +34,7 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.3
+package provide pdf4tcllib 0.4
 
 namespace eval ::pdf4tcllib {
     variable version 0.3
@@ -2775,6 +2775,323 @@ proc ::pdf4tcllib::table::simpleTable {pdf x y col_widths rows args} {
     }
 
     return [expr {$y + $num_rows * $row_height + $pad}]
+}
+
+
+# ================================================================
+# table::draw -- ergonomischer Aufsatz (Tk-frei). Additiv.
+# ================================================================
+
+# pdf4tcllib::table::draw -- ergonomischer, Tk-freier, datengetriebener
+# Tabellen-Renderer. Aufsatz auf die bestehende Engine (fonts/text/unicode).
+# Ergaenzt table::render/simpleTable, ohne sie zu aendern.
+#
+#   ::pdf4tcllib::table::draw pdf x y cols data ?option value ...?
+#
+#   cols   je Spalte {-header "Text" -width auto|<pt> -align l|c|r -font reg|bold|italic|mono}
+#   data   Liste von Zeilen; jede Zeile eine Liste reiner Zell-Strings
+#
+#   Optionen:
+#     -ctx <dict>       page::context -> Auto-Seitenumbruch (Kopf pro Seite)
+#     -maxwidth <pt>    sonst aus -ctx text_w, sonst 480
+#     -header 0|1       Kopfzeile (Default 1)
+#     -headerbg {r g b} / -headerfg {r g b}
+#     -zebra 0|1 + -zebracolor {r g b} + -zebrastart 0|1 (Phasenversatz)
+#     -fontsize -pad -border 0|1 -rowheight (0 = 1.8*fontsize)
+#     -cellstyles {R,C {-bg {r g b} -fg {r g b} -font bold -align right} ...}
+#     -rowstyles  {R {-bg .. -fg .. -font ..} ...}
+#     -rowindent  {R <pt> ...}   erste Spalte je Zeile einruecken (Baum-Modus)
+#     -footer {Werte...}         fette Schlusszeile; -footerbg {r g b} -footerbold 0|1
+#     -yvar / -pagevar    Positions-/Seitenzaehler zurueckschreiben
+#     -orient 0|1 -pagebreakcmd <cmd>
+#
+#   Praezedenz Hintergrund/Stil:  Zelle > Zeile > Zebra
+#   Linien/Baseline reproduzieren die pdf4tcltable-0.2-Optik.
+#   Rueckgabe: naechste Y-Position.
+
+
+proc ::pdf4tcllib::table::_dwFont {which} {
+    switch -- $which {
+        bold       { return [::pdf4tcllib::fonts::fontSansBold] }
+        italic     { return [::pdf4tcllib::fonts::fontSansItalic] }
+        bolditalic { return [::pdf4tcllib::fonts::fontSansBoldItalic] }
+        mono       { return [::pdf4tcllib::fonts::fontMono] }
+        default    { return [::pdf4tcllib::fonts::fontSans] }
+    }
+}
+
+proc ::pdf4tcllib::table::_dwFill {pdf x y w h rgb} {
+    lassign $rgb r g b
+    $pdf setFillColor $r $g $b
+    $pdf rectangle $x $y $w $h -filled 1 -stroke 0
+    $pdf setFillColor 0 0 0
+}
+
+# Spaltenbreiten aufloesen: auto = Inhaltsbreite (Kopf bold, Zellen reg,
+# erste Spalte inkl. Einrueckung); feste in pt; Summe > maxW -> skalieren.
+proc ::pdf4tcllib::table::_dwWidths {pdf wspec headers data aligns fs fReg fBold pad maxW rowindent} {
+    set widths {}
+    set i 0
+    foreach w $wspec hd $headers {
+        if {$w eq "auto"} {
+            set mw [::pdf4tcllib::text::width $hd $fs $fBold $pdf]
+            set r 0
+            foreach row $data {
+                set cw [::pdf4tcllib::text::width [lindex $row $i] $fs $fReg $pdf]
+                if {$i == 0 && [dict exists $rowindent $r]} {
+                    set cw [expr {$cw + [dict get $rowindent $r]}]
+                }
+                if {$cw > $mw} { set mw $cw }
+                incr r
+            }
+            lappend widths [expr {$mw + 2 * $pad}]
+        } else {
+            lappend widths [expr {double($w)}]
+        }
+        incr i
+    }
+    set total 0.0
+    foreach w $widths { set total [expr {$total + $w}] }
+    if {$total > $maxW && $total > 0} {
+        set f [expr {double($maxW) / $total}]
+        set scaled {}
+        foreach w $widths { lappend scaled [expr {$w * $f}] }
+        return $scaled
+    }
+    return $widths
+}
+
+# Eine Zelle: optionaler Hintergrund + Text auf Baseline (curY+rowH-pad),
+# native pdf4tcl-Ausrichtung (wie 0.2). Zeichnet KEINE Linien.
+proc ::pdf4tcllib::table::_dwCell {pdf cx y cw rowH value colAlign colFont fs pad style {indent 0}} {
+    array set st {-bg {} -fg {} -font {} -align {}}
+    array set st $style
+    set al   [expr {$st(-align) ne "" ? $st(-align) : $colAlign}]
+    set fw   [expr {$st(-font)  ne "" ? $st(-font)  : $colFont}]
+    set font [_dwFont $fw]
+    if {$st(-bg) ne ""} { _dwFill $pdf $cx $y $cw $rowH $st(-bg) }
+    set value  [::pdf4tcllib::unicode::sanitize $value]
+    set availW [expr {$cw - 2 * $pad - $indent}]
+    set value  [::pdf4tcllib::text::truncate $value $availW $fs $font $pdf]
+    set bl [expr {$y + $rowH - $pad}]
+    if {$st(-fg) ne ""} { lassign $st(-fg) r g b; $pdf setFillColor $r $g $b }
+    $pdf setFont $fs $font
+    switch -- $al {
+        right  { ::pdf4tcllib::unicode::safeText $pdf $value \
+                     -x [expr {$cx + $cw - $pad}] -y $bl -align right }
+        center { ::pdf4tcllib::unicode::safeText $pdf $value \
+                     -x [expr {$cx + $cw / 2.0}] -y $bl -align center }
+        default { ::pdf4tcllib::unicode::safeText $pdf $value \
+                     -x [expr {$cx + $pad + $indent}] -y $bl }
+    }
+    $pdf setFillColor 0 0 0
+}
+
+# Innere Vertikallinien einer Zeile (nicht die Aussenkanten).
+proc ::pdf4tcllib::table::_dwInnerV {pdf x y rowH colW rgb lw} {
+    lassign $rgb r g b
+    $pdf setStrokeColor $r $g $b
+    $pdf setLineWidth $lw
+    set cx $x
+    set n [llength $colW]
+    set i 0
+    foreach w $colW {
+        if {$i < $n - 1} {
+            $pdf line [expr {$cx + $w}] $y [expr {$cx + $w}] [expr {$y + $rowH}]
+        }
+        set cx [expr {$cx + $w}]
+        incr i
+    }
+    $pdf setStrokeColor 0 0 0
+    $pdf setLineWidth 1
+}
+
+# Kopfzeile (0.2-Optik: bg, eigener Rahmen 0.45/0.6, innere V-Linien 0.6/0.3).
+proc ::pdf4tcllib::table::_dwHead {pdf x y totalW colW aligns headers fBold fs pad headbg headfg rowH border} {
+    _dwFill $pdf $x $y $totalW $rowH $headbg
+    if {$border} {
+        $pdf setStrokeColor 0.45 0.45 0.45
+        $pdf setLineWidth 0.6
+        $pdf rectangle $x $y $totalW $rowH
+        $pdf setStrokeColor 0 0 0
+        $pdf setLineWidth 1
+    }
+    lassign $headfg hr hg hb
+    set bl [expr {$y + $rowH - $pad}]
+    set cx $x
+    foreach h $headers cw $colW al $aligns {
+        set h [::pdf4tcllib::unicode::sanitize $h]
+        set h [::pdf4tcllib::text::truncate $h [expr {$cw - 2 * $pad}] $fs $fBold $pdf]
+        $pdf setFillColor $hr $hg $hb
+        $pdf setFont $fs $fBold
+        switch -- $al {
+            right  { ::pdf4tcllib::unicode::safeText $pdf $h \
+                         -x [expr {$cx + $cw - $pad}] -y $bl -align right }
+            center { ::pdf4tcllib::unicode::safeText $pdf $h \
+                         -x [expr {$cx + $cw / 2.0}] -y $bl -align center }
+            default { ::pdf4tcllib::unicode::safeText $pdf $h \
+                         -x [expr {$cx + $pad}] -y $bl }
+        }
+        $pdf setFillColor 0 0 0
+        set cx [expr {$cx + $cw}]
+    }
+    if {$border} { _dwInnerV $pdf $x $y $rowH $colW {0.6 0.6 0.6} 0.3 }
+    return [expr {$y + $rowH}]
+}
+
+proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
+    array set o {
+        -ctx {} -maxwidth {} -header 1 -zebra 0 -zebracolor {0.95 0.95 0.95}
+        -zebrastart 0 -headerbg {0.89 0.92 0.95} -headerfg {0 0 0}
+        -fontsize 9 -pad 4 -border 1 -rowheight 0
+        -cellstyles {} -rowstyles {} -rowindent {} -yvar {} -pagevar {}
+        -orient 1 -pagebreakcmd {}
+        -footer {} -footerbg {0.90 0.90 0.90} -footerbold 1
+    }
+    array set o $args
+    set ctx $o(-ctx)
+    set haveCtx [expr {$ctx ne ""}]
+    if {$o(-maxwidth) eq ""} {
+        set o(-maxwidth) [expr {$haveCtx ? [dict get $ctx text_w] : 480}]
+    }
+    set fs   $o(-fontsize)
+    set pad  $o(-pad)
+    set rowH [expr {$o(-rowheight) > 0 ? double($o(-rowheight)) : $fs * 1.8}]
+    set fReg  [_dwFont reg]
+    set fBold [_dwFont bold]
+
+    # cols normalisieren
+    set headers {}; set aligns {}; set colFonts {}; set wspec {}
+    foreach c $cols {
+        array unset cc
+        array set cc {-header {} -width auto -align left -font reg}
+        array set cc $c
+        lappend headers  $cc(-header)
+        lappend aligns   $cc(-align)
+        lappend colFonts $cc(-font)
+        lappend wspec    $cc(-width)
+    }
+    set colW [_dwWidths $pdf $wspec $headers $data $aligns $fs $fReg $fBold $pad $o(-maxwidth) $o(-rowindent)]
+    set totalW 0.0
+    foreach w $colW { set totalW [expr {$totalW + $w}] }
+
+    if {$o(-yvar) ne ""} { upvar 1 $o(-yvar) yout }
+    if {$o(-pagevar) ne ""} {
+        upvar 1 $o(-pagevar) pageNo
+    } else {
+        set pageNo 1
+    }
+
+    if {$haveCtx} {
+        set yTop   [dict get $ctx top]
+        set yBot   [dict get $ctx bottom]
+        set pageW  [dict get $ctx page_w]
+        set pageH  [dict get $ctx page_h]
+        set margin [dict get $ctx margin]
+    }
+
+    set segTop $y
+    if {$o(-header)} {
+        set y [_dwHead $pdf $x $y $totalW $colW $aligns $headers $fBold $fs $pad \
+                   $o(-headerbg) $o(-headerfg) $rowH $o(-border)]
+    }
+    set cellstyles $o(-cellstyles)
+    set rowstyles  $o(-rowstyles)
+    set rowindent  $o(-rowindent)
+
+    set r 0
+    foreach row $data {
+        # Seitenumbruch?
+        if {$haveCtx && ($y + $rowH) > $yBot} {
+            if {$o(-border)} {
+                $pdf setStrokeColor 0.45 0.45 0.45; $pdf setLineWidth 0.6
+                $pdf rectangle $x $segTop $totalW [expr {$y - $segTop}]
+                $pdf setStrokeColor 0 0 0; $pdf setLineWidth 1
+            }
+            set y [::pdf4tcllib::table::_doPageBreak $pdf pageNo $pageW $pageH \
+                       $margin $fs $o(-orient) $o(-pagebreakcmd) $yTop]
+            set segTop $y
+            if {$o(-header)} {
+                set y [_dwHead $pdf $x $y $totalW $colW $aligns $headers $fBold $fs $pad \
+                           $o(-headerbg) $o(-headerfg) $rowH $o(-border)]
+            }
+        }
+        # Oberkante-Linie der Zeile (0.78/0.3)
+        if {$o(-border)} {
+            $pdf setStrokeColor 0.78 0.78 0.78; $pdf setLineWidth 0.3
+            $pdf line $x $y [expr {$x + $totalW}] $y
+            $pdf setStrokeColor 0 0 0; $pdf setLineWidth 1
+        }
+        # Zeilen-Hintergrund
+        array unset rs
+        array set rs {-bg {} -fg {} -font {}}
+        if {[dict exists $rowstyles $r]} { array set rs [dict get $rowstyles $r] }
+        if {$rs(-bg) ne ""} {
+            _dwFill $pdf $x $y $totalW $rowH $rs(-bg)
+        } elseif {$o(-zebra) && (($r + $o(-zebrastart)) % 2 == 1)} {
+            _dwFill $pdf $x $y $totalW $rowH $o(-zebracolor)
+        }
+        # Zellen + Einrueckung
+        set ind 0
+        if {[dict exists $rowindent $r]} { set ind [dict get $rowindent $r] }
+        set cx $x
+        set c 0
+        foreach value $row cw $colW cAl $aligns cFont $colFonts {
+            set eff {}
+            if {$rs(-fg)   ne ""} { lappend eff -fg   $rs(-fg) }
+            if {$rs(-font) ne ""} { lappend eff -font $rs(-font) }
+            if {[dict exists $cellstyles "$r,$c"]} {
+                set eff [dict merge $eff [dict get $cellstyles "$r,$c"]]
+            }
+            set cellIndent [expr {$c == 0 ? $ind : 0}]
+            _dwCell $pdf $cx $y $cw $rowH $value $cAl $cFont $fs $pad $eff $cellIndent
+            set cx [expr {$cx + $cw}]
+            incr c
+        }
+        # innere V-Linien (0.75/0.3)
+        if {$o(-border)} { _dwInnerV $pdf $x $y $rowH $colW {0.75 0.75 0.75} 0.3 }
+        set y [expr {$y + $rowH}]
+        incr r
+    }
+
+    # Footer
+    if {[llength $o(-footer)]} {
+        if {$haveCtx && ($y + $rowH) > $yBot} {
+            if {$o(-border)} {
+                $pdf setStrokeColor 0.45 0.45 0.45; $pdf setLineWidth 0.6
+                $pdf rectangle $x $segTop $totalW [expr {$y - $segTop}]
+                $pdf setStrokeColor 0 0 0; $pdf setLineWidth 1
+            }
+            set y [::pdf4tcllib::table::_doPageBreak $pdf pageNo $pageW $pageH \
+                       $margin $fs $o(-orient) $o(-pagebreakcmd) $yTop]
+            set segTop $y
+        }
+        if {$o(-border)} {
+            $pdf setStrokeColor 0.45 0.45 0.45; $pdf setLineWidth 0.6
+            $pdf line $x $y [expr {$x + $totalW}] $y
+            $pdf setStrokeColor 0 0 0; $pdf setLineWidth 1
+        }
+        _dwFill $pdf $x $y $totalW $rowH $o(-footerbg)
+        set ffont [expr {$o(-footerbold) ? "bold" : "reg"}]
+        set cx $x
+        foreach value $o(-footer) cw $colW cAl $aligns {
+            _dwCell $pdf $cx $y $cw $rowH $value $cAl $ffont $fs $pad {}
+            set cx [expr {$cx + $cw}]
+        }
+        if {$o(-border)} { _dwInnerV $pdf $x $y $rowH $colW {0.6 0.6 0.6} 0.3 }
+        set y [expr {$y + $rowH}]
+    }
+
+    # Aussenrahmen des (letzten) Segments (0.45/0.6)
+    if {$o(-border)} {
+        $pdf setStrokeColor 0.45 0.45 0.45
+        $pdf setLineWidth 0.6
+        $pdf rectangle $x $segTop $totalW [expr {$y - $segTop}]
+        $pdf setStrokeColor 0 0 0
+        $pdf setLineWidth 1
+    }
+    if {$o(-yvar) ne ""} { set yout $y }
+    return $y
 }
 
 

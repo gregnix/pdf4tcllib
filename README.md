@@ -19,7 +19,7 @@ Single file -- no subdirectory needed:
 ```
 myproject/
   tm/
-    pdf4tcllib-0.3.tm   (single file, all 10 modules)
+    pdf4tcllib-0.4.tm   (single file, all 10 modules)
 ```
 
 ```tcl
@@ -31,7 +31,7 @@ All modules (fonts, unicode, text, math, table, page, drawing, units, image, for
 are contained in one file. Optional sibling modules:
 
 ```
-lib/pdf4tcltable-0.2.tm   Tablelist -> PDF
+lib/pdf4tcltable-0.3.tm   Tablelist -> PDF
 lib/pdf4tcltext-0.1.tm    Tk text   -> PDF
 lib/pdf4tclforms-0.1.2.tm   AcroForm layouts (declarative specs + templates)
 ```
@@ -75,8 +75,10 @@ pdf4tcllib::unicode::safeText $pdf "Hello World" -x 50 -y 50
 set newY [pdf4tcllib::text::writeParagraph $pdf 50 700 480 $longText \
     -fontsize 11 -leading 14]
 
-# Table
-pdf4tcllib::table::simpleTable $pdf $ctx {Name Age City} $rows
+# Table (data-driven; add -ctx for automatic page breaks)
+set cols {{-header Name} {-header Age -align right} {-header City}}
+set y [pdf4tcllib::table::draw $pdf [dict get $ctx left] $y $cols $rows \
+    -ctx $ctx -zebra 1 -yvar y]
 
 # Footer
 pdf4tcllib::page::footer $pdf $ctx "My Document" 1
@@ -193,17 +195,22 @@ equations. See `docs/API.md#math` for the complete reference.
 ### table -- Tables
 
 ```tcl
-# High-level: automatic column widths, zebra stripes, header row
-pdf4tcllib::table::simpleTable $pdf $ctx $headers $rows
-
-# Low-level: full control over widths, alignment, colors
+# Recommended: data-driven, styling, footer, automatic page breaks
 set cols {
-    {width 40  align left   header "No."}
-    {width 120 align left   header "Item"}
-    {width 60  align right  header "Price"}
+    {-header "No."   -width 40   -align right}
+    {-header "Item"  -width auto -align left}
+    {-header "Price" -width 60   -align right}
 }
-pdf4tcllib::table::render $pdf $x $y $cols $data
+set data {{1 "Laptop" "1,299.00"} {2 "Mouse" "29.90"}}
+set y [pdf4tcllib::table::draw $pdf $x $y $cols $data \
+    -ctx $ctx -zebra 1 -footer {"" "Total" "1,328.90"} -yvar y]
+
+# Simple: fixed column widths in points (first row is the header)
+pdf4tcllib::table::simpleTable $pdf $x $y {140 200 140} $rows -zebra 1
 ```
+
+Full reference: `docs/table-draw.md`. For a Tk `tablelist` widget use the
+`pdf4tcltable` package (`docs/pdf4tcltable.md`).
 
 ### page -- Page context
 

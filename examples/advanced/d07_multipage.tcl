@@ -11,7 +11,7 @@
 
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.4
 
 pdf4tcllib::fonts::init
 package require pdf4tcl
@@ -115,21 +115,25 @@ set y [expr {$y + 22}]
 writeText "Die folgende Tabelle enthaelt 30 Zeilen und erzwingt einen Seitenumbruch:"
 set y [expr {$y + 10}]
 
-# Grosse Tabelle generieren
-set bigTable [list \
-    [list "Nr" "Timestamp" "Messwert" "Status" "Kommentar"] \
-    [list "right" "left" "right" "center" "left"] \
-]
-
+# Grosse Tabelle generieren (Auto-Seitenumbruch via -ctx)
+set bigCols {
+    {-header "Nr"        -align right  -width auto}
+    {-header "Timestamp" -align left   -width auto}
+    {-header "Messwert"  -align right  -width auto}
+    {-header "Status"    -align center -width auto}
+    {-header "Kommentar" -align left   -width auto}
+}
+set bigData {}
 for {set i 1} {$i <= 30} {incr i} {
     set ts [format "2026-02-12 %02d:%02d:%02d" [expr {8 + $i / 4}] [expr {($i * 7) % 60}] [expr {($i * 13) % 60}]]
     set val [format "%.2f" [expr {20.0 + ($i * 3.7) - int($i / 5) * 2.1}]]
     set status [lindex {"OK" "OK" "WARN" "OK" "OK" "ERR" "OK" "OK" "OK" "OK"} [expr {$i % 10}]]
     set comment [lindex {"Normal" "Normal" "Grenzwert" "Stabil" "Normal" "Ausreisser" "Normal" "Normal" "Reset" "Kalibriert"} [expr {$i % 10}]]
-    lappend bigTable [list $i $ts $val $status $comment]
+    lappend bigData [list $i $ts $val $status $comment]
 }
 
-pdf4tcllib::table::render $pdf $bigTable $x y $textW $yTop $yBot pageNo $pageW $pageH $margin 10 14
+set y [pdf4tcllib::table::draw $pdf $x $y $bigCols $bigData \
+    -ctx $ctx -maxwidth $textW -fontsize 10 -zebra 1 -yvar y -pagevar pageNo]
 set y [expr {$y + 15}]
 
 # Abschlusstext

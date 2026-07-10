@@ -13,7 +13,7 @@
 
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.4
 
 pdf4tcllib::fonts::init
 package require pdf4tcl
@@ -113,17 +113,22 @@ set y [expr {$y + 25}]
 set yTop $y
 set pageNo 1
 
-set invoiceTable [list \
-    [list "Pos" "Beschreibung" "Menge" "Einzelpreis" "Gesamt"] \
-    [list "center" "left" "right" "right" "right"] \
-    [list "1" "Widget Pro - Standardlizenz" "5" "49,99" "249,95"] \
-    [list "2" "Gadget Plus - Premium-Zubehoer" "3" "29,50" "88,50"] \
-    [list "3" "Super-Adapter USB-C/HDMI" "10" "12,95" "129,50"] \
-    [list "4" "Einrichtung und Konfiguration" "2" "85,00" "170,00"] \
-    [list "5" "Support-Paket 12 Monate" "1" "299,00" "299,00"] \
-]
-
-pdf4tcllib::table::render $pdf $invoiceTable $x y $textW $yTop $yBot pageNo $pageW $pageH $margin 10 15
+set invCols {
+    {-header "Pos"          -align center -width auto}
+    {-header "Beschreibung" -align left   -width auto}
+    {-header "Menge"        -align right  -width auto}
+    {-header "Einzelpreis"  -align right  -width auto}
+    {-header "Gesamt"       -align right  -width auto}
+}
+set invData {
+    {"1" "Widget Pro - Standardlizenz"    "5"  "49,99"  "249,95"}
+    {"2" "Gadget Plus - Premium-Zubehoer" "3"  "29,50"  "88,50"}
+    {"3" "Super-Adapter USB-C/HDMI"       "10" "12,95"  "129,50"}
+    {"4" "Einrichtung und Konfiguration"  "2"  "85,00"  "170,00"}
+    {"5" "Support-Paket 12 Monate"        "1"  "299,00" "299,00"}
+}
+set y [pdf4tcllib::table::draw $pdf $x $y $invCols $invData \
+    -maxwidth $textW -fontsize 10 -zebra 1 -yvar y]
 set y [expr {$y + 5}]
 
 # ============================================================

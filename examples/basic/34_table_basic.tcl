@@ -4,7 +4,7 @@
 
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.4
 package require pdf4tcl
 
 set outdir [file join $scriptDir pdf]
@@ -22,18 +22,20 @@ $pdf text "Table Layout with Headers" -x 40 -y 40
 
 $pdf setFont 12 Helvetica
 
-# Simple table drawer
-
-set cols {140 200 140}
-set y 90
-set rows {
-    {"Name" "Email" "Role"}
-    {"Alice" "alice@example.com" "Admin"}
-    {"Bob" "bob@example.com" "User"}
-    {"Carol" "carol@example.com" "User"}
-    {"Dave" "dave@example.com" "Editor"}
+# Tabelle via table::draw (Header, Ausrichtung, Zebra)
+set tblCols {
+    {-header "Name"  -align left -width 140}
+    {-header "Email" -align left -width 200}
+    {-header "Role"  -align left -width 140}
 }
-pdf4tcllib::table::simpleTable $pdf 40 $y $cols $rows
+set tblData {
+    {"Alice" "alice@example.com" "Admin"}
+    {"Bob"   "bob@example.com"   "User"}
+    {"Carol" "carol@example.com" "User"}
+    {"Dave"  "dave@example.com"  "Editor"}
+}
+pdf4tcllib::table::draw $pdf 40 90 $tblCols $tblData \
+    -maxwidth 480 -fontsize 12 -zebra 1
 
 $pdf endPage
 $pdf write -file $outfile
