@@ -5,6 +5,45 @@ and module headers.
 
 ---
 
+## pdf4tcllib 0.5
+
+`lib/pdf4tcllib-0.5.tm` (was `pdf4tcllib-0.4.tm`).
+
+### Changed — the formula engine is backend-neutral
+
+- `pdf4tcllib::math` no longer speaks to pdf4tcl directly. Measuring and drawing
+  now go through a **backend**: a command prefix understanding three operations
+  and nothing else.
+
+  ```
+  {*}$be width $font $size $text         -> width of $text
+  {*}$be text  $font $size $x $y $text   -> draw, baseline at $y
+  {*}$be line  $x1 $y1 $x2 $y2 $width    -> draw a line
+  ```
+
+  Both coordinate systems agree (y grows downward in pdf4tcl *and* on the Tk
+  canvas), so the same geometry serves both.
+
+- Two backends ship: `math::pdfBackend $pdf` (the previous behaviour) and
+  `math::canvasBackend $canvas ?-family? ?-fill? ?-tags?`. New public entry
+  points `math::measureLatexOn` / `math::renderLatexOn` take a backend; the old
+  `measureLatex` / `renderLatex` keep their pdf4tcl signature and are now thin
+  wrappers, so existing callers (docir::pdf) are unaffected.
+- The canvas backend rounds the font size once, in `_canvasFont`, so measuring
+  and drawing stay consistent, and shifts text by the font's descent — the Tk
+  canvas has no baseline anchor, `sw` is one descent below it.
+- Consequence: the LaTeX subset (`\frac`, `\sqrt`, scripts, big operators) is
+  no longer PDF-only. `docir::rendererTk` 0.4 typesets display math in the Tk
+  viewer through the canvas backend.
+
+### Added
+
+- `tests/test_math.tcl` — 13 tests across three backends: PDF, a **recording
+  backend** (logs the primitives, needs neither Tk nor PDF, so what the engine
+  *draws* is testable, not just that it does not crash), and the Tk canvas.
+
+---
+
 ## pdf4tclforms 0.1.2
 
 ### Added
