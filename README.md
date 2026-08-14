@@ -5,12 +5,37 @@ pdf4tcllib fills the most common gaps in pdf4tcl:
 - **TTF fonts** with automatic discovery (Linux, Windows, macOS)
 - **Unicode safety** -- no more crashes on special characters
 - **Text layout** -- line wrapping, width measurement, truncation
-- **Tables** -- headers, zebra stripes, automatic page breaks
+- **Tables** -- headers, zebra stripes, automatic page breaks, tagged for accessibility
 - **Page management** -- PageContext, header, footer, page numbers
 - **Drawing** -- gradients, polygons, stars, text rotation
 - **Units** -- mm, cm, inches to points and back
 - **Form layout** -- label+field, sections, order tables (`form` namespace)
 
+
+## Accessible tables (0.6)
+
+If the caller switches tagging on, `table::render` marks up what it draws:
+
+```tcl
+$pdf tagged 1 -lang de-DE
+...
+pdf4tcllib::table::render $pdf $data 0 y 500 20 750 pageNo 595 842 40 10 12
+```
+
+The result carries a proper structure -- `Table` / `TR` / `TH` with
+`/Scope Column` / `TD` -- so a screen reader announces a table it can
+navigate by row and column instead of a run of unrelated numbers. Grid lines,
+background fills and zebra stripes become artifacts, since decoration
+announced as content is worse than no tagging at all.
+
+Both renderers do it: `table::render` and `table::draw`. Since
+`pdf4tcltable` (tablelist export) delegates to `draw`, exporting a tablelist
+widget produces an accessible table as well.
+
+Nothing is switched on automatically. Without `$pdf tagged 1` every helper
+does nothing and the output is byte for byte what it was before. Needs
+pdf4tcl 0.9.4.36 or later for the tagging to take effect; older versions
+simply keep working.
 
 ## Installation
 

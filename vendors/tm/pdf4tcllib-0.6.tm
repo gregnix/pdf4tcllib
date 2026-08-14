@@ -34,7 +34,7 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.4
+package provide pdf4tcllib 0.6
 
 namespace eval ::pdf4tcllib {
     variable version 0.3
@@ -1653,7 +1653,8 @@ proc ::pdf4tcllib::math::renderFormula {pdf x y formula args} {
 # centre or page-fit display formulas before drawing.
 
 namespace eval ::pdf4tcllib::math {
-    namespace export renderLatex measureLatex
+    namespace export renderLatex measureLatex renderLatexOn measureLatexOn \
+        pdfBackend canvasBackend
     # Encoding-safe fallback for names mathSymbol lacks. \uXXXX escapes
     # are independent of how this file is sourced.
     variable latexFallback
@@ -1801,10 +1802,10 @@ proc ::pdf4tcllib::math::_latexAttachScript {atomsVar which toksVar} {
 }
 
 # ---- Measure (returns {width heightAboveBaseline depthBelow}) ----
-proc ::pdf4tcllib::math::_latexMeasureList {pdf font size atoms} {
+proc ::pdf4tcllib::math::_latexMeasureList {be font size atoms} {
     set w 0.0; set h [expr {$size*0.7}]; set d [expr {$size*0.2}]
     foreach a $atoms {
-        lassign [_latexMeasureAtom $pdf $font $size $a] aw ah ad
+        lassign [_latexMeasureAtom $be $font $size $a] aw ah ad
         set w [expr {$w + $aw}]
         if {$ah > $h} { set h $ah }
         if {$ad > $d} { set d $ad }
@@ -1812,28 +1813,28 @@ proc ::pdf4tcllib::math::_latexMeasureList {pdf font size atoms} {
     return [list $w $h $d]
 }
 
-proc ::pdf4tcllib::math::_latexMeasureAtom {pdf font size a} {
+proc ::pdf4tcllib::math::_latexMeasureAtom {be font size a} {
     set kind [lindex $a 0]
     switch -- $kind {
         sym {
             set g [lindex $a 1]
-            $pdf setFont $size $font
-            return [list [$pdf getStringWidth $g] [expr {$size*0.72}] [expr {$size*0.20}]]
+            return [list [{*}$be width $font $size $g] \
+                [expr {$size*0.72}] [expr {$size*0.20}]]
         }
         space { return [list [expr {$size*0.3}] 0 0] }
-        grp   { return [_latexMeasureList $pdf $font $size [lindex $a 1]] }
+        grp   { return [_latexMeasureList $be $font $size [lindex $a 1]] }
         scripted {
             lassign $a _ base sub sup
-            lassign [_latexMeasureAtom $pdf $font $size $base] bw bh bd
+            lassign [_latexMeasureAtom $be $font $size $base] bw bh bd
             set ss [expr {$size*0.7}]
             set sw 0.0; set extraH 0; set extraD 0
             if {[llength $sup]} {
-                lassign [_latexMeasureList $pdf $font $ss $sup] supw suph supd
+                lassign [_latexMeasureList $be $font $ss $sup] supw suph supd
                 if {$supw>$sw} { set sw $supw }
                 set extraH [expr {$bh*0.5}]
             }
             if {[llength $sub]} {
-                lassign [_latexMeasureList $pdf $font $ss $sub] subw subh subd
+                lassign [_latexMeasureList $be $font $ss $sub] subw subh subd
                 if {$subw>$sw} { set sw $subw }
                 set extraD [expr {$bd+$ss*0.4}]
             }
@@ -1841,13 +1842,13 @@ proc ::pdf4tcllib::math::_latexMeasureAtom {pdf font size a} {
         }
         frac {
             lassign $a _ num den
-            lassign [_latexMeasureList $pdf $font [expr {$size*0.85}] $num] nw nh nd
-            lassign [_latexMeasureList $pdf $font [expr {$size*0.85}] $den] dw dh dd
+            lassign [_latexMeasureList $be $font [expr {$size*0.85}] $num] nw nh nd
+            lassign [_latexMeasureList $be $font [expr {$size*0.85}] $den] dw dh dd
             return [list [expr {max($nw,$dw)+4}] [expr {$nh+$nd+2+$size*0.3}] [expr {$dh+$dd+2}]]
         }
         sqrt {
             lassign $a _ arg
-            lassign [_latexMeasureList $pdf $font $size $arg] aw ah ad
+            lassign [_latexMeasureList $be $font $size $arg] aw ah ad
             return [list [expr {$aw+$size*0.7+2}] [expr {$ah+2}] $ad]
         }
         bigop {
@@ -1858,77 +1859,77 @@ proc ::pdf4tcllib::math::_latexMeasureAtom {pdf font size a} {
 }
 
 # ---- Draw (baseline at $y; returns advance x) ----
-proc ::pdf4tcllib::math::_latexDrawList {pdf font size x y atoms} {
+proc ::pdf4tcllib::math::_latexDrawList {be font size x y atoms} {
     set cx $x
     foreach a $atoms {
-        set cx [_latexDrawAtom $pdf $font $size $cx $y $a]
+        set cx [_latexDrawAtom $be $font $size $cx $y $a]
     }
     return $cx
 }
 
-proc ::pdf4tcllib::math::_latexDrawAtom {pdf font size x y a} {
+proc ::pdf4tcllib::math::_latexDrawAtom {be font size x y a} {
     set kind [lindex $a 0]
     switch -- $kind {
         sym {
             set g [lindex $a 1]
-            $pdf setFont $size $font
-            $pdf text $g -x $x -y $y
-            return [expr {$x+[$pdf getStringWidth $g]}]
+            {*}$be text $font $size $x $y $g
+            return [expr {$x+[{*}$be width $font $size $g]}]
         }
         space { return [expr {$x+$size*0.3}] }
-        grp   { return [_latexDrawList $pdf $font $size $x $y [lindex $a 1]] }
+        grp   { return [_latexDrawList $be $font $size $x $y [lindex $a 1]] }
         scripted {
             lassign $a _ base sub sup
-            set bx [_latexDrawAtom $pdf $font $size $x $y $base]
+            set bx [_latexDrawAtom $be $font $size $x $y $base]
             set ss [expr {$size*0.7}]
-            if {[llength $sup]} { _latexDrawList $pdf $font $ss $bx [expr {$y-$size*0.45}] $sup }
-            if {[llength $sub]} { _latexDrawList $pdf $font $ss $bx [expr {$y+$size*0.28}] $sub }
-            lassign [_latexMeasureAtom $pdf $font $size $a] aw ah ad
+            if {[llength $sup]} { _latexDrawList $be $font $ss $bx [expr {$y-$size*0.45}] $sup }
+            if {[llength $sub]} { _latexDrawList $be $font $ss $bx [expr {$y+$size*0.28}] $sub }
+            lassign [_latexMeasureAtom $be $font $size $a] aw ah ad
             return [expr {$x+$aw}]
         }
         frac {
             lassign $a _ num den
             set fs [expr {$size*0.85}]
-            lassign [_latexMeasureList $pdf $font $fs $num] nw nh nd
-            lassign [_latexMeasureList $pdf $font $fs $den] dw dh dd
+            lassign [_latexMeasureList $be $font $fs $num] nw nh nd
+            lassign [_latexMeasureList $be $font $fs $den] dw dh dd
             set w [expr {max($nw,$dw)+4}]
             set midY [expr {$y-$size*0.25}]
-            _latexDrawList $pdf $font $fs [expr {$x+($w-$nw)/2.0}] [expr {$midY-2-$nd}] $num
-            _latexDrawList $pdf $font $fs [expr {$x+($w-$dw)/2.0}] [expr {$midY+2+$dh}] $den
-            $pdf setLineWidth 0.6
-            $pdf line $x $midY [expr {$x+$w}] $midY
+            _latexDrawList $be $font $fs [expr {$x+($w-$nw)/2.0}] [expr {$midY-2-$nd}] $num
+            _latexDrawList $be $font $fs [expr {$x+($w-$dw)/2.0}] [expr {$midY+2+$dh}] $den
+            {*}$be line $x $midY [expr {$x+$w}] $midY 0.6
             return [expr {$x+$w}]
         }
         sqrt {
             lassign $a _ arg
             set radW [expr {$size*0.6}]
-            lassign [_latexMeasureList $pdf $font $size $arg] aw ah ad
+            lassign [_latexMeasureList $be $font $size $arg] aw ah ad
             set topY [expr {$y-$ah}]
-            $pdf setLineWidth 0.7
-            $pdf line $x [expr {$y-$size*0.25}] [expr {$x+$radW*0.4}] [expr {$y+$ad*0.5}]
-            $pdf line [expr {$x+$radW*0.4}] [expr {$y+$ad*0.5}] [expr {$x+$radW*0.65}] $topY
-            $pdf line [expr {$x+$radW*0.65}] $topY [expr {$x+$radW+$aw+2}] $topY
-            set ax [_latexDrawList $pdf $font $size [expr {$x+$radW+1}] $y $arg]
+            {*}$be line $x [expr {$y-$size*0.25}] \
+                [expr {$x+$radW*0.4}] [expr {$y+$ad*0.5}] 0.7
+            {*}$be line [expr {$x+$radW*0.4}] [expr {$y+$ad*0.5}] \
+                [expr {$x+$radW*0.65}] $topY 0.7
+            {*}$be line [expr {$x+$radW*0.65}] $topY \
+                [expr {$x+$radW+$aw+2}] $topY 0.7
+            set ax [_latexDrawList $be $font $size [expr {$x+$radW+1}] $y $arg]
             return [expr {$ax+1}]
         }
         bigop {
             lassign $a _ op lower upper
             set bs [expr {$size*1.6}]
-            $pdf setFont $bs $font
             set g [_latexSymbol $op]
-            set ow [$pdf getStringWidth $g]
-            lassign [_latexMeasureAtom $pdf $font $size $a] aw ah ad
-            $pdf text $g -x [expr {$x+($aw-$ow)/2.0}] -y [expr {$y+$size*0.35}]
+            set ow [{*}$be width $font $bs $g]
+            lassign [_latexMeasureAtom $be $font $size $a] aw ah ad
+            {*}$be text $font $bs [expr {$x+($aw-$ow)/2.0}] \
+                [expr {$y+$size*0.35}] $g
             set ls [expr {$size*0.62}]
             if {[llength $upper]} {
-                lassign [_latexMeasureList $pdf $font $ls $upper] uw uh ud
-                _latexDrawList $pdf $font $ls [expr {$x+($aw-$uw)/2.0}] [expr {$y-$size*0.95}] $upper
+                lassign [_latexMeasureList $be $font $ls $upper] uw uh ud
+                _latexDrawList $be $font $ls [expr {$x+($aw-$uw)/2.0}] [expr {$y-$size*0.95}] $upper
             }
             if {[llength $lower]} {
-                lassign [_latexMeasureList $pdf $font $ls $lower] lw lh ld
+                lassign [_latexMeasureList $be $font $ls $lower] lw lh ld
                 # under-limit lowered (0.95 -> 1.18) so e.g. \sum_{n=1} is not
                 # cramped against the operator; measure depth raised to match.
-                _latexDrawList $pdf $font $ls [expr {$x+($aw-$lw)/2.0}] [expr {$y+$size*1.18}] $lower
+                _latexDrawList $be $font $ls [expr {$x+($aw-$lw)/2.0}] [expr {$y+$size*1.18}] $lower
             }
             return [expr {$x+$aw+1}]
         }
@@ -1936,38 +1937,154 @@ proc ::pdf4tcllib::math::_latexDrawAtom {pdf font size x y a} {
     return $x
 }
 
+# ---- Backends ------------------------------------------------------------
+#
+# The engine above never touches pdf4tcl directly. It talks to a backend: a
+# command prefix understanding three operations, and nothing else.
+#
+#   {*}$be width $font $size $text            -> width of $text
+#   {*}$be text  $font $size $x $y $text      -> draw, baseline at $y
+#   {*}$be line  $x1 $y1 $x2 $y2 $width       -> draw a line
+#
+# Both coordinate systems agree: y grows DOWNWARD (pdf4tcl and the Tk canvas
+# both do), so the same geometry serves both. A backend that needs y upward
+# would have to flip it itself.
+#
+# This is what makes the formula engine backend-neutral: measuring and drawing
+# are the same code for PDF and for a Tk canvas -- only the three primitives
+# differ.
+
+# Backend for a pdf4tcl handle. This is what renderLatex/measureLatex use.
+proc ::pdf4tcllib::math::pdfBackend {pdf} {
+    return [list ::pdf4tcllib::math::_pdfBackend $pdf]
+}
+
+proc ::pdf4tcllib::math::_pdfBackend {pdf op args} {
+    switch -- $op {
+        width {
+            lassign $args font size text
+            $pdf setFont $size $font
+            return [$pdf getStringWidth $text]
+        }
+        text {
+            lassign $args font size x y text
+            $pdf setFont $size $font
+            $pdf text $text -x $x -y $y
+            return
+        }
+        line {
+            lassign $args x1 y1 x2 y2 lw
+            $pdf setLineWidth $lw
+            $pdf line $x1 $y1 $x2 $y2
+            return
+        }
+    }
+    return -code error -errorcode {PDF4TCLLIB MATH BACKEND} \
+        "unknown backend operation '$op'"
+}
+
+# Backend for a Tk canvas.
+#
+#   -family  Tk font family used for the formula (default: TkDefaultFont's).
+#   -fill    colour of glyphs and rules (default: black).
+#   -tags    canvas tags put on every item (default: none) -- makes the whole
+#            formula deletable/movable as a unit.
+#
+# The engine's font argument is ignored here: a PDF font name means nothing to
+# Tk. The SIZE is honoured, and that is what matters -- the engine scales it
+# for scripts, fractions and big operators.
+proc ::pdf4tcllib::math::canvasBackend {canvas args} {
+    array set opt {-family "" -fill black -tags {}}
+    array set opt $args
+    set family $opt(-family)
+    if {$family eq ""} {
+        set family [font actual TkDefaultFont -family]
+    }
+    return [list ::pdf4tcllib::math::_canvasBackend \
+        $canvas $family $opt(-fill) $opt(-tags)]
+}
+
+# Tk font sizes are integers. Rounding once, here, keeps measuring and drawing
+# consistent -- both go through this proc.
+proc ::pdf4tcllib::math::_canvasFont {family size} {
+    set s [expr {int(round($size))}]
+    if {$s < 1} { set s 1 }
+    return [list $family $s]
+}
+
+proc ::pdf4tcllib::math::_canvasBackend {canvas family fill tags op args} {
+    switch -- $op {
+        width {
+            lassign $args font size text
+            return [font measure [_canvasFont $family $size] $text]
+        }
+        text {
+            lassign $args font size x y text
+            set f [_canvasFont $family $size]
+            # The Tk canvas has no baseline anchor. "sw" is the bottom left of
+            # the text box, which sits one descent below the baseline -- so
+            # shift by exactly that and the formula lines up with the engine's
+            # baseline maths.
+            set dy [font metrics $f -descent]
+            $canvas create text $x [expr {$y + $dy}] -text $text \
+                -anchor sw -font $f -fill $fill -tags $tags
+            return
+        }
+        line {
+            lassign $args x1 y1 x2 y2 lw
+            $canvas create line $x1 $y1 $x2 $y2 -width $lw -fill $fill \
+                -tags $tags
+            return
+        }
+    }
+    return -code error -errorcode {PDF4TCLLIB MATH BACKEND} \
+        "unknown backend operation '$op'"
+}
+
+# ---- Public API ----------------------------------------------------------
+
+# {width heightAboveBaseline depthBelow} of a formula on any backend.
+proc ::pdf4tcllib::math::measureLatexOn {be latex args} {
+    array set opt {-size 12 -font ""}
+    array set opt $args
+    set toks  [_latexTokenize $latex]
+    set atoms [_latexParseGroup toks]
+    return [_latexMeasureList $be $opt(-font) $opt(-size) $atoms]
+}
+
+# Draw a formula on any backend, baseline at $y. Returns the advanced x.
+proc ::pdf4tcllib::math::renderLatexOn {be x y latex args} {
+    array set opt {-size 12 -font ""}
+    array set opt $args
+    set toks  [_latexTokenize $latex]
+    set atoms [_latexParseGroup toks]
+    return [_latexDrawList $be $opt(-font) $opt(-size) $x $y $atoms]
+}
+
+# Default PDF font when the caller does not name one.
+proc ::pdf4tcllib::math::_defaultPdfFont {} {
+    if {[::pdf4tcllib::fonts::hasTtf]} {
+        return [::pdf4tcllib::fonts::fontSans]
+    }
+    return Helvetica
+}
+
 proc ::pdf4tcllib::math::measureLatex {pdf latex args} {
     # Returns {width heightAboveBaseline depthBelow} for a LaTeX-subset
     # string, so callers can centre or page-fit before renderLatex.
     array set opt {-size 12 -font ""}
     array set opt $args
-    set font $opt(-font)
-    if {$font eq ""} {
-        if {[::pdf4tcllib::fonts::hasTtf]} {
-            set font [::pdf4tcllib::fonts::fontSans]
-        } else {
-            set font Helvetica
-        }
-    }
-    set toks [_latexTokenize $latex]
-    set atoms [_latexParseGroup toks]
-    return [_latexMeasureList $pdf $font $opt(-size) $atoms]
+    if {$opt(-font) eq ""} { set opt(-font) [_defaultPdfFont] }
+    return [measureLatexOn [pdfBackend $pdf] $latex \
+        -size $opt(-size) -font $opt(-font)]
 }
 
 proc ::pdf4tcllib::math::renderLatex {pdf x y latex args} {
     array set opt {-size 12 -font ""}
     array set opt $args
-    set font $opt(-font)
-    if {$font eq ""} {
-        if {[::pdf4tcllib::fonts::hasTtf]} {
-            set font [::pdf4tcllib::fonts::fontSans]
-        } else {
-            set font Helvetica
-        }
-    }
-    set toks [_latexTokenize $latex]
-    set atoms [_latexParseGroup toks]
-    return [_latexDrawList $pdf $font $opt(-size) $x $y $atoms]
+    if {$opt(-font) eq ""} { set opt(-font) [_defaultPdfFont] }
+    return [renderLatexOn [pdfBackend $pdf] $x $y $latex \
+        -size $opt(-size) -font $opt(-font)]
 }
 
 
@@ -2337,6 +2454,76 @@ proc ::pdf4tcllib::page::orientationLegend {pdf ctx} {
 #       -fontsize 11 -pagebreak [list $yTop $yBot pageNoVar $pageW $pageH $margin]
 
 
+# ---------------------------------------------------------------------------
+# Tagged PDF helpers
+#
+# pdf4tcl 0.9.4.36 and later can carry a logical structure, which is what
+# assistive technology reads instead of the order in which glyphs happen to be
+# painted. A table is where that matters most: without it a screen reader
+# announces a grid of unrelated numbers, and PDF/UA cannot be reached at all.
+#
+# Tagging is not switched on here. The caller decides, with
+#
+#     $pdf tagged 1 -lang de-DE
+#
+# and everything below then marks up what it draws. When tagging is off, or
+# when the pdf4tcl in use predates it, every helper does nothing -- so
+# existing code keeps working unchanged and nothing needs a new option.
+#
+# Detection is by asking rather than by version number: tagBegin raises
+# "tagging is not enabled" when it is off, which is exactly the question we
+# have. The answer is cached per object, since it cannot change mid-document.
+namespace eval ::pdf4tcllib::tag {
+    variable active
+    array set active {}
+}
+
+proc ::pdf4tcllib::tag::isActive {pdf} {
+    variable active
+    if {[info exists active($pdf)]} {
+        return $active($pdf)
+    }
+    # tagArtifact is the probe, not tagBegin: it raises the same "tagging is
+    # not enabled" when off, but creates no structure element when on. A
+    # tagBegin/tagEnd pair looks harmless and is not -- measured, it left an
+    # empty Span sitting in the tree next to the table.
+    if {[catch {$pdf tagArtifact}]} {
+        set active($pdf) 0
+    } else {
+        catch {$pdf tagArtifactEnd}
+        set active($pdf) 1
+    }
+    return $active($pdf)
+}
+
+proc ::pdf4tcllib::tag::forget {pdf} {
+    variable active
+    unset -nocomplain active($pdf)
+}
+
+# Open a structure element, or do nothing when tagging is off.
+proc ::pdf4tcllib::tag::begin {pdf type args} {
+    if {![isActive $pdf]} { return }
+    catch {$pdf tagBegin $type {*}$args}
+}
+
+proc ::pdf4tcllib::tag::end {pdf} {
+    if {![isActive $pdf]} { return }
+    catch {$pdf tagEnd}
+}
+
+# Mark decoration -- rules, shading, grid lines. Without this a reader
+# announces them as if they carried meaning.
+proc ::pdf4tcllib::tag::artifact {pdf args} {
+    if {![isActive $pdf]} { return }
+    catch {$pdf tagArtifact {*}$args}
+}
+
+proc ::pdf4tcllib::tag::artifactEnd {pdf} {
+    if {![isActive $pdf]} { return }
+    catch {$pdf tagArtifactEnd}
+}
+
 namespace eval ::pdf4tcllib::table {}
 
 # ============================================================
@@ -2413,6 +2600,11 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
     set rowYs [list $y]
     set hdrBottom ""
 
+    # The whole table is one structure element, so a reader announces it as a
+    # table and can navigate it by row and column rather than reading a run
+    # of unrelated numbers. Does nothing when tagging is off.
+    ::pdf4tcllib::tag::begin $pdf Table
+
     # -- Header --
     if {$hasHdr} {
         set hH [_drawHeaderRow $pdf $x0 $y $totalW $orient $colWidths $aligns \
@@ -2447,15 +2639,19 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
             $pdf setFont $fontSize $fontSans
         }
 
-        # Zebra-Streifen
+        # Zebra-Streifen -- decoration, so an artifact
         if {$rowIdx % 2 == 1} {
+            ::pdf4tcllib::tag::artifact $pdf -type Layout
             $pdf setFillColor 0.97 0.97 0.97
             $pdf rectangle $x0 $y $totalW $rH -filled 1
             $pdf setFillColor 0.0 0.0 0.0
+            ::pdf4tcllib::tag::artifactEnd $pdf
         }
 
+        ::pdf4tcllib::tag::begin $pdf TR
         _drawCellsWrapped $pdf $x0 $y $rH $orient $colWidths $aligns $cellPad \
             $fontSize $fontSans $row $lineH
+        ::pdf4tcllib::tag::end $pdf
         set y [expr {$orient ? ($y + $rH) : ($y - $rH)}]
         lappend rowYs $y
         incr rowIdx
@@ -2463,6 +2659,8 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
 
     # -- Grid lines for the final (or only) page segment --
     _drawSegmentLines $pdf $x0 $tableStartY $y $hdrBottom $rowYs $totalW $colWidths
+
+    ::pdf4tcllib::tag::end $pdf
 
     # Reset
     $pdf setStrokeColor 0.0 0.0 0.0
@@ -2479,13 +2677,18 @@ proc ::pdf4tcllib::table::_drawHeaderRow {pdf x0 y totalW orient colWidths align
     # height. Used for the first page and, repeated, at the top of every
     # continuation page.
     set hH [_rowHeight $header $colWidths $cellPad $fontSize $fontBold $lineH $pdf]
+    # The grey band is decoration, not content
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
     $pdf setLineWidth 0.5
     $pdf setFillColor 0.88 0.88 0.88
     $pdf rectangle $x0 $y $totalW $hH -filled 1
+    ::pdf4tcllib::tag::artifactEnd $pdf
     $pdf setFillColor 0.0 0.0 0.0
     $pdf setFont $fontSize $fontBold
+    ::pdf4tcllib::tag::begin $pdf TR
     _drawCellsWrapped $pdf $x0 $y $hH $orient $colWidths $aligns $cellPad \
-        $fontSize $fontBold $header $lineH
+        $fontSize $fontBold $header $lineH TH
+    ::pdf4tcllib::tag::end $pdf
     return $hH
 }
 
@@ -2494,6 +2697,7 @@ proc ::pdf4tcllib::table::_drawSegmentLines {pdf x0 tableStartY y hdrBottom rowY
     # separator (thicker), row separators and the vertical column lines. Called
     # once per page (at each page break and once at the end) so every page of a
     # multi-page table gets a complete frame, not just the last one.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
     $pdf setStrokeColor 0.6 0.6 0.6
     $pdf setLineWidth 0.5
     $pdf line $x0 $tableStartY [expr {$x0 + $totalW}] $tableStartY
@@ -2506,6 +2710,7 @@ proc ::pdf4tcllib::table::_drawSegmentLines {pdf x0 tableStartY y hdrBottom rowY
         $pdf line $x0 $ly [expr {$x0 + $totalW}] $ly
     }
     _drawVLines $pdf $x0 $tableStartY $y $colWidths
+    ::pdf4tcllib::tag::artifactEnd $pdf
 }
 
 proc ::pdf4tcllib::table::_isDictFormat {tableData} {
@@ -2581,7 +2786,7 @@ proc ::pdf4tcllib::table::_calcColWidths {header aligns rows maxW fontSize fontS
     return $colWidths
 }
 
-proc ::pdf4tcllib::table::_drawCells {pdf x0 y0 cellH colWidths aligns cellPad fontSize fontName texts} {
+proc ::pdf4tcllib::table::_drawCells {pdf x0 y0 cellH colWidths aligns cellPad fontSize fontName texts {cellTag TD}} {
     # Draws the cells of a table row.
     set x $x0
     # Vertical centering: baseline approx. at cell center + half font height
@@ -2602,7 +2807,13 @@ proc ::pdf4tcllib::table::_drawCells {pdf x0 y0 cellH colWidths aligns cellPad f
         }
 
         set text [::pdf4tcllib::text::truncate $text $availW $fontSize $fontName $pdf]
+        if {$cellTag eq "TH"} {
+            ::pdf4tcllib::tag::begin $pdf TH -scope Column
+        } else {
+            ::pdf4tcllib::tag::begin $pdf TD
+        }
         ::pdf4tcllib::unicode::safeText $pdf $text -x $textX -y $textY
+        ::pdf4tcllib::tag::end $pdf
         set x [expr {$x + $colW}]
     }
 }
@@ -2619,12 +2830,21 @@ proc ::pdf4tcllib::table::_rowHeight {row colWidths cellPad fontSize fontName li
     return [expr {$maxLines * $lineH + 2 * $cellPad}]
 }
 
-proc ::pdf4tcllib::table::_drawCellsWrapped {pdf x0 y rowH orient colWidths aligns cellPad fontSize fontName texts lineH} {
+proc ::pdf4tcllib::table::_drawCellsWrapped {pdf x0 y rowH orient colWidths aligns cellPad fontSize fontName texts lineH {cellTag TD}} {
+    # cellTag is TH for the header row, TD otherwise. Header cells also carry
+    # /Scope Column: ISO 14289-1 clause 7.5 wants it wherever the relation
+    # between a header and its data cells cannot be derived from the layout,
+    # which is the case for any table with a single header row.
     # Draws one table row with per-cell wrapping (hardBreak on) and alignment,
     # top-aligned within the row band. Honours the orient flag so it works in
     # both top-left (orient=1) and bottom-left (orient=0) coordinate systems.
     set x $x0
     foreach text $texts colW $colWidths align $aligns {
+        if {$cellTag eq "TH"} {
+            ::pdf4tcllib::tag::begin $pdf TH -scope Column
+        } else {
+            ::pdf4tcllib::tag::begin $pdf TD
+        }
         set availW [expr {$colW - 2 * $cellPad}]
         set lines [::pdf4tcllib::text::wrap $text $availW $fontSize $fontName 0 $pdf 1]
         if {$orient} {
@@ -2646,6 +2866,7 @@ proc ::pdf4tcllib::table::_drawCellsWrapped {pdf x0 y rowH orient colWidths alig
             ::pdf4tcllib::unicode::safeText $pdf $ln -x $tx -y $base
             set base [expr {$base + $step}]
         }
+        ::pdf4tcllib::tag::end $pdf
         set x [expr {$x + $colW}]
     }
 }
@@ -2821,10 +3042,14 @@ proc ::pdf4tcllib::table::_dwFont {which} {
 }
 
 proc ::pdf4tcllib::table::_dwFill {pdf x y w h rgb} {
+    # Background fills are decoration. Marked as an artifact so a reader does
+    # not announce them; does nothing when tagging is off.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
     lassign $rgb r g b
     $pdf setFillColor $r $g $b
     $pdf rectangle $x $y $w $h -filled 1 -stroke 0
     $pdf setFillColor 0 0 0
+    ::pdf4tcllib::tag::artifactEnd $pdf
 }
 
 # Spaltenbreiten aufloesen: auto = Inhaltsbreite (Kopf bold, Zellen reg,
@@ -2919,7 +3144,12 @@ proc ::pdf4tcllib::table::_dwHead {pdf x y totalW colW aligns headers fBold fs p
     lassign $headfg hr hg hb
     set bl [expr {$y + $rowH - $pad}]
     set cx $x
+    ::pdf4tcllib::tag::begin $pdf TR
     foreach h $headers cw $colW al $aligns {
+        # /Scope Column: ISO 14289-1 clause 7.5 wants it where the relation
+        # between a header and its data cells is not derivable from the
+        # layout, which is the case for a single header row.
+        ::pdf4tcllib::tag::begin $pdf TH -scope Column
         set h [::pdf4tcllib::unicode::sanitize $h]
         set h [::pdf4tcllib::text::truncate $h [expr {$cw - 2 * $pad}] $fs $fBold $pdf]
         $pdf setFillColor $hr $hg $hb
@@ -2933,8 +3163,10 @@ proc ::pdf4tcllib::table::_dwHead {pdf x y totalW colW aligns headers fBold fs p
                          -x [expr {$cx + $pad}] -y $bl }
         }
         $pdf setFillColor 0 0 0
+        ::pdf4tcllib::tag::end $pdf
         set cx [expr {$cx + $cw}]
     }
+    ::pdf4tcllib::tag::end $pdf
     if {$border} { _dwInnerV $pdf $x $y $rowH $colW {0.6 0.6 0.6} 0.3 }
     return [expr {$y + $rowH}]
 }
@@ -2991,6 +3223,10 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
     }
 
     set segTop $y
+    # One structure element for the whole table, so a reader can navigate it
+    # by row and column instead of reading a run of unrelated values.
+    ::pdf4tcllib::tag::begin $pdf Table
+
     if {$o(-header)} {
         set y [_dwHead $pdf $x $y $totalW $colW $aligns $headers $fBold $fs $pad \
                    $o(-headerbg) $o(-headerfg) $rowH $o(-border)]
@@ -3036,6 +3272,7 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
         if {[dict exists $rowindent $r]} { set ind [dict get $rowindent $r] }
         set cx $x
         set c 0
+        ::pdf4tcllib::tag::begin $pdf TR
         foreach value $row cw $colW cAl $aligns cFont $colFonts {
             set eff {}
             if {$rs(-fg)   ne ""} { lappend eff -fg   $rs(-fg) }
@@ -3044,10 +3281,13 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
                 set eff [dict merge $eff [dict get $cellstyles "$r,$c"]]
             }
             set cellIndent [expr {$c == 0 ? $ind : 0}]
+            ::pdf4tcllib::tag::begin $pdf TD
             _dwCell $pdf $cx $y $cw $rowH $value $cAl $cFont $fs $pad $eff $cellIndent
+            ::pdf4tcllib::tag::end $pdf
             set cx [expr {$cx + $cw}]
             incr c
         }
+        ::pdf4tcllib::tag::end $pdf
         # innere V-Linien (0.75/0.3)
         if {$o(-border)} { _dwInnerV $pdf $x $y $rowH $colW {0.75 0.75 0.75} 0.3 }
         set y [expr {$y + $rowH}]
@@ -3074,21 +3314,29 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
         _dwFill $pdf $x $y $totalW $rowH $o(-footerbg)
         set ffont [expr {$o(-footerbold) ? "bold" : "reg"}]
         set cx $x
+        ::pdf4tcllib::tag::begin $pdf TR
         foreach value $o(-footer) cw $colW cAl $aligns {
+            ::pdf4tcllib::tag::begin $pdf TD
             _dwCell $pdf $cx $y $cw $rowH $value $cAl $ffont $fs $pad {}
+            ::pdf4tcllib::tag::end $pdf
             set cx [expr {$cx + $cw}]
         }
+        ::pdf4tcllib::tag::end $pdf
         if {$o(-border)} { _dwInnerV $pdf $x $y $rowH $colW {0.6 0.6 0.6} 0.3 }
         set y [expr {$y + $rowH}]
     }
 
-    # Aussenrahmen des (letzten) Segments (0.45/0.6)
+    ::pdf4tcllib::tag::end $pdf
+
+    # Aussenrahmen des (letzten) Segments (0.45/0.6) -- Dekoration
     if {$o(-border)} {
+        ::pdf4tcllib::tag::artifact $pdf -type Layout
         $pdf setStrokeColor 0.45 0.45 0.45
         $pdf setLineWidth 0.6
         $pdf rectangle $x $segTop $totalW [expr {$y - $segTop}]
         $pdf setStrokeColor 0 0 0
         $pdf setLineWidth 1
+        ::pdf4tcllib::tag::artifactEnd $pdf
     }
     if {$o(-yvar) ne ""} { set yout $y }
     return $y
@@ -3671,7 +3919,13 @@ proc ::pdf4tcllib::form::labelField {pdf ctx yVar label ftype args} {
     # Feld
     $pdf setFont $CFG(fontSize) $CFG(fontFamily)
     set fx [expr {$x + $labelW + $CFG(labelGap)}]
+    # A form field is an annotation; outside a structure element it cannot be
+    # reached from the tree. /Form is the type ISO 32000-1 table 337 gives for
+    # an interactive field, and the label is the alternate text a sighted
+    # reader sees anyway.
+    ::pdf4tcllib::tag::begin $pdf Form -alt $label
     $pdf addForm $ftype $fx $y $fieldW $fieldH {*}$passArgs
+    ::pdf4tcllib::tag::end $pdf
 
     $pdf setFillColor 0 0 0
 
@@ -3755,7 +4009,9 @@ proc ::pdf4tcllib::form::row {pdf ctx yVar fields} {
         # Feld
         $pdf setFont $CFG(fontSize) $CFG(fontFamily)
         set fx [expr {$x + $labelW + $gap}]
+        ::pdf4tcllib::tag::begin $pdf Form -alt $label
         $pdf addForm $ftype $fx $y $fieldW $fieldH {*}$addArgs
+        ::pdf4tcllib::tag::end $pdf
 
         # Naechstes Paar: mindestens totalW, aber nie weniger als tatsaechlich
         # belegt (schuetzt vor Overlap wenn das Feld geclampt wurde).
@@ -3883,8 +4139,14 @@ proc ::pdf4tcllib::form::orderTable {pdf ctx yVar headers colWidths \
                 if {[dict exists $cellOpts $colIdx]} {
                     set copt [dict get $cellOpts $colIdx]
                 }
+                # In a table cell the column header is the useful alternate
+                # text -- a reader already knows which row it is in.
+                set cellAlt [lindex $headers $colIdx]
+                if {$cellAlt eq ""} { set cellAlt "Eingabefeld" }
+                ::pdf4tcllib::tag::begin $pdf Form -alt $cellAlt
                 $pdf addForm text [expr {$cx + $pad}] [expr {$y + $pad}] $fw $fh \
                     -id "${cellForm}_${r}_${colIdx}" -init $cell {*}$copt
+                ::pdf4tcllib::tag::end $pdf
             } elseif {$cell ne ""} {
                 ::pdf4tcllib::unicode::safeText $pdf [string range $cell 0 40] \
                     -x [expr {$cx + 3}] -y [expr {$y + $rowH - 2}]
@@ -3961,8 +4223,10 @@ proc ::pdf4tcllib::form::sumLine {pdf ctx yVar colWidths label value args} {
         if {$calc ne ""} { lappend aa -calculate $calc }
         if {$ffmt ne ""} { lappend aa -format $ffmt }
         if {$fjs ne ""}  { lappend aa -js $fjs }
+        ::pdf4tcllib::tag::begin $pdf Form -alt $label
         $pdf addForm text $fx [expr {$y + $pad}] $fw $fh \
             -id $fid -align right -init $finit {*}$aa
+        ::pdf4tcllib::tag::end $pdf
     } else {
         $pdf setFont $CFG(fontSize) $CFG(fontFamily)
         set valX [expr {$x + $totalW - 4}]

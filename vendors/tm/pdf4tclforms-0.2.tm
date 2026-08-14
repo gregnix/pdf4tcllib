@@ -15,10 +15,10 @@
 #        for the format feature (calculate: 0.9.4.32+, appearance: 0.9.4.30+).
 
 package require Tcl 8.6-
-package require pdf4tcllib 0.3
+package require pdf4tcllib 0.6
 package require pdf4tcl 0.9.4.34
 
-package provide pdf4tclforms 0.1.2
+package provide pdf4tclforms 0.2
 
 namespace eval ::pdf4tcllib::forms {
     # form:: exportiert seine Procs zwar, aber wir rufen sie hier bewusst
@@ -99,8 +99,33 @@ proc ::pdf4tcllib::forms::_fieldAddArgs {fdef} {
     return $addArgs
 }
 
+# Every form field is an annotation, and an annotation outside a structure
+# element cannot be reached from the tree: the field still works when clicked,
+# but assistive technology never finds it and PDF/UA clause 7.18 is out of
+# reach. pdf4tcl 0.9.4.39 and later say so in ::pdf4tcl::warnings; wrapping
+# the field is what makes the warning go away for the right reason.
+#
+# /Form is the type ISO 32000-1 table 337 provides for an interactive field.
+# The alternate text comes from the field's label, which is the same string a
+# sighted reader sees next to the box -- guessing anything cleverer would be
+# wrong as often as right.
+#
+# Does nothing when tagging is off, so existing callers are unaffected.
+proc ::pdf4tcllib::forms::_tagBeginField {pdf fdef} {
+    if {![::pdf4tcllib::tag::isActive $pdf]} { return }
+    set alt [_getdef $fdef label ""]
+    if {$alt eq ""} { set alt [_getdef $fdef name ""] }
+    if {$alt eq ""} {
+        ::pdf4tcllib::tag::begin $pdf Form
+    } else {
+        ::pdf4tcllib::tag::begin $pdf Form -alt $alt
+    }
+}
+
 proc ::pdf4tcllib::forms::_addForm {pdf ftype x y w h fdef} {
+    _tagBeginField $pdf $fdef
     $pdf addForm $ftype $x $y $w $h {*}[::pdf4tcllib::forms::_fieldAddArgs $fdef]
+    ::pdf4tcllib::tag::end $pdf
 }
 
 # Checkbox mit Beschriftung rechts daneben (Telefonprotokoll-Stil).
@@ -186,7 +211,11 @@ proc ::pdf4tcllib::forms::radioGroup {pdf ctx yVar fdef {pagebreak 0}} {
         }
         set aa [list -group $group -value $val]
         if {$default ne "" && $val eq $default} { lappend aa -init 1 }
+        # Each option is a field of its own; its own caption is the useful
+        # alternate text, not the group label.
+        ::pdf4tcllib::tag::begin $pdf Form -alt $txt
         $pdf addForm radiobutton $curx $cury $boxH $boxH {*}$aa
+        ::pdf4tcllib::tag::end $pdf
         ::pdf4tcllib::unicode::safeText $pdf $txt -x [expr {$curx + $boxH + 4}] -y [expr {$cury + $boxH - 3}]
         set curx [expr {$curx + $w}]
     }
@@ -215,7 +244,9 @@ proc ::pdf4tcllib::forms::buttonBar {pdf ctx yVar fdef {pagebreak 0}} {
         set aa [list -id $bid -caption $caption]
         if {$action ne ""} { lappend aa -action $action }
         if {$url ne ""}    { lappend aa -url $url }
+        ::pdf4tcllib::tag::begin $pdf Form -alt $caption
         $pdf addForm pushbutton $curx $y $bw $bh {*}$aa
+        ::pdf4tcllib::tag::end $pdf
         set curx [expr {$curx + $bw + 12}]
     }
     ::pdf4tcllib::page::_advance $ctx y [expr {$bh + $CFG(rowGap)}]
@@ -248,7 +279,10 @@ proc ::pdf4tcllib::forms::signatureLine {pdf ctx yVar fdef {pagebreak 0}} {
     if {[dict exists $fdef id]} { lappend aa -id [dict get $fdef id] }
     if {$placeholder ne ""}     { lappend aa -label $placeholder }
     if {$readonly ne ""}        { lappend aa -readonly $readonly }
+    ::pdf4tcllib::tag::begin $pdf Form \
+            -alt [expr {$placeholder ne "" ? $placeholder : "Unterschrift"}]
     $pdf addForm signature $x $y $sw $sigH {*}$aa
+    ::pdf4tcllib::tag::end $pdf
     ::pdf4tcllib::page::_advance $ctx y [expr {$sigH + $CFG(rowGap)}]
 }
 

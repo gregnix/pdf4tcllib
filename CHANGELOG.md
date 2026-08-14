@@ -5,6 +5,93 @@ and module headers.
 
 ---
 
+## pdf4tcllib 0.6
+
+`lib/pdf4tcllib-0.6.tm` (was `pdf4tcllib-0.5.tm`).
+
+### Added -- tables carry a logical structure
+
+Both table renderers mark up what they draw, so a screen reader announces a
+table it can navigate by row and column instead of a run of unrelated
+numbers:
+
+- `table::render` -- the data-driven renderer with automatic page breaks
+- `table::draw` -- the richer one, with footer, cell styles and row indent.
+  `pdf4tcltable` (tablelist export) delegates to it, so that path is covered
+  too without a change of its own. Verified against a real tablelist 7.11
+  widget, not reasoned from the delegation: `table-tag-tablelist` exports one
+  and checks the structure, `table-tag-tablelist-off` checks that nothing
+  changes when tagging is off. Both skip cleanly where tablelist is absent.
+
+The structure follows ISO 32000-1 clause 14.7:
+
+    Table
+      TR
+        TH  (with /Scope Column)
+      TR
+        TD
+
+A footer row is a `TR` of its own. Grid lines, background fills, borders and
+zebra stripes become artifacts. Decoration announced as
+content is worse than no tagging at all -- a reader would read out the
+separators as if they meant something.
+
+Header cells carry `/Scope Column` because ISO 14289-1 clause 7.5 wants it
+wherever the relation between a header and its data cells cannot be derived
+from the layout, which is the case for any table with a single header row.
+
+### Added -- form fields are reachable from the tree
+
+A form field is an annotation, and an annotation outside a structure element
+cannot be reached: the field still works when clicked, but assistive
+technology never finds it. All field-creating paths now wrap the field in a
+`/Form` element -- the type ISO 32000-1 table 337 gives for an interactive
+field -- with the label as alternate text:
+
+- `pdf4tcllib::form::labelField`, `::row`, `::orderTable`, `::sumLine`
+- `pdf4tclforms::_addForm` and the three that bypass it: radio buttons,
+  push buttons, signature fields
+
+The measure is pdf4tcl's own warning from 0.9.4.39: it fires for an
+annotation left out of the tree, and it falls silent once the field is
+wrapped. `form-tag-no-warning` asserts exactly that, rather than checking for
+the presence of a string.
+
+Verified on the three demo forms in `examples/advanced/60_*`:
+`check-tagged.py` reports no failures where it previously reported twenty.
+
+**This needs pdf4tcl 0.9.4.42.** `/Form` was accepted by `tagBegin` but not
+by the annotation attachment, which only knew `Link` and `Annot` -- so the
+element sat in the tree while the field stayed unreachable, and the warning
+fired for a document that had done everything right.
+
+### Not switched on here
+
+Tagging stays the caller's decision:
+
+```tcl
+$pdf tagged 1 -lang de-DE
+```
+
+Without it every helper does nothing, so existing code is unaffected -- the
+suite passes unchanged, and a document built without `tagged` contains no
+marked content and no structure tree at all. That is checked by
+`table-tag-off`.
+
+Detection is by asking rather than by version number, so a pdf4tcl older than
+0.9.4.36 needs no special case. `tagArtifact` is the probe: it raises the
+same "tagging is not enabled" as `tagBegin` when off, but creates no
+structure element when on. The first attempt used a `tagBegin`/`tagEnd` pair
+and left an empty `Span` sitting in the tree next to every table -- measured,
+not reasoned. `table-tag-noprobe` guards against it coming back.
+
+### Requires
+
+pdf4tcl 0.9.4.36 or later for the tagging to have an effect; older versions
+work as before.
+
+---
+
 ## pdf4tcllib 0.5
 
 `lib/pdf4tcllib-0.5.tm` (was `pdf4tcllib-0.4.tm`).

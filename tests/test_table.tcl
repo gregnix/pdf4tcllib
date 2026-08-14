@@ -127,4 +127,244 @@ test table-pagebreak-legacy "no pageBreakCmd: internal pagination increments" -b
     expr {$pno > 1}
 } -result 1
 
+# ============================================================
+# Tagged PDF -- pdf4tcllib::tag and the table structure
+# ============================================================
+# The table is where tagging pays off most: without it a screen reader
+# announces a run of unrelated numbers instead of a table it can navigate by
+# row and column. Tagging is not switched on here, the caller does that with
+# "$pdf tagged 1"; when it is off every helper does nothing.
+
+proc tagTestPdf {} {
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -margin 40 -orient 1 -compress 0]
+    $pdf tagged 1 -lang de-DE
+    $pdf startPage
+    $pdf setFont 10 Helvetica
+    return $pdf
+}
+
+proc tagTableData {} {
+    return [list {Artikel Menge Preis} {left right right} \
+            {Schraube 100 4,90} {Mutter 200 3,50}]
+}
+
+test table-tag-off "ohne tagged bleibt alles unveraendert" -body {
+    # The important half of the feature: existing code must not change.
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -margin 40 -orient 1 -compress 0]
+    $pdf startPage
+    $pdf setFont 10 Helvetica
+    set y 40 ; set pno 1
+    ::pdf4tcllib::table::render $pdf [tagTableData] 0 y 500 20 750 pno \
+            595 842 40 10 12
+    set data [$pdf get]
+    $pdf destroy
+    # no marked content, no structure tree
+    list [string first "BDC" $data] [string first "/StructTreeRoot" $data]
+} -result {-1 -1}
+
+test table-tag-structure "mit tagged entsteht Table/TR/TH/TD" -body {
+    set pdf [tagTestPdf]
+    set y 40 ; set pno 1
+    ::pdf4tcllib::table::render $pdf [tagTableData] 0 y 500 20 750 pno \
+            595 842 40 10 12
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    list [expr {[string first "/S /Table" $data] >= 0}] \
+            [expr {[string first "/S /TR" $data] >= 0}] \
+            [expr {[string first "/S /TH" $data] >= 0}] \
+            [expr {[string first "/S /TD" $data] >= 0}]
+} -result {1 1 1 1}
+
+test table-tag-scope "Kopfzellen tragen /Scope Column" -body {
+    # ISO 14289-1 clause 7.5 wants /Scope wherever the header relation cannot
+    # be derived from the layout, which is the case for a single header row.
+    set pdf [tagTestPdf]
+    set y 40 ; set pno 1
+    ::pdf4tcllib::table::render $pdf [tagTableData] 0 y 500 20 750 pno \
+            595 842 40 10 12
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    expr {[string first "/Scope /Column" $data] >= 0}
+} -result 1
+
+test table-tag-artifacts "Gitterlinien und Zebrastreifen sind Artefakte" -body {
+    # Decoration announced as content is worse than no tagging at all.
+    set pdf [tagTestPdf]
+    set y 40 ; set pno 1
+    ::pdf4tcllib::table::render $pdf [tagTableData] 0 y 500 20 750 pno \
+            595 842 40 10 12
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    expr {[string first "/Artifact" $data] >= 0}
+} -result 1
+
+test table-tag-noprobe "die Erkennung hinterlaesst kein leeres Element" -body {
+    # The probe used to be a tagBegin/tagEnd pair, which left an empty Span
+    # sitting in the tree next to the table. tagArtifact answers the same
+    # question and creates no element.
+    set pdf [tagTestPdf]
+    set y 40 ; set pno 1
+    ::pdf4tcllib::table::render $pdf [tagTableData] 0 y 500 20 750 pno \
+            595 842 40 10 12
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    expr {[string first "/S /Span" $data] < 0}
+} -result 1
+
+proc tagDrawCols {} {
+    return [list [list -header Artikel -width 120] \
+            [list -header Menge -align right] \
+            [list -header Preis -align right]]
+}
+
+test table-tag-draw "table::draw zeichnet ebenfalls aus" -body {
+    # draw is the richer implementation -- footer, cell styles, row indent --
+    # and pdf4tcltable delegates to it, so tagging here covers the tablelist
+    # export as well.
+    set pdf [tagTestPdf]
+    ::pdf4tcllib::table::draw $pdf 0 40 [tagDrawCols] \
+            {{Schraube 100 4,90} {Mutter 200 3,50}} -zebra 1
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    list [expr {[string first "/S /Table" $data] >= 0}] \
+            [expr {[string first "/S /TH" $data] >= 0}] \
+            [expr {[string first "/S /TD" $data] >= 0}] \
+            [expr {[string first "/Scope /Column" $data] >= 0}]
+} -result {1 1 1 1}
+
+test table-tag-draw-footer "die Fusszeile ist eine eigene TR" -body {
+    set pdf [tagTestPdf]
+    ::pdf4tcllib::table::draw $pdf 0 40 [tagDrawCols] \
+            {{Schraube 100 4,90}} -footer {Summe {} 4,90}
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    # header row + one data row + footer row
+    set n 0
+    foreach _ [regexp -all -inline {/S /TR} $data] { incr n }
+    set n
+} -result 3
+
+test table-tag-draw-off "ohne tagged bleibt draw unveraendert" -body {
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -margin 40 -orient 1 -compress 0]
+    $pdf startPage
+    $pdf setFont 10 Helvetica
+    ::pdf4tcllib::table::draw $pdf 0 40 [tagDrawCols] \
+            {{Schraube 100 4,90}} -zebra 1 -footer {Summe {} 4,90}
+    set data [$pdf get]
+    $pdf destroy
+    list [string first "BDC" $data] [string first "/StructTreeRoot" $data]
+} -result {-1 -1}
+
+# ============================================================
+# Tablelist-Export -- der Adapterweg
+# ============================================================
+# pdf4tcltable liest das Widget aus und delegiert an table::draw. Weil draw
+# auszeichnet, ist der Export mit erledigt -- ohne eine Zeile in
+# pdf4tcltable. Diese Tests belegen das an einem echten Widget.
+
+testConstraint tablelist [expr {![catch {
+    package require Tk
+    package require tablelist_tile
+    package require pdf4tcltable
+}]}]
+
+proc tagTablelistWidget {} {
+    destroy .tagtl
+    tablelist::tablelist .tagtl \
+            -columns {0 "Artikel" left 0 "Menge" right 0 "Preis" right} \
+            -stretch all -height 5
+    .tagtl insert end {Schraube 100 4,90}
+    .tagtl insert end {Mutter 200 3,50}
+    pack .tagtl
+    update
+    return .tagtl
+}
+
+test table-tag-tablelist "Tablelist-Export traegt die Struktur" \
+        -constraints tablelist -body {
+    set tbl [tagTablelistWidget]
+    set pdf [tagTestPdf]
+    ::pdf4tcllib::tablelist::render $pdf $tbl 0 40
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    destroy $tbl
+    list [expr {[string first "/S /Table" $data] >= 0}] \
+            [expr {[string first "/S /TH" $data] >= 0}] \
+            [expr {[string first "/S /TD" $data] >= 0}] \
+            [expr {[string first "/Scope /Column" $data] >= 0}]
+} -result {1 1 1 1}
+
+test table-tag-tablelist-off "ohne tagged bleibt der Export unveraendert" \
+        -constraints tablelist -body {
+    set tbl [tagTablelistWidget]
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -margin 40 -orient 1 -compress 0]
+    $pdf startPage
+    $pdf setFont 10 Helvetica
+    ::pdf4tcllib::tablelist::render $pdf $tbl 0 40
+    set data [$pdf get]
+    $pdf destroy
+    destroy $tbl
+    list [string first "BDC" $data] [string first "/StructTreeRoot" $data]
+} -result {-1 -1}
+
+# ============================================================
+# Formularfelder -- pdf4tcllib::form und pdf4tclforms
+# ============================================================
+
+testConstraint forms [expr {![catch {package require pdf4tclforms}]}]
+
+test form-tag-field "labelField haengt das Feld in ein Form-Element" \
+        -constraints forms -body {
+    # Ein Formularfeld ist eine Annotation. Ausserhalb eines
+    # Strukturelements ist es vom Baum aus nicht erreichbar: anklicken geht,
+    # ein Screenreader findet es nie.
+    set pdf [tagTestPdf]
+    set ctx [::pdf4tcllib::page::context a4 -margin 25 -orient true]
+    set y 60
+    ::pdf4tcllib::form::labelField $pdf $ctx y "Name" text -id nm
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    list [expr {[string first "/S /Form" $data] >= 0}] \
+            [expr {[string first "/OBJR" $data] >= 0}] \
+            [expr {[string first "(Name)" $data] >= 0}]
+} -result {1 1 1}
+
+test form-tag-off "ohne tagged bleiben Formulare unveraendert" \
+        -constraints forms -body {
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true -compress 0]
+    $pdf startPage
+    $pdf setFont 10 Helvetica
+    set ctx [::pdf4tcllib::page::context a4 -margin 25 -orient true]
+    set y 60
+    ::pdf4tcllib::form::labelField $pdf $ctx y "Name" text -id nm
+    set data [$pdf get]
+    $pdf destroy
+    list [string first "BDC" $data] [string first "/StructTreeRoot" $data]
+} -result {-1 -1}
+
+test form-tag-no-warning "ein ausgezeichnetes Formular loest keine Warnung aus" \
+        -constraints forms -body {
+    # Die Warnung aus pdf4tcl 0.9.4.39 ist der Massstab: verstummt sie, ist
+    # das Feld tatsaechlich angebunden.
+    set ::pdf4tcl::warnings {}
+    set pdf [tagTestPdf]
+    set ctx [::pdf4tcllib::page::context a4 -margin 25 -orient true]
+    set y 60
+    ::pdf4tcllib::form::labelField $pdf $ctx y "Name" text -id nm
+    $pdf get
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    llength $::pdf4tcl::warnings
+} -cleanup {
+    set ::pdf4tcl::warnings {}
+} -result 0
+
 cleanupTests

@@ -17,7 +17,7 @@ namespace import ::tcltest::*
 # no renderLatexOn, and all 13 tests failed with "invalid command name".
 set testDir [file dirname [file normalize [info script]]]
 catch {tcl::tm::path add [file normalize [file join $testDir .. lib]]}
-package require pdf4tcllib 0.5
+package require pdf4tcllib 0.6
 
 set hasPdf4tcl [expr {![catch {package require pdf4tcl}]}]
 set hasTk      [expr {![catch {package require Tk}]}]
