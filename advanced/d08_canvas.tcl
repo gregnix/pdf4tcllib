@@ -192,6 +192,6 @@ $pdf write -file $outfile
 $pdf destroy
 puts "Geschrieben: $outfile"
 
-# wish enters the event loop at the end of the script and waits for a
-# window nobody closes. This script only writes a file, so it ends here.
+# wish geht am Skriptende in die Event-Loop und wartet auf ein Fenster, das
+# niemand schliesst. Das Skript erzeugt nur eine Datei, also endet es hier.
 exit 0

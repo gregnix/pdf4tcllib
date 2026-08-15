@@ -40,9 +40,16 @@ Dependency: pdf4tcl (in `vendors/pkg/` or system-wide).
 | units   | Unit conversion: mm/cm/inch <-> points |
 | form    | Form layout: label+field, sections, order tables |
 | core    | readFile, version, validate_pdf |
+| tag     | Structure elements and artifacts, silent when tagging is off |
 
 > **Note:** `tablelist` and `textwidget` modules are distributed as
 > separate packages (`pdf4tcltable`, `pdf4tcltext`) since version 0.2.
+
+> **Tagged PDF:** with `$pdf tagged 1` the building blocks mark up what they
+> draw -- tables as `Table`/`TR`/`TH`/`TD`, form fields as `Form` with their
+> label, running heads and page numbers as artifacts. Nothing changes
+> without that one call. See [`accessibility.md`](accessibility.md) and
+> [`../examples/basic/39_accessible.tcl`](../examples/basic/39_accessible.tcl).
 
 ---
 

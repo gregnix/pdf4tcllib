@@ -17,11 +17,11 @@ package require Tk
 package require tablelist_tile
 package require pdf4tcltable
 
-# The first argument is the output DIRECTORY, as in every other example --
-# that is what the collected run passes. This used to be a file name:
-# called on its own it worked, in the collected run the script was handed a
-# directory and failed to write. Without an argument, into the pdf
-# directory beside this script, not relative to the current one.
+# Erstes Argument ist das AusgabeVERZEICHNIS, wie in allen anderen
+# Beispielen -- der Sammellauf uebergibt genau das. Frueher stand hier ein
+# Dateiname: einzeln aufgerufen ging das gut, im Sammellauf bekam das
+# Skript ein Verzeichnis und das Schreiben scheiterte. Ohne Argument in
+# das pdf-Verzeichnis neben diesem Skript, nicht relativ zum aktuellen.
 set scriptDir [file dirname [file normalize [info script]]]
 set outDir [expr {$argc ? [lindex $argv 0] : [file join $scriptDir pdf]}]
 file mkdir $outDir

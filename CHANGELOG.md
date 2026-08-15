@@ -5,6 +5,91 @@ and module headers.
 
 ---
 
+## pdf4tcllib 0.6.1
+
+### Fixed -- Tk was pulled in by every caller
+
+`package require pdf4tcllib` loaded Tk, for one reason: the image helpers
+measure a Tk photo with `[image width]`. The `catch {package require Tk}`
+sat at module level, so every batch script got Tk whether it wanted it or
+not.
+
+The consequence is measured and unpleasant. `Tk_Init` registers a main
+loop, and a script without a closing `exit` then waits for a window that
+never comes. On a machine without a display nothing shows, because loading
+Tk fails there and everything runs through. With `DISPLAY` set, eight
+examples in `examples/advanced` hung indefinitely -- among them `45_pdfa.tcl`,
+which has nothing to do with user interfaces.
+
+Tk is now loaded by the three image procedures that need it, at call time.
+Measured: those eight went from a 20-second timeout each to 0 seconds, and
+`package require pdf4tcllib` no longer brings Tk with it.
+
+### Fixed -- the example runner could not finish
+
+`examples/advanced/run_advanced.tcl` picked its interpreter by name
+(`tclsh`/`wish` from the PATH, so possibly a different Tcl generation than
+the one running the suite) and ran each script through `exec` without a time
+limit. Three examples export from a button in their window and cannot work
+in a batch run at all; two others take `-batch` -- but the switch has to come
+*after* the output directory, or the script takes it for one
+("Written: -batch/demo_54...").
+
+The runner now derives the interpreter from `[info nameofexecutable]`, runs
+each script under `timeout` where the system has one, names the likely cause
+when the limit hits, passes `-batch` to the two that know it, and skips the
+three interactive ones with a reason.
+
+`64_table_draw.tcl` treated its first argument as a file name while every
+other example treats it as a directory. Called on its own that worked; in
+the collected run it was handed a directory and failed to write. It takes a
+directory now.
+
+`d08_canvas.tcl` writes its file and then had nothing to end it; `exit 0`
+added.
+
+Measured with a display, `run_advanced.tcl`: from a 200-second hang to 6
+seconds, 30 OK / 3 failed / 3 interactive. The three failures are missing
+packages in the test environment (`tkpath`, `tko`, `cheatsheet`).
+
+### Fixed -- the form builder left content outside the structure tree
+
+pdf4tcl 0.9.4.43 counts painting operations that belong to neither a
+structure element nor an artifact. Run against the form helpers it found
+four, measured on a bare page each:
+
+| helper | untagged operations |
+|---|---|
+| `form::labelField` | 1 -- the label |
+| `form::row` | 1 per field -- the label |
+| `form::section` | 3 -- bar, frame and title |
+| `form::separator` | 1 -- the rule |
+
+The fields themselves were attached correctly; what stood outside was the
+text naming them. For a screen reader that is an input with no visible name
+attached to it, and under ISO 14289-1 clause 7.1 it is a document that does
+not meet the level it claims.
+
+Two different remedies, because these are two different things:
+
+- **Labels now sit inside the `Form` element they name.** `tag::begin` moved
+  ahead of the label text in `labelField` and `row`, so the element holds the
+  label and the field's `/OBJR`.
+- **Decoration is marked as an artifact.** The section bar and frame and the
+  separator rule go through `tag::artifact -type Layout`. Tagged as content
+  they would be worse than untagged -- a reader announces the rules as if
+  they meant something.
+
+The section title is an `H2`: it heads the block it opens.
+
+Measured after the change: all four helpers report zero, and a full form --
+section, two labelled fields, a separator and a two-field row, claiming
+PDF/UA and PDF/A-3b -- reports zero as well.
+
+Nothing here changes the visible page.
+
+---
+
 ## pdf4tcllib 0.6
 
 `lib/pdf4tcllib-0.6.tm` (was `pdf4tcllib-0.5.tm`).

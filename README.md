@@ -12,6 +12,26 @@ pdf4tcllib fills the most common gaps in pdf4tcl:
 - **Form layout** -- label+field, sections, order tables (`form` namespace)
 
 
+## Accessible documents (0.6.1)
+
+Not only tables: with `$pdf tagged 1` every building block marks up what it
+draws. Form fields sit in a `Form` element together with their label,
+running heads and page numbers become Pagination artifacts, rules and
+gradients Layout artifacts, a paragraph becomes a `P`.
+
+pdf4tcl 0.9.4.43 counts what belongs to neither, so the result is checkable
+rather than assumed:
+
+```tcl
+$pdf tagged 1
+...
+puts [$pdf getUntaggedCount]     ;# 0 is what PDF/UA asks for
+```
+
+A document built from header, paragraph, table, form section, field and page
+number reports zero. Guide: [`docs/accessibility.md`](docs/accessibility.md),
+runnable: [`examples/basic/39_accessible.tcl`](examples/basic/39_accessible.tcl).
+
 ## Accessible tables (0.6)
 
 If the caller switches tagging on, `table::render` marks up what it draws:

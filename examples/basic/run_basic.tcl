@@ -21,14 +21,11 @@ set validatorScript [file normalize [file join $scriptDir ../../tools/pdfvalidat
 # Canvas-Skripte brauchen wish
 proc needsWish {f} { string match "*canvas*" [file tail $f] }
 
+namespace eval runner {}
+source [file join $scriptDir .. _runner.tcl]
+
 proc runScript {f outdir} {
-    set interp [expr {[needsWish $f] ? "wish" : "tclsh"}]
-    set cmd [list $interp $f]
-    if {$outdir ne ""} { lappend cmd $outdir }
-    set t0 [clock milliseconds]
-    set rc [catch { exec {*}$cmd 2>@1 } msg]
-    set ms [expr {[clock milliseconds] - $t0}]
-    return [list $rc $msg $ms]
+    return [runner::runScript $f $outdir [needsWish $f]]
 }
 
 set scripts [lsort [glob -directory $scriptDir {[0-9]*.tcl}]]

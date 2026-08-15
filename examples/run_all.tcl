@@ -16,11 +16,10 @@ foreach arg $argv {
     }
 }
 
-proc runRunner {script args} {
-    set rc [catch { exec tclsh $script {*}$args 2>@1 } msg]
-    puts $msg
-    return $rc
-}
+namespace eval runner {}
+source [file join $scriptDir _runner.tcl]
+
+proc runRunner {script args} { return [runner::runRunner $script {*}$args] }
 
 set t0   [clock seconds]
 set rcB  0

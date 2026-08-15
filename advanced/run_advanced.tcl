@@ -28,20 +28,40 @@ set validatorScript [file normalize [file join $scriptDir ../../tools/pdfvalidat
 
 proc needsWish {f} { string match "*canvas*" [file tail $f] }
 
-namespace eval runner {}
-source [file join $scriptDir .. _runner.tcl]
+# Interpreter aus dem laufenden ableiten statt "tclsh"/"wish" im PATH zu
+# suchen. Sonst prueft der Sammellauf die Generation, die zufaellig zuerst
+# im PATH steht -- unter 9.0 gestartet, unter 8.6 gemessen.
+proc interpFor {f} {
+    set self [info nameofexecutable]
+    if {![needsWish $f]} { return $self }
+    set cand [file join [file dirname $self] \
+                  [string map {tclsh wish} [file tail $self]]]
+    if {[file executable $cand]} { return $cand }
+    return $self
+}
 
-# Examples that open a window and wait for input.
+# Zeitgrenze je Skript. Ohne sie wartet exec unbegrenzt, und ein Beispiel,
+# das Tk laedt und kein exit hat, haelt den ganzen Lauf fest -- auf einer
+# Maschine mit Anzeige, waehrend es im CI ohne DISPLAY sauber durchlaeuft.
+# timeout(1) stammt aus den coreutils und fehlt auf Windows; dort laeuft es
+# wie bisher.
+set ::scriptTimeout 120
+set ::timeoutCmd {}
+if {[llength [auto_execok timeout]] > 0} {
+    set ::timeoutCmd [list timeout $::scriptTimeout]
+}
+
+# Beispiele, die ein Fenster oeffnen und auf Eingabe warten.
 #
-#   -batch   the script knows a batch mode; the switch belongs AFTER the
-#            output directory, or the script takes it for one
+#   -batch   das Skript kennt einen Stapelmodus; der Schalter gehoert NACH
+#            das Ausgabeverzeichnis, sonst nimmt das Skript ihn dafuer
 #            ("Written: -batch/demo_54...").
-#   skip     the export hangs off a button in the window; there is nothing
-#            to collect in a batch run.
+#   skip     der Export haengt an einem Knopf im Fenster; im Stapellauf ist
+#            hier nichts zu holen.
 #
-# Without this list every one of them blocked the run -- but only on a
-# machine with a display. Without DISPLAY loading Tk fails at once and the
-# run counts as "green".
+# Ohne diese Liste blockierte jedes davon den Lauf -- aber nur auf einer
+# Maschine mit Anzeige. Ohne DISPLAY scheitert das Laden von Tk sofort und
+# der Lauf gilt als "gruen".
 set ::interactive {
     54_canvas_vs_tkopath.tcl    -batch
     55_canvas_items_matrix.tcl  -batch
@@ -59,9 +79,19 @@ proc interactiveMode {f} {
 }
 
 proc runScript {f outdir} {
-    set extra {}
-    if {[interactiveMode $f] eq "-batch"} { set extra -batch }
-    return [runner::runScript $f $outdir [needsWish $f] $extra]
+    set cmd [list {*}$::timeoutCmd [interpFor $f] $f]
+    if {$outdir ne ""} { lappend cmd $outdir }
+    if {[interactiveMode $f] eq "-batch"} { lappend cmd -batch }
+    set t0 [clock milliseconds]
+    set rc [catch { exec {*}$cmd 2>@1 } msg]
+    set ms [expr {[clock milliseconds] - $t0}]
+    if {$rc && [lindex $::errorCode 0] eq "CHILDSTATUS"
+            && [lindex $::errorCode 2] == 124} {
+        append msg "\nZEITGRENZE ($::scriptTimeout s) -- laeuft das Skript in\
+                die Event-Loop? Ein Beispiel, das Tk laedt und kein exit hat,\
+                wartet hier unbegrenzt."
+    }
+    return [list $rc $msg $ms]
 }
 
 # Skripte aufteilen: [0-9]*.tcl = examples, d*.tcl = demos
@@ -79,7 +109,7 @@ set skipped 0
 foreach f $exScripts {
     set name [file tail $f]
     if {[interactiveMode $f] eq "skip"} {
-        puts [format "  SKIP %-42s %s" $name "interactive, exports from a button"]
+        puts [format "  SKIP %-42s %s" $name "interaktiv, Export per Knopf"]
         incr skipped
         continue
     }
@@ -115,7 +145,7 @@ if {[llength $demoScripts] > 0} {
 }
 
 puts [string repeat "-" 60]
-puts "Ergebnis: $ok OK  /  $fail Fehler  /  $skipped interactive  |  Ausgabe: $pdfdir"
+puts "Ergebnis: $ok OK  /  $fail Fehler  /  $skipped interaktiv  |  Ausgabe: $pdfdir"
 
 if {[llength $errors] > 0} {
     puts "\n=== Fehler-Details ==="

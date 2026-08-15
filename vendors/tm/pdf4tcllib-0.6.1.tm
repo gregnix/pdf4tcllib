@@ -34,7 +34,7 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.6
+package provide pdf4tcllib 0.6.1
 
 namespace eval ::pdf4tcllib {
     variable version 0.3
@@ -1322,14 +1322,25 @@ proc ::pdf4tcllib::text::detectFont {line} {
     return [::pdf4tcllib::fonts::fontSans]
 }
 
-proc ::pdf4tcllib::text::writeParagraph {pdf text x y width {size 12} {align left}} {
+proc ::pdf4tcllib::text::writeParagraph {pdf text x y width {size 12} {align left} {tag P}} {
     # Writes a paragraph with automatic line wrapping.
     # Returns the next Y position after the last rendered line.
     #
     # Uses drawTextBox -newyvar (pdf4tcl 0.9.4.23+) for exact Y position.
     # Fallback: line count estimation for older pdf4tcl.
+    #
+    # tag  structure type the text is wrapped in, P by default. Pass H1..H6
+    #      for a heading, Caption for a caption, or "" to write nothing --
+    #      the last one leaves content outside the structure tree, which
+    #      pdf4tcl 0.9.4.43 counts and reports at finish.
+    #
+    # The default is what makes this safe to keep calling: existing code
+    # gets a P where it used to get nothing at all. Worth knowing when a
+    # caller uses this procedure to set a heading -- it will be marked up
+    # as body text unless the tag is given.
 
-    $pdf setFont $size Helvetica
+    $pdf setFont $size [::pdf4tcllib::_defaultFamily]
+    if {$tag ne ""} { ::pdf4tcllib::tag::begin $pdf $tag }
 
     # Try new API: -newyvar gives exact Y after last line (0.9.4.23+)
     set nextY 0
@@ -1338,6 +1349,7 @@ proc ::pdf4tcllib::text::writeParagraph {pdf text x y width {size 12} {align lef
             -align $align \
             -newyvar nextY
     }]} {
+        if {$tag ne ""} { ::pdf4tcllib::tag::end $pdf }
         return $nextY
     }
 
@@ -1353,6 +1365,7 @@ proc ::pdf4tcllib::text::writeParagraph {pdf text x y width {size 12} {align lef
     } else {
         set num_lines [expr {[string length $text] / 50 + 1}]
     }
+    if {$tag ne ""} { ::pdf4tcllib::tag::end $pdf }
     return [expr {$y + $num_lines * $lh}]
 }
 
@@ -2124,6 +2137,15 @@ namespace eval ::pdf4tcllib::page {
     }
 }
 
+# The font these blocks draw with. Helvetica unless fonts::init loaded a
+# TrueType -- a caller who went to the trouble of loading one does not want
+# a page number set in a font that cannot be embedded, and under PDF/UA
+# that single call is enough to make the document non-conformant.
+proc ::pdf4tcllib::_defaultFamily {} {
+    if {[catch {::pdf4tcllib::fonts::hasTtf} ok] || !$ok} { return Helvetica }
+    return [::pdf4tcllib::fonts::fontSans]
+}
+
 proc ::pdf4tcllib::page::context {paper args} {
     # Generates ein PageContext-Dictionary.
     #
@@ -2240,8 +2262,13 @@ proc ::pdf4tcllib::page::number {pdf ctx current {total ""} {size 9}} {
         set text "- $current -"
     }
 
-    $pdf setFont $size Helvetica
+    # A page number is not part of what the document says; ISO 32000-1
+    # clause 14.8.2.2 lists pagination among the artifact types. Tagged as
+    # content a reader announces it in the middle of the running text.
+    ::pdf4tcllib::tag::artifact $pdf -type Pagination
+    $pdf setFont $size [::pdf4tcllib::_defaultFamily]
     ::pdf4tcllib::unicode::safeText $pdf $text -x $x -y $y -align center
+    ::pdf4tcllib::tag::artifactEnd $pdf
 }
 
 proc ::pdf4tcllib::page::header {pdf ctx text {size 10}} {
@@ -2263,16 +2290,20 @@ proc ::pdf4tcllib::page::header {pdf ctx text {size 10}} {
         set ly [expr {$top - 2}]
     }
 
-    $pdf setFont $size Helvetica
+    # Running head and its rule: pagination, not content (ISO 32000-1
+    # clause 14.8.2.2). A reader that announces them reads the title again
+    # on every page.
+    ::pdf4tcllib::tag::artifact $pdf -type Pagination
+    $pdf setFont $size [::pdf4tcllib::_defaultFamily]
     ::pdf4tcllib::unicode::safeText $pdf $text -x $x -y $y -align center
 
-    # Trennlinie
     set lx [dict get $ctx left]
     set rx [dict get $ctx right]
     $pdf setStrokeColor 0.7 0.7 0.7
     $pdf setLineWidth 0.5
     $pdf line $lx $ly $rx $ly
     $pdf setStrokeColor 0 0 0
+    ::pdf4tcllib::tag::artifactEnd $pdf
 }
 
 proc ::pdf4tcllib::page::footer {pdf ctx text pageNo {size 9}} {
@@ -2296,18 +2327,17 @@ proc ::pdf4tcllib::page::footer {pdf ctx text pageNo {size 9}} {
         set ly [expr {$bottom + 2}]
     }
 
-    # Trennlinie
+    # Footer and page number: pagination artifacts, like the header above.
+    ::pdf4tcllib::tag::artifact $pdf -type Pagination
     $pdf setStrokeColor 0.7 0.7 0.7
     $pdf setLineWidth 0.5
     $pdf line $lx $ly $rx $ly
     $pdf setStrokeColor 0 0 0
 
-    # Text links
-    $pdf setFont $size Helvetica
+    $pdf setFont $size [::pdf4tcllib::_defaultFamily]
     ::pdf4tcllib::unicode::safeText $pdf $text -x $lx -y $y
-
-    # Seitennummer rechts
     ::pdf4tcllib::unicode::safeText $pdf "Seite $pageNo" -x $rx -y $y -align right
+    ::pdf4tcllib::tag::artifactEnd $pdf
 }
 
 proc ::pdf4tcllib::page::centerText {pdf ctx text y {size 12} {font "Helvetica"}} {
@@ -2348,6 +2378,8 @@ proc ::pdf4tcllib::page::grid {pdf args} {
         set ph [dict get $ctx page_h]
     }
 
+    # A helper grid is scaffolding, never content.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
     $pdf setStrokeColor 0.85 0.85 0.85
     $pdf setLineWidth 0.25
 
@@ -2369,6 +2401,7 @@ proc ::pdf4tcllib::page::grid {pdf args} {
 
     $pdf setStrokeColor 0 0 0
     $pdf setFillColor 0 0 0
+    ::pdf4tcllib::tag::artifactEnd $pdf
 }
 
 proc ::pdf4tcllib::page::debugGrid {pdf ctx {spacing 50}} {
@@ -2949,7 +2982,11 @@ proc ::pdf4tcllib::table::simpleTable {pdf x y col_widths rows args} {
     set table_w 0
     foreach w $col_widths { set table_w [expr {$table_w + $w}] }
 
-    # Zebra-Streifen
+    # Zebra stripes, header background and grid lines are decoration: they
+    # separate visually and mean nothing on their own. Tagged as content a
+    # reader announces every rule as if it carried information.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
+
     if {$opts(-zebra)} {
         for {set r 0} {$r < $num_rows} {incr r} {
             if {$r % 2 == 1} {
@@ -2982,18 +3019,46 @@ proc ::pdf4tcllib::table::simpleTable {pdf x y col_widths rows args} {
         $pdf line $col_x $y $col_x [expr {$y + $num_rows * $row_height}]
     }
 
-    # Cell contents
-    $pdf setFont $opts(-font_size) Helvetica
+    ::pdf4tcllib::tag::artifactEnd $pdf
+
+    # Cell contents. table::render and table::draw have carried a logical
+    # structure since 0.6; this one did not, so a reader got a run of
+    # unrelated strings where the other two give a navigable table.
+    #
+    # The first row is the header -- that is what -header_bg paints. Its
+    # cells are TH with /Scope Column, which ISO 14289-1 clause 7.5 asks
+    # for wherever the relation between header and data cell does not
+    # follow from the layout, and with a single header row it never does.
+    #
+    # Only tagged when there is something to tag: since pdf4tcl 0.9.4.43 a
+    # Table has to hold a row and a TR has to hold a cell, so an empty
+    # table would be refused at tagEnd.
+    set doTag [expr {$num_rows > 0 && $num_cols > 0}]
+    set hasHeader [expr {[llength $opts(-header_bg)] == 3}]
+
+    if {$doTag} { ::pdf4tcllib::tag::begin $pdf Table }
+    $pdf setFont $opts(-font_size) [::pdf4tcllib::_defaultFamily]
     for {set r 0} {$r < $num_rows} {incr r} {
         set row [lindex $rows $r]
         set text_y [expr {$y + $r * $row_height + $row_height/2 + $opts(-font_size)/3}]
         set col_x $x
+        if {$doTag} { ::pdf4tcllib::tag::begin $pdf TR }
         for {set c 0} {$c < $num_cols} {incr c} {
             set cell_text [lindex $row $c]
+            if {$doTag} {
+                if {$hasHeader && $r == 0} {
+                    ::pdf4tcllib::tag::begin $pdf TH -scope Column
+                } else {
+                    ::pdf4tcllib::tag::begin $pdf TD
+                }
+            }
             $pdf text $cell_text -x [expr {$col_x + $pad}] -y $text_y
+            if {$doTag} { ::pdf4tcllib::tag::end $pdf }
             set col_x [expr {$col_x + [lindex $col_widths $c]}]
         }
+        if {$doTag} { ::pdf4tcllib::tag::end $pdf }
     }
+    if {$doTag} { ::pdf4tcllib::tag::end $pdf }
 
     return [expr {$y + $num_rows * $row_height + $pad}]
 }
@@ -3380,6 +3445,9 @@ proc ::pdf4tcllib::drawing::interpolate {c1 c2 t} {
 proc ::pdf4tcllib::drawing::gradient_v {pdf x y w h c1 c2 {steps 100}} {
     # Vertikaler Farbverlauf (oben after unten).
     # c1: start color top, c2: end color bottom.
+    # A gradient is decoration: dozens of filled strips that mean nothing
+    # individually. Left as content a reader walks through every one.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
     if {$steps < 1} { set steps 1 }
     set dh [expr {$h / double($steps)}]
     for {set i 0} {$i < $steps} {incr i} {
@@ -3389,10 +3457,14 @@ proc ::pdf4tcllib::drawing::gradient_v {pdf x y w h c1 c2 {steps 100}} {
         set yy [expr {$y + $i * $dh}]
         $pdf rectangle $x $yy $w $dh -filled 1
     }
+    ::pdf4tcllib::tag::artifactEnd $pdf
 }
 
 proc ::pdf4tcllib::drawing::gradient_h {pdf x y w h c1 c2 {steps 100}} {
     # Horizontaler Farbverlauf (links after rechts).
+    # A gradient is decoration: dozens of filled strips that mean nothing
+    # individually. Left as content a reader walks through every one.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
     if {$steps < 1} { set steps 1 }
     set dw [expr {$w / double($steps)}]
     for {set i 0} {$i < $steps} {incr i} {
@@ -3402,6 +3474,7 @@ proc ::pdf4tcllib::drawing::gradient_h {pdf x y w h c1 c2 {steps 100}} {
         set xx [expr {$x + $i * $dw}]
         $pdf rectangle $xx $y $dw $h -filled 1
     }
+    ::pdf4tcllib::tag::artifactEnd $pdf
 }
 
 # ============================================================
@@ -3604,17 +3677,33 @@ proc ::pdf4tcllib::drawing::_arcPoints {ptsVar cx cy r startDeg endDeg segments}
 #   package require pdf4tcllib::image 0.1
 #   pdf4tcllib::image::insert $pdf $tkImg -x 50 -y yVar -maxwidth 500
 
-# Tk is benoetigt for image-Funktionen.
-# In GUI-Apps (mdhelp4) immer vorhanden.
-catch {package require Tk}
-
+# Tk is needed ONLY by the image helpers -- they measure a Tk photo with
+# [image width]. Requiring it while the module loads pulls Tk into every
+# program that uses pdf4tcllib, batch scripts included.
+#
+# The consequence is measured and unpleasant: Tk_Init registers a main
+# loop, and any script without a closing "exit" then waits for a window
+# that never comes. On a machine without a display nothing shows -- loading
+# Tk fails there and everything runs through. In the collected example run
+# eight scripts hung this way, among them 45_pdfa.tcl, which has nothing to
+# do with user interfaces.
+#
+# Hence on demand, in the procedure that needs it.
 namespace eval ::pdf4tcllib::image {}
+
+proc ::pdf4tcllib::image::_needTk {} {
+    if {[llength [info commands ::image]] > 0} { return }
+    if {[catch {package require Tk} e]} {
+        return -code error "pdf4tcllib::image needs Tk: $e"
+    }
+}
 
 # ============================================================
 # Oeffentliche API
 # ============================================================
 
 proc ::pdf4tcllib::image::insert {pdf tkImg x yVar maxW yTop yBot pageNoVar pageW pageH margin fontSize {debug 0}} {
+    _needTk
     # Adds a Tk image centered (full width) to the PDF.
     #
     # The image is proportionally scaled to maxW.
@@ -3669,6 +3758,7 @@ proc ::pdf4tcllib::image::insert {pdf tkImg x yVar maxW yTop yBot pageNoVar page
 }
 
 proc ::pdf4tcllib::image::insertAt {pdf tkImg xPos yVar maxW yTop yBot pageNoVar pageW pageH margin fontSize {debug 0}} {
+    _needTk
     # Adds a Tk image at a specific X position.
     #
     # Wie insert, but with freier X-Positionierung.
@@ -3725,6 +3815,7 @@ proc ::pdf4tcllib::image::insertAt {pdf tkImg xPos yVar maxW yTop yBot pageNoVar
 # ============================================================
 
 proc ::pdf4tcllib::image::_extractImageData {tkImg} {
+    _needTk
     # Extracts RGB data from a Tk photo image.
     #
     # Returns Liste: width height RGB-Bytes (als Hex)
@@ -3799,6 +3890,29 @@ namespace eval ::pdf4tcllib::form {
         labelW            90
     }
 
+    # The font the blocks draw with. CFG holds Helvetica by default, but a
+    # caller who ran fonts::init wants the loaded TrueType instead --
+    # otherwise a form built for PDF/UA carries a section title in
+    # Helvetica-Bold, which is precisely the font that cannot be embedded,
+    # and the warning names a font the caller never asked for. Measured.
+    #
+    # An explicit form::configure -fontFamily still wins: it is only the
+    # default that follows fonts::init.
+    proc _family {{style ""}} {
+        variable CFG
+        set explicit [expr {$style eq "bold"
+                            ? $CFG(fontFamilyBold) : $CFG(fontFamily)}]
+        set builtin [expr {$style eq "bold" ? "Helvetica-Bold" : "Helvetica"}]
+        if {$explicit ne $builtin} { return $explicit }
+        if {[catch {::pdf4tcllib::fonts::hasTtf} ok] || !$ok} {
+            return $explicit
+        }
+        if {$style eq "bold"} {
+            return [::pdf4tcllib::fonts::fontSansBold]
+        }
+        return [::pdf4tcllib::fonts::fontSans]
+    }
+
     namespace export configure fieldHeight rowHeight section labelField row
     namespace export separator orderTable sumLine
 }
@@ -3851,23 +3965,27 @@ proc ::pdf4tcllib::form::section {pdf ctx yVar title} {
     set x   [dict get $ctx SX]
     set sw  [dict get $ctx SW]
 
-    # Hintergrundbalken
+    # Bar and frame carry no meaning -- tagged as content a screen reader
+    # announces them as if they did.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
     lassign $CFG(sectionBg) r g b
     $pdf setFillColor $r $g $b
     $pdf rectangle $x $y $sw [expr {$CFG(fieldH) + 2}] -filled 1
 
-    # Rahmen
     lassign $CFG(fieldBorder) lr lg lb
     $pdf setStrokeColor $lr $lg $lb
     $pdf setLineWidth $CFG(lineWidth)
     $pdf rectangle $x $y $sw [expr {$CFG(fieldH) + 2}]
+    ::pdf4tcllib::tag::artifactEnd $pdf
 
-    # Text
-    $pdf setFont $CFG(fontSizeSection) $CFG(fontFamilyBold)
+    # The title heads the section it opens.
+    $pdf setFont $CFG(fontSizeSection) [_family bold]
     lassign $CFG(labelColor) tr tg tb
     $pdf setFillColor $tr $tg $tb
     set textY [expr {$y + $CFG(fieldH) - 2}]
+    ::pdf4tcllib::tag::begin $pdf H2
     ::pdf4tcllib::unicode::safeText $pdf $title -x [expr {$x + 4}] -y $textY
+    ::pdf4tcllib::tag::end $pdf
 
     $pdf setFillColor 0 0 0
     $pdf setStrokeColor 0 0 0
@@ -3909,21 +4027,25 @@ proc ::pdf4tcllib::form::labelField {pdf ctx yVar label ftype args} {
         }
     }
 
-    # Label
-    $pdf setFont $CFG(fontSizeLabel) $CFG(fontFamily)
+    # A form field is an annotation; outside a structure element it cannot be
+    # reached from the tree. /Form is the type ISO 32000-1 table 337 gives for
+    # an interactive field, and the label is the alternate text a sighted
+    # reader sees anyway.
+    #
+    # The label text goes INSIDE the same element: it belongs to the field
+    # it names, and content outside every element is content a reader
+    # cannot place. Measured before this changed: one untagged painting
+    # operation per label -- a field with no visible name attached to it.
+    ::pdf4tcllib::tag::begin $pdf Form -alt $label
+
+    $pdf setFont $CFG(fontSizeLabel) [_family]
     lassign $CFG(labelColor) lr lg lb
     $pdf setFillColor $lr $lg $lb
     set textY [expr {$y + $fieldH - 2}]
     ::pdf4tcllib::unicode::safeText $pdf $label -x $x -y $textY
 
-    # Feld
-    $pdf setFont $CFG(fontSize) $CFG(fontFamily)
+    $pdf setFont $CFG(fontSize) [_family]
     set fx [expr {$x + $labelW + $CFG(labelGap)}]
-    # A form field is an annotation; outside a structure element it cannot be
-    # reached from the tree. /Form is the type ISO 32000-1 table 337 gives for
-    # an interactive field, and the label is the alternate text a sighted
-    # reader sees anyway.
-    ::pdf4tcllib::tag::begin $pdf Form -alt $label
     $pdf addForm $ftype $fx $y $fieldW $fieldH {*}$passArgs
     ::pdf4tcllib::tag::end $pdf
 
@@ -3997,19 +4119,21 @@ proc ::pdf4tcllib::form::row {pdf ctx yVar fields} {
         set fieldW [expr {$totalW - $labelW - $gap}]
         if {$fieldW < 12} { set fieldW 12 }
 
-        # Label
+        # Label and field in ONE Form element: the caption belongs to the
+        # field it names. Outside, it was content a reader cannot place --
+        # measured as one untagged painting operation per field.
+        ::pdf4tcllib::tag::begin $pdf Form -alt $label
+
         if {$label ne ""} {
-            $pdf setFont $CFG(fontSizeLabel) $CFG(fontFamily)
+            $pdf setFont $CFG(fontSizeLabel) [_family]
             lassign $CFG(labelColor) lr lg lb
             $pdf setFillColor $lr $lg $lb
             set textY [expr {$y + $fieldH - 2}]
             ::pdf4tcllib::unicode::safeText $pdf $label -x $x -y $textY
         }
 
-        # Feld
-        $pdf setFont $CFG(fontSize) $CFG(fontFamily)
+        $pdf setFont $CFG(fontSize) [_family]
         set fx [expr {$x + $labelW + $gap}]
-        ::pdf4tcllib::tag::begin $pdf Form -alt $label
         $pdf addForm $ftype $fx $y $fieldW $fieldH {*}$addArgs
         ::pdf4tcllib::tag::end $pdf
 
@@ -4034,11 +4158,14 @@ proc ::pdf4tcllib::form::separator {pdf ctx yVar {gap 4}} {
     set x  [dict get $ctx SX]
     set sw [dict get $ctx SW]
 
+    # A rule means nothing, it separates visually -- artifact.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
     lassign $CFG(lineColor) r g b
     $pdf setStrokeColor $r $g $b
     $pdf setLineWidth $CFG(lineWidth)
     $pdf line $x $y [expr {$x + $sw}] $y
     $pdf setStrokeColor 0 0 0
+    ::pdf4tcllib::tag::artifactEnd $pdf
 
     ::pdf4tcllib::page::_advance $ctx y $gap
 }
@@ -4121,7 +4248,7 @@ proc ::pdf4tcllib::form::orderTable {pdf ctx yVar headers colWidths \
         if {$r < $nData} { set row [lindex $data $r] }
 
         if {$cellForm eq ""} {
-            $pdf setFont $CFG(fontSize) $CFG(fontFamily)
+            $pdf setFont $CFG(fontSize) [_family]
         }
         set cx $x
         set colIdx 0
@@ -4228,7 +4355,7 @@ proc ::pdf4tcllib::form::sumLine {pdf ctx yVar colWidths label value args} {
             -id $fid -align right -init $finit {*}$aa
         ::pdf4tcllib::tag::end $pdf
     } else {
-        $pdf setFont $CFG(fontSize) $CFG(fontFamily)
+        $pdf setFont $CFG(fontSize) [_family]
         set valX [expr {$x + $totalW - 4}]
         ::pdf4tcllib::unicode::safeText $pdf $value -x $valX -y $textY -align right
     }
