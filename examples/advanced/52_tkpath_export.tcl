@@ -191,3 +191,13 @@ $pdf write -file $outfile
 $pdf destroy
 
 puts "tkpath demo: $outfile"
+
+# Dieses Skript laedt Tk. Ein Skript, das nur eine Datei erzeugt, endet
+# deshalb mit exit -- sonst wartet der Prozess auf ein Fenster, das nie
+# geschlossen wird, und der Sammellauf laeuft in seine Zeitgrenze (120 s
+# je Skript).
+#
+# In einer Umgebung OHNE tkpath faellt das nie auf: dort scheitert schon das
+# package require, das Skript endet sofort, und der Lauf ist gruen. Der
+# Fehler wartet auf der Maschine, die die Erweiterung hat.
+exit 0

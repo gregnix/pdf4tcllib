@@ -28,7 +28,7 @@ proc runScript {f outdir} {
     return [runner::runScript $f $outdir [needsWish $f]]
 }
 
-set scripts [lsort [glob -directory $scriptDir {[0-9]*.tcl}]]
+set scripts [runner::collect $scriptDir {[0-9]*.tcl} 20 {nummerierte Beispiele}]
 set ok 0; set fail 0; set errors {}
 
 puts "=== Basic Examples ([llength $scripts] Skripte) ==="
@@ -64,7 +64,32 @@ if {$doValidate && [file exists $validatorScript]} {
     set pdfs [lsort [glob -nocomplain [file join $pdfdir *.pdf]]]
     if {[llength $pdfs] > 0} {
         puts "\n=== PDF-Validierung ==="; puts [string repeat "-" 60]
-        catch { exec tclsh $validatorScript -nocolor {*}$pdfs 2>@1 } vout
-        puts $vout
+        # Der Interpreter kommt aus dem laufenden Prozess, nicht aus dem
+        # PATH -- ein blankes `tclsh` prueft sonst unter der Generation,
+        # die dort zuerst steht, waehrend der Lauf unter einer anderen
+        # gestartet wurde.
+        #
+        # Der Validator liefert rc=2, sobald eine Datei eine WARNUNG hat
+        # (nicht eingebettete Standardfonts etwa). Tcl haengt in dem Fall
+        # "child process exited abnormally" an die Ausgabe -- das stand
+        # bisher unkommentiert unter dem Ergebnis und sah aus wie ein
+        # Fehler des Laufs. Der Rueckgabewert wird jetzt gelesen und
+        # benannt.
+        set vrc [catch { exec [info nameofexecutable] $validatorScript \
+                -nocolor {*}$pdfs 2>@1 } vout]
+        if {$vrc && [lindex $::errorCode 0] eq "CHILDSTATUS"} {
+            set code [lindex $::errorCode 2]
+            # Tcls Zusatzzeile aus der Ausgabe nehmen, sie sagt nichts.
+            set vout [string trim [string map \
+                    {"child process exited abnormally" ""} $vout]]
+            puts $vout
+            if {$code == 2} {
+                puts "(Validator: Warnungen, keine Fehler -- rc=2)"
+            } else {
+                puts "(Validator: rc=$code)"
+            }
+        } else {
+            puts $vout
+        }
     }
 }

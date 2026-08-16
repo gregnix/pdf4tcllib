@@ -397,7 +397,7 @@ pdf4tclforms::sumLine    $pdf $ctx y {25 210 45 70} "Total:" ""
 Aliased primitives: `configure`, `section`, `labelField`, `row`, `separator`,
 `orderTable`, `sumLine`, `fieldHeight`, `rowHeight`. Global look (fonts, colors,
 spacing, default label width and field height) is set with
-`pdf4tclforms::configure` — see `docs/API.md` (form namespace).
+`pdf4tclforms::configure` — see `docs/en/reference/API.md` (form namespace).
 
 ---
 

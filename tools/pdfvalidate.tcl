@@ -29,6 +29,7 @@ set CFG(timeout)         15    ;# Sekunden pro Tool
 set CFG(use_python)       1    ;# pdfanalyze.py nutzen (braucht PyMuPDF)
 set CFG(verbose)          0    ;# ausfuehrliche Ausgabe
 set CFG(color)            1    ;# ANSI-Farben
+set CFG(password)        ""    ;# Passwort fuer verschluesselte PDFs (-password)
 
 # pdfanalyze.py -- im gleichen Verzeichnis wie pdfvalidate.tcl
 set CFG(pdfanalyze) [file join [file dirname [file normalize [info script]]] \
@@ -75,7 +76,32 @@ set TOOLS(python3)  [toolAvail python3]
 proc runTool {args} {
     global CFG
     set rc [catch {exec {*}$args 2>@1} out]
+    # Tcl haengt bei rc!=0 "child process exited abnormally" an die Ausgabe.
+    # Ungefiltert landete das frueher mitten im Bericht, wo eine Dateigroesse
+    # stehen sollte:  "FAIL  demo.pdf  ... \n child process exited abnormally  5KB"
+    set out [string trim [string map \
+        {"child process exited abnormally" ""} $out]]
     return [list $rc $out]
+}
+
+# Ein passwortgeschuetztes PDF ist kein defektes PDF. poppler und qpdf sagen
+# das unterschiedlich; beide Formen hier an einer Stelle.
+proc needsPassword {out} {
+    return [expr {[string match -nocase {*incorrect password*} $out]
+               || [string match -nocase {*invalid password*} $out]
+               || [string match -nocase {*password is required*} $out]}]
+}
+
+# Werkzeugspezifische Passwort-Argumente.
+proc pwArgs {tool} {
+    global CFG
+    if {$CFG(password) eq ""} { return {} }
+    switch -- $tool {
+        qpdf     { return [list --password=$CFG(password)] }
+        pdfinfo  -
+        pdffonts { return [list -opw $CFG(password) -upw $CFG(password)] }
+        default  { return {} }
+    }
 }
 
 proc jsonGet {json key} {
@@ -95,7 +121,10 @@ proc checkQpdf {pdf} {
     if {!$TOOLS(qpdf)} {
         return [list skip "qpdf nicht installiert"]
     }
-    lassign [runTool qpdf --check $pdf] rc out
+    lassign [runTool qpdf {*}[pwArgs qpdf] --check $pdf] rc out
+    if {$rc != 0 && [needsPassword $out]} {
+        return [list skip "verschluesselt -- mit -password <pw> pruefbar"]
+    }
     if {$rc == 0} {
         return [list ok ""]
     } else {
@@ -114,7 +143,10 @@ proc checkPdfinfo {pdf} {
     if {!$TOOLS(pdfinfo)} {
         return [list skip "pdfinfo nicht installiert" {} {}]
     }
-    lassign [runTool pdfinfo $pdf] rc out
+    lassign [runTool pdfinfo {*}[pwArgs pdfinfo] $pdf] rc out
+    if {$rc != 0 && [needsPassword $out]} {
+        return [list skip "verschluesselt -- mit -password <pw> pruefbar" {} {}]
+    }
     if {$rc != 0} {
         return [list fail $out {} {}]
     }
@@ -137,7 +169,10 @@ proc checkPdffonts {pdf} {
     if {!$TOOLS(pdffonts)} {
         return [list skip "pdffonts nicht installiert" 0]
     }
-    lassign [runTool pdffonts $pdf] rc out
+    lassign [runTool pdffonts {*}[pwArgs pdffonts] $pdf] rc out
+    if {$rc != 0 && [needsPassword $out]} {
+        return [list skip "verschluesselt -- mit -password <pw> pruefbar" 0]
+    }
     if {$rc != 0} {
         return [list fail $out 0]
     }
@@ -295,6 +330,7 @@ proc usage {} {
     puts "  -v                   Ausfuehrliche Ausgabe"
     puts "  -nocolor             Keine ANSI-Farben"
     puts "  -nopython            pdfanalyze.py nicht nutzen"
+    puts "  -password <pw>       Passwort fuer verschluesselte PDFs"
     puts "  -h                   Diese Hilfe"
     puts ""
     puts "Exit-Code: 0=OK  1=FAIL  2=WARN"
@@ -311,6 +347,7 @@ while {$i < $argc} {
         -v      { set CFG(verbose) 1 }
         -nocolor { set CFG(color) 0 }
         -nopython { set CFG(use_python) 0 }
+        -password { incr i; set CFG(password) [lindex $argv $i] }
         -dir {
             incr i
             set dir [lindex $argv $i]

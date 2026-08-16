@@ -42,8 +42,18 @@ Dependency: pdf4tcl (in `vendors/pkg/` or system-wide).
 | core    | readFile, version, validate_pdf |
 | tag     | Structure elements and artifacts, silent when tagging is off |
 
-> **Note:** `tablelist` and `textwidget` modules are distributed as
-> separate packages (`pdf4tcltable`, `pdf4tcltext`) since version 0.2.
+> **Note:** several modules are distributed as separate packages, each
+> with its own reference page:
+>
+> | package | namespace | |
+> |---|---|---|
+> | `pdf4tcltable` | `tablelist` | [export a tablelist widget](pdf4tcltable.md) |
+> | `pdf4tcltext` | `textwidget` | [export a Tk text widget](pdf4tcltext.md) |
+> | `pdf4tclforms` | `forms` | [declarative fillable forms](pdf4tclforms.md) |
+> | `pdf4tcllabels` | `labels` | [label sheets and roll labels](pdf4tcllabels.md) |
+> | `pdf4tcltoc` | `toc` | [table of contents](pdf4tcltoc.md) |
+> | `pdf4tclchart` | `chart` | [bar, line and pie charts](pdf4tclchart.md) |
+> | `pdf4tclflow` | `flow` | [text through columns and pages](pdf4tclflow.md) |
 
 > **Tagged PDF:** with `$pdf tagged 1` the building blocks mark up what they
 > draw -- tables as `Table`/`TR`/`TH`/`TD`, form fields as `Form` with their
@@ -220,6 +230,21 @@ Header (centered, with separator line) and footer (text left, page number right)
 pdf4tcllib::page::header $pdf $ctx "My Document"
 pdf4tcllib::page::footer $pdf $ctx "Confidential" $pageNo
 ```
+
+**The page label in the footer is German by default** -- `Seite 3`. It is
+document content, not a message, and changing the default would silently
+change the language of existing documents, so it stays. Two ways to set it:
+
+```tcl
+# once per application
+set ::pdf4tcllib::page::pageLabelFormat "Page %s"
+
+# or per call
+pdf4tcllib::page::footer $pdf $ctx "Confidential" $pageNo 9 -pagelabel "Page %s"
+```
+
+`%s` is replaced by the page number. `page::number` next to it needs no
+setting -- it writes the language-free `- 3 / 10 -`.
 
 ### Page number
 
@@ -665,6 +690,27 @@ pdf4tcllib::drawing::textScaled  $pdf "Hello" $x $y 1.5 0.8 12
 pdf4tcllib::drawing::textSkewed  $pdf "Hello" $x $y 20 0 12
 ```
 
+### drawing::watermark
+
+A diagonal stamp across the page -- DRAFT, CONFIDENTIAL, a copy number.
+
+```tcl
+pdf4tcllib::drawing::watermark $pdf $ctx "DRAFT"
+pdf4tcllib::drawing::watermark $pdf $ctx "COPY 3" -angle 30 -size 60 \
+        -color {0.9 0.85 0.85}
+```
+
+Returns the font size used; with the default `-size 0` the text is fitted
+to the page diagonal, which on A4 at 45 degrees gives about 163 pt for a
+seven-letter word.
+
+**Call it first on a page.** pdf4tcl has no alpha channel, so the stamp is
+drawn in plain light grey and everything drawn afterwards sits on top of
+it. The other way round it would hide the content.
+
+It is marked as a Pagination artifact: it says something about the copy in
+your hand, not about the text. See [`pdf4tclflow.md`](pdf4tclflow.md).
+
 ### drawing::frame, drawing::separator
 
 ```tcl
@@ -724,7 +770,7 @@ Common options: `-ctx`, `-maxwidth`, `-header 0|1`, `-headerbg`, `-headerfg`,
 `-cellstyles`, `-rowstyles`, `-rowindent`, `-footer` / `-footerbg` /
 `-footerbold`, `-yvar`, `-pagevar`.
 
-> Full reference: [`docs/table-draw.md`](table-draw.md).
+> Full reference: [`docs/en/reference/table-draw.md`](table-draw.md).
 
 ### simpleTable
 

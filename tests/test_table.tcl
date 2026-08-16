@@ -89,7 +89,7 @@ proc ::tblHookCb {} {
     return $::pb_top
 }
 
-test table-pagebreak-hook "pageBreakCmd drives pagination; internal pageNo untouched" -setup {
+test table-pagebreak-hook "pageBreakCmd drives pagination; internal pageNo untouched" -constraints pdf -setup {
     set ::pb_calls 0
 } -body {
     set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true]
@@ -111,7 +111,7 @@ test table-pagebreak-hook "pageBreakCmd drives pagination; internal pageNo untou
     unset -nocomplain ::pb_calls ::pb_pdf ::pb_top
 }
 
-test table-pagebreak-legacy "no pageBreakCmd: internal pagination increments" -body {
+test table-pagebreak-legacy "no pageBreakCmd: internal pagination increments" -constraints pdf -body {
     set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true]
     $pdf startPage
     set margin 40.0 ; set pageW 595.0 ; set pageH 842.0
@@ -143,12 +143,17 @@ proc tagTestPdf {} {
     return $pdf
 }
 
+# pdf4tcl is the one external dependency. Tests that need it are marked,
+# so that a fresh clone WITHOUT pdf4tcl reports skips rather than failures
+# -- a red suite is how a new reader decides the library is broken.
+testConstraint pdf [expr {![catch {package require pdf4tcl}]}]
+
 proc tagTableData {} {
     return [list {Artikel Menge Preis} {left right right} \
             {Schraube 100 4,90} {Mutter 200 3,50}]
 }
 
-test table-tag-off "ohne tagged bleibt alles unveraendert" -body {
+test table-tag-off "ohne tagged bleibt alles unveraendert" -constraints pdf -body {
     # The important half of the feature: existing code must not change.
     set pdf [::pdf4tcl::new %AUTO% -paper a4 -margin 40 -orient 1 -compress 0]
     $pdf startPage
@@ -162,7 +167,7 @@ test table-tag-off "ohne tagged bleibt alles unveraendert" -body {
     list [string first "BDC" $data] [string first "/StructTreeRoot" $data]
 } -result {-1 -1}
 
-test table-tag-structure "mit tagged entsteht Table/TR/TH/TD" -body {
+test table-tag-structure "mit tagged entsteht Table/TR/TH/TD" -constraints pdf -body {
     set pdf [tagTestPdf]
     set y 40 ; set pno 1
     ::pdf4tcllib::table::render $pdf [tagTableData] 0 y 500 20 750 pno \
@@ -176,7 +181,7 @@ test table-tag-structure "mit tagged entsteht Table/TR/TH/TD" -body {
             [expr {[string first "/S /TD" $data] >= 0}]
 } -result {1 1 1 1}
 
-test table-tag-scope "Kopfzellen tragen /Scope Column" -body {
+test table-tag-scope "Kopfzellen tragen /Scope Column" -constraints pdf -body {
     # ISO 14289-1 clause 7.5 wants /Scope wherever the header relation cannot
     # be derived from the layout, which is the case for a single header row.
     set pdf [tagTestPdf]
@@ -189,7 +194,7 @@ test table-tag-scope "Kopfzellen tragen /Scope Column" -body {
     expr {[string first "/Scope /Column" $data] >= 0}
 } -result 1
 
-test table-tag-artifacts "Gitterlinien und Zebrastreifen sind Artefakte" -body {
+test table-tag-artifacts "Gitterlinien und Zebrastreifen sind Artefakte" -constraints pdf -body {
     # Decoration announced as content is worse than no tagging at all.
     set pdf [tagTestPdf]
     set y 40 ; set pno 1
@@ -201,7 +206,7 @@ test table-tag-artifacts "Gitterlinien und Zebrastreifen sind Artefakte" -body {
     expr {[string first "/Artifact" $data] >= 0}
 } -result 1
 
-test table-tag-noprobe "die Erkennung hinterlaesst kein leeres Element" -body {
+test table-tag-noprobe "die Erkennung hinterlaesst kein leeres Element" -constraints pdf -body {
     # The probe used to be a tagBegin/tagEnd pair, which left an empty Span
     # sitting in the tree next to the table. tagArtifact answers the same
     # question and creates no element.
@@ -221,7 +226,7 @@ proc tagDrawCols {} {
             [list -header Preis -align right]]
 }
 
-test table-tag-draw "table::draw zeichnet ebenfalls aus" -body {
+test table-tag-draw "table::draw zeichnet ebenfalls aus" -constraints pdf -body {
     # draw is the richer implementation -- footer, cell styles, row indent --
     # and pdf4tcltable delegates to it, so tagging here covers the tablelist
     # export as well.
@@ -237,7 +242,7 @@ test table-tag-draw "table::draw zeichnet ebenfalls aus" -body {
             [expr {[string first "/Scope /Column" $data] >= 0}]
 } -result {1 1 1 1}
 
-test table-tag-draw-footer "die Fusszeile ist eine eigene TR" -body {
+test table-tag-draw-footer "die Fusszeile ist eine eigene TR" -constraints pdf -body {
     set pdf [tagTestPdf]
     ::pdf4tcllib::table::draw $pdf 0 40 [tagDrawCols] \
             {{Schraube 100 4,90}} -footer {Summe {} 4,90}
@@ -250,7 +255,7 @@ test table-tag-draw-footer "die Fusszeile ist eine eigene TR" -body {
     set n
 } -result 3
 
-test table-tag-draw-off "ohne tagged bleibt draw unveraendert" -body {
+test table-tag-draw-off "ohne tagged bleibt draw unveraendert" -constraints pdf -body {
     set pdf [::pdf4tcl::new %AUTO% -paper a4 -margin 40 -orient 1 -compress 0]
     $pdf startPage
     $pdf setFont 10 Helvetica
@@ -366,5 +371,60 @@ test form-tag-no-warning "ein ausgezeichnetes Formular loest keine Warnung aus" 
 } -cleanup {
     set ::pdf4tcl::warnings {}
 } -result 0
+
+# ============================================================
+# Schriftuebersteuerung -- -font / -boldfont bis in die Datei
+# ============================================================
+#
+# Bis 0.3 nahm der Adapter beide Optionen an und wandte sie nicht an. Ein
+# Test auf "wird angenommen" haette das nicht gemerkt; gemessen wird deshalb
+# der eingebettete Fontname in der erzeugten Datei.
+
+proc tableFontsInPdf {file} {
+    set fh [open $file rb]
+    set d [read $fh]
+    close $fh
+    set out {}
+    foreach {full name} [regexp -all -inline {/BaseFont\s*/([A-Za-z0-9+,-]+)} $d] {
+        lappend out $name
+    }
+    return [lsort -unique $out]
+}
+
+proc tableRenderWith {args} {
+    set out [file join [file dirname [info script]] out zz-fontovr.pdf]
+    file mkdir [file dirname $out]
+    set t [tablelist::tablelist .__fo -columns {10 A left 8 B right} -showlabels 1]
+    $t insert end {Kaffee 12}
+    set pdf [::pdf4tcl::new %AUTO% -paper a4]
+    $pdf startPage
+    ::pdf4tcllib::tablelist::render $pdf $t 40 700 -maxwidth 300 {*}$args
+    $pdf write -file $out
+    $pdf destroy
+    destroy $t
+    set fonts [tableFontsInPdf $out]
+    file delete $out
+    return $fonts
+}
+
+test table-fontovr-1 "ohne Uebersteuerung der Satz aus fonts::init" \
+        -constraints tablelist -body {
+    tableRenderWith
+} -result {Helvetica Helvetica-Bold}
+
+test table-fontovr-2 "-font ersetzt den regulaeren Schnitt" \
+        -constraints tablelist -body {
+    tableRenderWith -font Times-Roman
+} -result {Helvetica-Bold Times-Roman}
+
+test table-fontovr-3 "-boldfont ersetzt den fetten Schnitt" \
+        -constraints tablelist -body {
+    tableRenderWith -boldfont Courier-Bold
+} -result {Courier-Bold Helvetica}
+
+test table-fontovr-4 "beide zusammen" -constraints tablelist -body {
+    tableRenderWith -font Times-Roman -boldfont Times-Bold
+} -result {Times-Bold Times-Roman}
+
 
 cleanupTests

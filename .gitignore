@@ -1,3 +1,13 @@
+# Generated output. The examples and howtos write here; nothing under
+# these directories is a source file.
+#
+# The pattern *.pdf alone was not enough: examples/advanced/pdf also
+# collects .ps and .csv files written by the batch and canvas demos, and
+# those were about to be committed.
+examples/*/pdf/
+docs/en/out/
+tests/out/
+
 *.pdf
 __pycache__/
 *.pyc

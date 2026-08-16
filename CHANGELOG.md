@@ -5,6 +5,422 @@ and module headers.
 
 ---
 
+## Unreleased -- features
+
+### Docs -- the four new modules reach the howtos, tutorials and reference
+
+The modules arrived with a reference page and one example each. What was
+missing is everything around them:
+
+* **`docs/en/tutorials/tutorial-02-full-report.md` + `.tcl`** -- the four
+  modules working together: contents page, two-column body, chart, table,
+  watermark on every page, in about eighty lines whose only pdf4tcl calls
+  are `startPage`, `endPage` and `write`. Measured on the generated file:
+  the five headings really are on pages 2, 3, 3, 4 and 4, the structure
+  tree holds `TOC`, `TOCI`, `H1`, `H2`, `Figure`, `Table`/`TR`/`TH`/`TD`
+  and `P`, six bookmarks, `getUntaggedCount` 0.
+* **`docs/en/howtos/howto-charts.md` + `.tcl`** -- including the two things
+  that go wrong: two charts side by side without a shared `-max` compare
+  nothing, and tagging switched on halfway through leaves everything before
+  it outside the tree. The script reported 35 loose drawing operations
+  until the `tagged 1` call moved to the top; it reports 0 now.
+* **`docs/en/howtos/howto-toc.md` + `.tcl`** -- the two-pass method and why
+  the content script must not have side effects. The script checks itself:
+  it reads every heading back with `pdftotext` and prints `mismatches: 0`.
+* **`reference/accessibility.md`** -- the table of what each block marks up
+  now covers `labels::render` (`Sect` per label), `toc::heading` and
+  `toc::render` (`H1`..`H6`, `TOC`, `TOCI`), `chart::*` (`Figure` with
+  alternate text) and `drawing::watermark` (Pagination artifact) -- with
+  the limit stated plainly: `getUntaggedCount` counts what is unmarked,
+  not what is understandable, so when the numbers matter, print them as a
+  table as well.
+* **`reference/API.md`** -- `drawing::watermark` documented, and the note
+  about separate packages replaced by a table of all seven with links.
+
+Also fixed: `docs/en/README.md` carried the Reference section **twice**,
+once empty and once complete -- an append that had duplicated the heading
+instead of filling it. One section now, with the new howtos and the
+tutorial in it.
+
+`run-all-examples.tcl` goes from OK=8 to **OK=11**, all green.
+
+### Added -- pdf4tclflow: text through columns and pages
+
+New module. `text::writeParagraph` sets one paragraph in one box; this is
+the other thing -- a body of text that fills column one, continues in
+column two and carries on at the top of the next page.
+
+The page break is a script the caller supplies (`-newpage`), because only
+the caller knows what a new page needs. **Without it the flow stops at the
+last column and returns what is left in `rest`** rather than dropping it:
+a report missing its last page and saying nothing about it looks exactly
+like a complete one.
+
+`measure` returns the wrapped lines with an empty string where a paragraph
+ends. That empty string is the paragraph gap, and keeping it in the line
+list is what makes the column arithmetic one loop instead of two -- a
+column never starts with it, which is what would otherwise leave a stray
+gap at the top of a column.
+
+Measured, and contrary to what I assumed when writing the test: **more
+columns do not save pages.** The same text took 3 pages in one column and
+3 pages in three. Narrow columns break more often and leave more space at
+every line end. The test now asserts what actually has to hold -- that
+nothing is lost at any column count -- and says why.
+
+### Added -- drawing::watermark
+
+A diagonal stamp, fitted to the page diagonal by default, marked as a
+`Pagination` artifact: it says something about the copy in your hand, not
+about the text. Call it first on a page -- pdf4tcl has no alpha channel, so
+it has to go underneath rather than over the content.
+
+Verified by reading the text matrix out of the uncompressed stream: on A4
+at 45 degrees `ENTWURF` comes out at 162.6 pt and both ends of the baseline
+sit inside the page. Worth writing down: `pdftotext` returns rotated text
+scrambled (`EN F TW U R`), so it cannot be used to check a watermark -- the
+string is intact in the content stream.
+
+23 tests, `examples/basic/42_columns.tcl`,
+`docs/en/reference/pdf4tclflow.md`.
+
+### Changed -- three German comments the translation pass had missed
+
+`text::wrap` and `drawing::textRotated` carried German lines in the middle
+of English blocks; the stop-word search had not caught them because the
+surrounding text was English. Found while reading those two procedures for
+the flow module.
+
+### Added -- pdf4tclchart: bar, line and pie charts
+
+New module, data-driven and Tk-free -- no canvas, no image, built on
+`drawing::` and the pdf4tcl primitives.
+
+```tcl
+set y [::pdf4tcllib::chart::bar $pdf $x $y $w 190 \
+    {Jan 120 Feb 145 Mar 98 Apr 160} -title "Revenue" -values 1]
+```
+
+Every command takes a box and returns the y below the chart, so charts
+stack like paragraphs. Data comes as flat `label value` pairs or as a list
+of pairs, and `line` also takes several series.
+
+`niceScale` rounds the axis to something a reader can divide -- 137 becomes
+150, not 137. The palette has six colours with distinct **lightness**, not
+just distinct hue, so a chart survives being printed in grey.
+
+With tagging on, a chart is one `Figure` element with an alternate text and
+everything inside is a `Layout` artifact. That is the honest markup: a bar
+chart is a picture of numbers. If the numbers matter to a reader, put them
+in a table as well -- `getUntaggedCount` reports 0 either way, which is
+exactly the limit of what it can tell you.
+
+Verified by reading the numbers back out of the uncompressed content
+stream rather than by looking at the picture:
+
+    data          120    145     98    160
+    bar height  86.52 104.55  70.66 115.36
+    ratio      0.7210 0.7210 0.7210 0.7210
+
+The ratio being constant is the test: a scale that swaps two bars, shifts
+the zero line or gets the span wrong breaks it. 27 tests,
+`examples/basic/41_charts.tcl`, `docs/en/reference/pdf4tclchart.md`.
+
+Two of my own tests were wrong before the module was: counting every `l`
+operator in the stream counts the grid lines too (10, not the 3 data
+segments), and `/Artifact` lives in the content stream, so it is invisible
+unless the document is written with `-compress 0`. Both now measure a
+difference or read the right place.
+
+### Added -- pdf4tcltoc: a table of contents with real page numbers
+
+New module. The page number of a heading is known only after layout, and
+putting the contents in front shifts every one of them, so the document is
+laid out twice: once into a throwaway document to collect the headings,
+once for real with the contents written first.
+
+```tcl
+::pdf4tcllib::toc::document $pdf a4 {
+    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Introduction"
+    ...
+} -title "Contents"
+```
+
+`heading` draws the heading with the matching structure type (`H1`..`H6`)
+and adds a bookmark. The contents is a `TOC` element, each line a `TOCI`,
+the dot leaders are `Layout` artifacts.
+
+The two halves check each other: if the page count calculated before
+writing differs from what `render` actually wrote, that is an error rather
+than a document whose numbers point one page astray. That guard fired on
+the very first run of the module and found the defect below.
+
+Measured on a five-chapter document: the contents says pages 2, 2, 3, 4, 4
+and `pdftotext` finds the headings on pages 2, 2, 3, 4, 4. `pageCount` and
+`render` agree for 1, 5, 40, 43, 44, 45, 90 and 120 entries.
+
+The content script runs **twice** and must not have side effects -- that is
+inherent to the method and is documented at every entry point.
+
+17 tests, `examples/basic/40_toc.tcl`,
+`docs/en/reference/pdf4tcltoc.md`.
+
+### Fixed -- writeParagraph returned a y from the wrong end of the page
+
+`text::writeParagraph` has always documented "Returns the next Y position
+after the last rendered line". It did not. It took the value from
+`drawTextBox -newyvar`, which reports the position measured from the BOTTOM
+of the page while the y passed in counts from the top. Measured with
+pdf4tcl 0.9.4.43:
+
+    y=200, one line at size 11    returned 633.5   correct is 216.0
+    same, -orient 0               returned 10191.5 (the 10000 pt box
+                                  height leaking into the result)
+
+The offset was constant at any y, which is what made it identifiable: the
+returned value is `pageHeight - (y + height)`.
+
+Nobody had noticed because no caller in the tree used the return value --
+`grep` finds zero. It surfaced while building the table of contents, which
+is the first thing here that stacks text and needs to know where the last
+paragraph ended.
+
+The height now comes from `-linesvar`, which is orientation-free and
+reports what was actually laid out, and the direction from
+`$pdf cget -orient`. Both orientations verified.
+
+### Added -- roll printer labels
+
+`pdf4tcllabels` gains four roll formats -- Dymo 99012 and 11354, Zebra
+100x150, Brother DK-11202 -- and `paper roll` for `define`. One label per
+page, and the page *is* the label: `sheet` answers with the size in points
+rather than a paper name, which is exactly the `{width height}` pair
+pdf4tcl takes for `-paper`. The caller passes `[dict get $geo paper]` to
+`startPage` either way and never has to know the difference; `render`,
+`place` and `calibration` work unchanged. Measured: three labels give three
+pages of 252 x 102 pt, which is 89 x 36 mm. A `roll` format with more than
+one label per page is rejected.
+
+Six tests. Also worth writing down, because it cost ten minutes: `#` is not
+a comment inside the braces of `array set` -- a remark placed in the sheet
+catalogue became two list elements and the module stopped loading with
+"list must have an even number of elements".
+
+---
+
+## Unreleased -- cleanup
+
+### Added -- tests for the two modules that had none
+
+`pdf4tcllabels` and `pdf4tcltext` had no test file at all. 55 tests now
+cover them, and writing them turned up two things:
+
+* **`place` returned positions off the sheet.** `render` checks `-start`
+  and `-only` against `perSheet`; `place` is exported, is shown directly in
+  the howto, and answered position 24 of a 24-per-sheet form with the ninth
+  row of an eight-row sheet (y = 839.1 pt), -1 with a row above the page.
+  It now rejects anything outside `0..perSheet-1`.
+* **Sheet 3475 did not fit an A4 page.** `top 4.5` plus six pitches plus one
+  label height is 300.6 mm on a 297 mm sheet -- the last row printed 3.6 mm
+  past the edge. Seven rows of 42.3 mm leave 0.9 mm for both margins, so
+  `top` is 0.45. A new test checks every catalogue entry against its page,
+  in both directions. **Check this against a real sheet before a long run:
+  paper is the only measurement that counts here.**
+
+One test taught rather than found: a Tk text widget is never empty -- it
+always holds a trailing newline, so rendering one produces exactly one line.
+The first version of that test expected y unchanged and was wrong.
+
+### Fixed -- three examples were never checked by anything
+
+`56_tablelist_pdf.tcl`, `57_textwidget_pdf.tcl` and
+`58_tablelist_miscwidgets.tcl` export from a button and were marked `skip`
+in the runner, so a full run reported success for three files nobody had
+looked at. All three already had an `exportPDF` procedure and took the
+output directory from `argv`, so the batch path was four lines each -- the
+same `-batch` block 54 and 55 have had all along.
+
+`58` needed more than that. Its header advertises that it finds
+`miscWidgets_tile.tcl` automatically through `package ifneeded`; it does,
+checks the file exists -- and then throws the result away and asks through
+`tk_getOpenFile` anyway. The automatic detection was dead code, and the
+modal dialog is why the demo hung rather than failed. The found path now
+wins, the dialog appears only when there is nothing at that path, and under
+`-batch` there is a message instead, because a dialog in a batch run is a
+hang with a window on it.
+
+    before   advanced: 30 OK / 3 Fehler / 3 interactive
+    after    advanced: 32 OK / 4 Fehler / 0 interactive
+
+The fourth failure is `58` reporting `can't find package combobox` -- the
+tablelist demo it loads needs it. That is an environment gap like tkpath,
+tko and cheatsheet, and it is now visible instead of skipped.
+
+### Fixed -- orderTable drew past the edge of the page
+
+`form::orderTable` documents its column widths as "sum <= SW" and nothing
+checked it. Measured 2026-08-15: two columns of SW each produced a table
+whose right edge sat at 1020 pt on a 595 pt page. Valid PDF, invisible
+content, not a word from anyone -- qpdf is happy, the page is simply wider
+than the paper.
+
+It now refuses, and the message names both numbers, because "too wide" does
+not help anyone do the arithmetic:
+
+    orderTable: column widths total 963.8 pt, the text width is only
+    481.9 pt -- the table would be drawn past the edge of the page
+
+Half a point of tolerance for rounding. Fewer widths than headers is
+rejected too. Nothing in the examples or tests hit either check.
+
+### Fixed -- a spec with a list of sections blamed the library
+
+`forms::renderSchema` takes `sections` as a dict, name -> section. Handed a
+list of sections -- the obvious mistake, and the templates do not make the
+difference visible -- `dict for` failed with a bare "missing value to go
+with key" pointing into the library rather than at the caller's spec. It
+now says what it wants. (I made exactly this mistake while writing the test
+below, which is how it was found.)
+
+### Added -- tests for the form helpers
+
+`tests/test_formhelpers.tcl`, 24 tests. `test_forms.tcl` covers templates
+and schema keys; the layer below it -- the geometry of the building blocks
+and what actually lands in the file -- had none. These read `/Rect`, `/FT`
+and `/T` back out of the generated PDF rather than trusting the call to
+have worked:
+
+* configuration arithmetic: `rowHeight` = `fieldHeight` + `rowGap`
+* `orderTable`: the two new guards, `-cellForm` producing one field per
+  cell, `-emptyRows` costing height
+* `row`: a field never gets a width of zero or less, however long the
+  label and however small the width -- the clamp described in the source
+  comment now has a test
+* `labelField`: text becomes `/FT /Tx`, checkbox becomes `/FT /Btn`
+* `forms::field`: a field without a type is a text field; an unknown type
+  is an error; a multiline field is taller
+* `renderSchema`: y advances, the fields appear, both error paths
+
+### Changed -- comments are English and pure ASCII
+
+The remaining German comments in all five modules are translated: 54 blocks
+in `pdf4tcllib`, 12 in `pdf4tclforms`, 9 in `pdf4tcltable`, 5 in
+`pdf4tcltext`, 1 in `pdf4tcllabels`. Not a word of code changed -- proved
+rather than asserted: with every comment line removed from both the old and
+the new file, the two are byte-identical (3416 code lines in the main
+module alone).
+
+The ASCII check found three lines the German-word search had missed: an em
+dash in `# High surrogate -- ...`, `# Hintergruende`, and an ellipsis
+character in a `fdef:` example. Every module is now pure ASCII, which is
+what the project rule asks for.
+
+Left in place: `"Bundesanstalt fuer Immobilienaufgaben"` in
+`pdf4tcllabels` -- a German authority name used as an example inside an
+English sentence, and the point of the example is that it is wider than
+70 mm.
+
+### Changed -- messages are English, the page label is now settable
+
+Eight German strings were left in the library. Seven are messages and are
+now English, per the project rule (`form::configure`, `orderTable`,
+`sumLine`, the paper size error, four `fonts::init` notices). One existing
+test hung on the old German wording and was rewritten -- it now checks that
+the message names the known paper sizes, which is what the caller needs.
+
+The eighth was not a message: `page::footer` wrote a hardcoded German
+`Seite N` **into the document**, while `page::number` right next to it
+writes the language-free `- 3 / 10 -`. Changing that default would have
+silently changed the language of every existing document, so it stays; it
+is settable now, per call with `-pagelabel` or once via
+`::pdf4tcllib::page::pageLabelFormat`. Measured: default `Seite 3`,
+`-pagelabel "Page %s"` -> `Page 3`, namespace variable `p. %s` -> `p. 3`.
+Four tests, and `footer` rejects an unknown option instead of ignoring it.
+
+Not touched: about 108 German comments across the five modules. That is a
+separate pass, and a mechanical translation without reading each one would
+lose more than it gains.
+
+### Docs -- pdf4tcllabels had no reference page
+
+Every other module has one; the label module had two howtos and nothing
+else, and neither `README.md` nor `API.md` mentioned it -- 0 occurrences of
+the name in either. `docs/en/reference/pdf4tcllabels.md` documents the
+catalogue, the five commands, the three text helpers and the tagging
+behaviour, and `README.md` gets a section. Every table and every example in
+it was run against the module rather than read out of the source comments;
+the sheet table is printed from `sheet`, the sheet counts (1, 24, 25, 49
+records -> 1, 1, 2, 3 sheets) come from `render`, and the tagged run
+reports `/Document`, `/Sect`, `/P` with `getUntaggedCount` = 0.
+
+### Fixed -- `-font` / `-boldfont` were accepted and ignored
+
+The two per-call face overrides of `pdf4tcltable::render` and `renderRange`
+went nowhere: 0.3 delegates drawing to `table::draw`, and nothing carried
+them across. `table::draw` now takes `-fontreg` / `-fontbold`, `_dwFont`
+takes an override dict, and the adapter passes the two options through.
+Measured on the embedded font names of the output:
+
+    no override                Helvetica, Helvetica-Bold
+    -font Times-Roman          Times-Roman, Helvetica-Bold
+    -boldfont Courier-Bold     Helvetica, Courier-Bold
+
+Note for anyone who passed them before: they now take effect.
+
+### Docs -- reference moved under docs/en/
+
+The six reference documents (`API`, `accessibility`, `pdf4tclforms`,
+`pdf4tcltable`, `pdf4tcltext`, `table-draw`) sat beside `docs/en/`, which
+held the runnable howtos and tutorials. They are all English, so they now
+live in `docs/en/reference/`, listed from `docs/en/README.md`. Nine links in
+`README.md` and inside the documents moved with them; a link check over
+every `.md` in the tree reports zero dead links (it found three left over
+from the move, which are fixed).
+
+### Fixed -- a collected run over a half-empty directory looked green
+
+`runner::collect` replaces the bare `glob` in `run_basic.tcl` and
+`run_advanced.tcl`. It warns when a directory holds fewer scripts than could
+possibly be right. The case that prompted it: a misfiled copy of
+`run_advanced.tcl` with three examples in the repository root, whose `glob`
+found exactly those three and reported `2 OK / 0 Fehler` -- it looked like a
+passed advanced run and had seen 3 of 36 scripts. A warning, not an error:
+whoever empties a directory on purpose should be allowed to, and should see
+it.
+
+### Fixed -- five procedures accepted every option
+
+`render`, `renderRange`, `simpleTable`, `renderSchema` and
+`textwidget::render` all used the bare `array set opts $args` pattern: a
+made-up option was stored and never read. Measured 2026-08-15,
+`-quatsch 1` went through `pdf4tcltable::render` without a word. Each of
+the five now checks the key against its own defaults and rejects an odd
+number of option words. This matters most where an option exists but is
+not applied -- `-font` / `-boldfont` in the 0.3 adapter -- because the
+caller otherwise gets silence for an answer.
+
+### Docs -- the 0.2 supplement was folded in
+
+`docs/pdf4tcltable-0.2-footer-unicode.md` said in its own third line that
+it should be folded into `docs/pdf4tcltable.md`. Two versions later it had
+not been, and the consequence was real: `-footer`, `-footerbg` and
+`-footerbold` exist in the 0.3 module but were missing from the option
+table, so anyone reading the main document did not know the footer row
+existed. Options, a `Footer row` section and a `Unicode` section are now in
+`pdf4tcltable.md`; the supplement is removed. Nothing referenced it.
+
+### Fixed -- the validator called an encrypted PDF broken
+
+`tools/pdfvalidate.tcl` reported `demo_38_encrypted.pdf` as FAIL
+("Incorrect password") -- a document that is password-protected on
+purpose. Encryption is now reported as a skip, and `-password <pw>` hands
+the password to qpdf, pdfinfo and pdffonts so the file can really be
+checked (`-password benutzer` -> `PDF 1.5, 1 page(s), encrypted`).
+Tcl's `child process exited abnormally` no longer leaks into the report,
+where it used to land in the column meant for the file size.
+
+---
+
 ## pdf4tcllib 0.6.1
 
 ### Fixed -- Tk was pulled in by every caller

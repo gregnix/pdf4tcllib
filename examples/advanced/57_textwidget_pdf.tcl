@@ -278,3 +278,13 @@ proc exportPDF {} {
     .btns.exp configure -bg "#006600" -state disabled
     puts "PDF: $outPDF"
 }
+
+# Run headless when -batch is given. The flag comes AFTER the output
+# directory, because argv[0] is the directory. Without this the demo can
+# only be checked by a human clicking the export button -- and a run that
+# skips it reports success for something nobody looked at.
+if {[lsearch $argv -batch] >= 0} {
+    update
+    exportPDF
+    destroy .
+}

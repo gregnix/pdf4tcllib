@@ -10,6 +10,10 @@ pdf4tcllib fills the most common gaps in pdf4tcl:
 - **Drawing** -- gradients, polygons, stars, text rotation
 - **Units** -- mm, cm, inches to points and back
 - **Form layout** -- label+field, sections, order tables (`form` namespace)
+- **Label sheets** -- Zweckform/Avery geometry, printer calibration, text fitting (`pdf4tcllabels`)
+- **Table of contents** -- real page numbers and bookmarks, through a two-pass layout (`pdf4tcltoc`)
+- **Charts** -- bar, line and pie from data, Tk-free, tagged as figures (`pdf4tclchart`)
+- **Column flow** -- text through columns and pages, and a diagonal watermark (`pdf4tclflow`)
 
 
 ## Accessible documents (0.6.1)
@@ -29,7 +33,7 @@ puts [$pdf getUntaggedCount]     ;# 0 is what PDF/UA asks for
 ```
 
 A document built from header, paragraph, table, form section, field and page
-number reports zero. Guide: [`docs/accessibility.md`](docs/accessibility.md),
+number reports zero. Guide: [`docs/en/reference/accessibility.md`](docs/en/reference/accessibility.md),
 runnable: [`examples/basic/39_accessible.tcl`](examples/basic/39_accessible.tcl).
 
 ## Accessible tables (0.6)
@@ -59,29 +63,34 @@ simply keep working.
 
 ## Installation
 
-Single file -- no subdirectory needed:
-
-```
-myproject/
-  tm/
-    pdf4tcllib-0.4.tm   (single file, all 10 modules)
-```
+Copy the modules you need into a directory on your `tcl::tm` path:
 
 ```tcl
-tcl::tm::path add /path/to/tm
-package require pdf4tcllib 0.3
+tcl::tm::path add /path/to/lib
+package require pdf4tcllib 0.6
 ```
 
-All modules (fonts, unicode, text, math, table, page, drawing, units, image, form)
-are contained in one file. Optional sibling modules:
+`pdf4tcllib-0.6.1.tm` is one file and holds the core: fonts, unicode, text,
+math, table, page, drawing, units, image, form, tag. The others are
+separate packages, each usable on its own -- take only what you use.
 
-```
-lib/pdf4tcltable-0.3.tm   Tablelist -> PDF
-lib/pdf4tcltext-0.1.tm    Tk text   -> PDF
-lib/pdf4tclforms-0.1.2.tm   AcroForm layouts (declarative specs + templates)
-```
+| file | `package require` | |
+|---|---|---|
+| `lib/pdf4tcllib-0.6.1.tm` | `pdf4tcllib` | the core, needed by all of the below |
+| `lib/pdf4tcltable-0.3.tm` | `pdf4tcltable` | export a Tk `tablelist` widget |
+| `lib/pdf4tcltext-0.1.tm` | `pdf4tcltext` | export a Tk `text` widget |
+| `lib/pdf4tclforms-0.2.tm` | `pdf4tclforms` | declarative AcroForm layouts |
+| `lib/pdf4tcllabels-0.1.tm` | `pdf4tcllabels` | label sheets and roll labels |
+| `lib/pdf4tcltoc-0.1.tm` | `pdf4tcltoc` | table of contents with real page numbers |
+| `lib/pdf4tclchart-0.1.tm` | `pdf4tclchart` | bar, line and pie charts |
+| `lib/pdf4tclflow-0.1.tm` | `pdf4tclflow` | text through columns and pages |
 
-The only external dependency is pdf4tcl.
+The only external dependency is pdf4tcl. `pdf4tcltable` and `pdf4tcltext`
+additionally need Tk and the widget they export; nothing else needs Tk.
+
+`vendors/tm/` holds a copy of every module for use as a bundled
+dependency. `make check` reports any drift between the two, `make sync`
+fixes it.
 
 ### Requirements
 
@@ -99,7 +108,7 @@ fonts (Helvetica, Courier) remain usable.
 ## Quick start
 
 ```tcl
-package require pdf4tcllib 0.3
+package require pdf4tcllib 0.6
 
 # Initialize fonts (searches for TTF automatically)
 pdf4tcllib::fonts::init
@@ -235,7 +244,7 @@ arrows (`rightarrow leftarrow`).
 
 Not supported (use external KaTeX-CLI for these): fractions with
 horizontal bar, square roots with vinculum, matrices, multi-line
-equations. See `docs/API.md#math` for the complete reference.
+equations. See `docs/en/reference/API.md#math` for the complete reference.
 
 ### table -- Tables
 
@@ -254,8 +263,8 @@ set y [pdf4tcllib::table::draw $pdf $x $y $cols $data \
 pdf4tcllib::table::simpleTable $pdf $x $y {140 200 140} $rows -zebra 1
 ```
 
-Full reference: `docs/table-draw.md`. For a Tk `tablelist` widget use the
-`pdf4tcltable` package (`docs/pdf4tcltable.md`).
+Full reference: `docs/en/reference/table-draw.md`. For a Tk `tablelist` widget use the
+`pdf4tcltable` package (`docs/en/reference/pdf4tcltable.md`).
 
 ### page -- Page context
 
@@ -339,7 +348,7 @@ Helvetica; only WinAnsi characters are reliable in form fields.
 ### pdf4tclforms -- fillable PDF forms (optional module)
 
 ```tcl
-package require pdf4tclforms 0.1.2
+package require pdf4tclforms 0.2
 
 set ctx [pdf4tcllib::page::context a4 -margin 25]
 set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
@@ -359,7 +368,111 @@ See `examples/advanced/60_pdf4tclforms_demo.tcl` (four sample PDFs: callnote, in
 and `examples/advanced/61_pdf4tclforms_schema.tcl` (custom schema without template).
 Custom schemas: Wartungsprotokoll (61), Fehlermeldung (62).
 Order form with a live subtotal, VAT and total: `examples/advanced/63_pdf4tclforms_bestellung.tcl`.
-Full API reference: `docs/pdf4tclforms.md`.
+Full API reference: `docs/en/reference/pdf4tclforms.md`.
+
+## pdf4tcllabels -- label sheets
+
+Sheets of adhesive labels. The module owns the geometry, the caller writes
+once what goes on a label.
+
+```tcl
+package require pdf4tcllabels
+
+set sheets [::pdf4tcllib::labels::render $pdf 3474 $addresses {x y w h rec} {
+    $pdf setFont 10 [::pdf4tcllib::fonts::fontSans]
+    $pdf text [dict get $rec name] -x [expr {$x + 8}] -y [expr {$y + 20}]
+} -start 2]
+```
+
+Formats 3427 (A6), 3474, 3475, 3483, Avery 4737, plus `define` for your
+own. `calibration` writes a test sheet for the printer offset -- one to two
+millimetres is the rule, not the exception, and `-offsetx`/`-offsety`
+settle it permanently. `fitSize`, `wrap` and `ellipsize` fit text into the
+box; with tagging on, every label is one structure element.
+
+Full reference: `docs/en/reference/pdf4tcllabels.md`. Howtos:
+`docs/en/howtos/howto-label-sheets.md`,
+`docs/en/howtos/howto-shipping-labels.md`.
+
+## pdf4tcltoc -- table of contents
+
+A contents page with page numbers that are actually right, plus a bookmark
+per heading. The catch is inherent: the page number of a heading is known
+only after layout, and the contents itself shifts them. So the document is
+laid out twice -- once into a throwaway document to learn the numbers, once
+for real.
+
+```tcl
+package require pdf4tcltoc
+
+set result [::pdf4tcllib::toc::document $pdf a4 {
+    $pdf startPage
+    set y [dict get $ctx top]
+    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Introduction"
+    ...
+    $pdf endPage
+} -title "Contents"]
+```
+
+The content script therefore runs **twice** and must not have side effects.
+With tagging on, the contents is a `TOC` element, each line a `TOCI`, and
+the dot leaders are artifacts.
+
+Full reference: `docs/en/reference/pdf4tcltoc.md`. Example:
+`examples/basic/40_toc.tcl`.
+
+## pdf4tclchart -- charts
+
+Bar, line and pie, data-driven and Tk-free -- no canvas, no image.
+
+```tcl
+package require pdf4tclchart
+
+set y [::pdf4tcllib::chart::bar $pdf $x $y $w 190 \
+    {Jan 120 Feb 145 Mar 98 Apr 160} -title "Revenue" -values 1]
+set y [::pdf4tcllib::chart::pie $pdf $x $y $w 200 \
+    {North 35 South 25 East 20 West 20} -legend 1]
+```
+
+Every command takes a box and returns the y below the chart, so charts
+stack like paragraphs. The scale is rounded to something a reader can
+divide -- 137 becomes 150. The palette has six colours with distinct
+lightness, so the chart survives being printed in grey. With tagging on,
+a chart is one `Figure` element with an alternate text and everything
+inside it is an artifact.
+
+Full reference: `docs/en/reference/pdf4tclchart.md`. Example:
+`examples/basic/41_charts.tcl`.
+
+## pdf4tclflow -- columns, and a watermark
+
+Text that fills column one, continues in column two and carries on at the
+top of the next page.
+
+```tcl
+package require pdf4tclflow
+
+set result [::pdf4tcllib::flow::columns $pdf $ctx $body -columns 2 -newpage {
+    $pdf endPage
+    $pdf startPage
+    ::pdf4tcllib::drawing::watermark $pdf $ctx "DRAFT"
+    ::pdf4tcllib::page::header $pdf $ctx "Chapter 1"
+}]
+```
+
+The page break is a script the caller supplies -- only the caller knows
+what a new page needs. Without it the flow stops at the last column and
+returns what is left in `rest` rather than dropping it.
+
+`drawing::watermark` draws a diagonal stamp, fitted to the page and marked
+as a Pagination artifact. Call it **first** on a page: there is no
+transparency in pdf4tcl, so it has to go underneath.
+
+Note, measured: more columns do **not** save pages -- narrow columns break
+more often. Columns are for readability, not density.
+
+Full reference: `docs/en/reference/pdf4tclflow.md`. Example:
+`examples/basic/42_columns.tcl`.
 
 
 ## Examples
@@ -408,8 +521,48 @@ Extracted and generalized from:
 
 All functions are designed for reuse in any pdf4tcl-based project.
 
+## Running the tests
+
+```bash
+make test                 # 348 tests in 16 files
+tclsh tests/run_all.tcl   # the same, directly
+```
+
+The GUI tests need Tk and a display; without one they are counted as
+skipped, not as passes. On a headless machine:
+
+```bash
+Xvfb :99 -screen 0 1280x1024x24 & export DISPLAY=:99
+```
+
+The examples write PDFs and check them with `qpdf`, `pdfinfo` and
+`pdffonts` where those are installed:
+
+```bash
+tclsh examples/run_all.tcl          # 41 basic, 36 advanced
+tclsh docs/en/run-all-examples.tcl  # every howto and tutorial
+```
+
+Every script under `docs/en/` runs and reports how much of its own content
+it left outside the structure tree. Zero is the point of the exercise.
+
+## Contributing
+
+Two habits this library is built on, and pull requests are held to them:
+
+**Measure, do not assert.** A claim in a comment, a README or a test needs
+to have been run. Several of the bugs found here were in code that looked
+right and in tests that were green for the wrong reason.
+
+**Every change gets a test, and every test gets a counter-test.** Switch
+the change off and check that the test goes red. A test that passes without
+the fix measures nothing -- that has happened here often enough to make it
+a rule.
+
 ## License
 
 BSD 2-Clause License. See [LICENSE](LICENSE) for details.
+
+Copyright (c) 2026 Gregor (gregnix).
 
 Copyright (c) 2026 Gregor (gregnix)

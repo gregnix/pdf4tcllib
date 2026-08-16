@@ -45,9 +45,9 @@ source [file join $scriptDir .. _runner.tcl]
 set ::interactive {
     54_canvas_vs_tkopath.tcl    -batch
     55_canvas_items_matrix.tcl  -batch
-    56_tablelist_pdf.tcl        skip
-    57_textwidget_pdf.tcl       skip
-    58_tablelist_miscwidgets.tcl skip
+    56_tablelist_pdf.tcl        -batch
+    57_textwidget_pdf.tcl       -batch
+    58_tablelist_miscwidgets.tcl -batch
 }
 
 proc interactiveMode {f} {
@@ -65,8 +65,8 @@ proc runScript {f outdir} {
 }
 
 # Skripte aufteilen: [0-9]*.tcl = examples, d*.tcl = demos
-set exScripts   [lsort [glob -directory $scriptDir {[0-9]*.tcl}]]
-set demoScripts [lsort [glob -directory $scriptDir {d[0-9]*.tcl}]]
+set exScripts   [runner::collect $scriptDir {[0-9]*.tcl}  20 {nummerierte Beispiele}]
+set demoScripts [runner::collect $scriptDir {d[0-9]*.tcl}  5 {Demos d01-d08}]
 
 if {$noDemos} { set demoScripts {} }
 
@@ -130,7 +130,25 @@ if {$doValidate && [file exists $validatorScript]} {
     set pdfs [lsort [glob -nocomplain [file join $pdfdir *.pdf]]]
     if {[llength $pdfs] > 0} {
         puts "\n=== PDF-Validierung ==="; puts [string repeat "-" 60]
-        catch { exec tclsh $validatorScript -nocolor {*}$pdfs 2>@1 } vout
-        puts $vout
+        # Interpreter aus dem laufenden Prozess (nicht das blanke tclsh
+        # aus dem PATH), und der Rueckgabewert wird gelesen: der Validator
+        # liefert rc=2 bei blossen Warnungen, worauf Tcl "child process
+        # exited abnormally" an die Ausgabe haengt -- das sah bisher aus
+        # wie ein Fehler des Laufs.
+        set vrc [catch { exec [info nameofexecutable] $validatorScript \
+                -nocolor {*}$pdfs 2>@1 } vout]
+        if {$vrc && [lindex $::errorCode 0] eq "CHILDSTATUS"} {
+            set code [lindex $::errorCode 2]
+            set vout [string trim [string map \
+                    {"child process exited abnormally" ""} $vout]]
+            puts $vout
+            if {$code == 2} {
+                puts "(Validator: Warnungen, keine Fehler -- rc=2)"
+            } else {
+                puts "(Validator: rc=$code)"
+            }
+        } else {
+            puts $vout
+        }
     }
 }

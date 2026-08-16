@@ -50,24 +50,38 @@ if {![file exists $tl_demo]} {
 }
 
 # ---------------------------------------------------------------------------
-# 2. miscWidgets_tile.tcl per Dialog auswaehlen
+# 2. miscWidgets_tile.tcl finden -- der Dialog nur, wenn es sein muss
 # ---------------------------------------------------------------------------
+#
+# Der Pfad wurde oben schon aus `package ifneeded` ermittelt und geprueft.
+# Bis hierher wurde er dann verworfen und trotzdem per tk_getOpenFile
+# gefragt: die im Dateikopf beschriebene automatische Erkennung war toter
+# Code, und das Skript blieb im modalen Dialog stehen -- weshalb es weder
+# im Stapel lief noch je geprueft wurde.
+#
+# Jetzt: gefundener Pfad gewinnt. Nur wenn dort nichts liegt, wird gefragt
+# -- und unter -batch gibt es stattdessen eine Meldung, denn ein Dialog im
+# Stapellauf ist ein Haenger mit Fenster.
 
-# Vorschlagspfad aus tablelist-Library (falls vorhanden)
-set tl_ver  [package require tablelist_tile]
-set tl_info [package ifneeded tablelist_tile $tl_ver]
-set tl_lib  [file dirname [lindex $tl_info end]]
 set tl_demos [file join $tl_lib demos]
+set batch    [expr {[lsearch $argv -batch] >= 0}]
 
-set tl_demo [tk_getOpenFile \
-    -title       "miscWidgets_tile.tcl auswaehlen" \
-    -initialdir  [expr {[file isdir $tl_demos] ? $tl_demos : $tl_lib}] \
-    -initialfile "miscWidgets_tile.tcl" \
-    -filetypes   {{"Tcl Scripts" {.tcl}} {"All files" *}}]
+if {![file exists $tl_demo]} {
+    if {$batch} {
+        puts stderr "Demo 58: miscWidgets_tile.tcl nicht gefunden unter\
+                $tl_demos -- im Stapelbetrieb wird nicht gefragt."
+        exit 1
+    }
+    set tl_demo [tk_getOpenFile \
+        -title       "miscWidgets_tile.tcl auswaehlen" \
+        -initialdir  [expr {[file isdir $tl_demos] ? $tl_demos : $tl_lib}] \
+        -initialfile "miscWidgets_tile.tcl" \
+        -filetypes   {{"Tcl Scripts" {.tcl}} {"All files" *}}]
 
-if {$tl_demo eq ""} {
-    # Abgebrochen
-    exit 0
+    if {$tl_demo eq ""} {
+        # Abgebrochen
+        exit 0
+    }
 }
 
 if {![file exists $tl_demo]} {
@@ -222,4 +236,14 @@ proc exportPDF {} {
     .ctrl.status configure -text "Geschrieben: [file tail $outPDF]"
     .ctrl.btns.exp state disabled
     puts "PDF: $outPDF"
+}
+
+# Run headless when -batch is given. The flag comes AFTER the output
+# directory, because argv[0] is the directory. Without this the demo can
+# only be checked by a human clicking the export button -- and a run that
+# skips it reports success for something nobody looked at.
+if {[lsearch $argv -batch] >= 0} {
+    update
+    exportPDF
+    destroy .
 }

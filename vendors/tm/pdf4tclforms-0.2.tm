@@ -1,7 +1,7 @@
-# pdf4tclforms -- Deklarative PDF-AcroForm-Layouts
+# pdf4tclforms -- declarative PDF AcroForm layouts
 #
-# Baut auf pdf4tcllib::form (addForm-Hilfen) auf und ergaenzt
-# renderSchema / Vorlagen fuer ausfuellbare Formulare.
+# Builds on pdf4tcllib::form (the addForm helpers) and adds renderSchema
+# and templates for fillable forms.
 #
 # Copyright (c) 2026 Gregor (gregnix)
 # BSD 2-Clause License
@@ -21,9 +21,9 @@ package require pdf4tcl 0.9.4.34
 package provide pdf4tclforms 0.2
 
 namespace eval ::pdf4tcllib::forms {
-    # form:: exportiert seine Procs zwar, aber wir rufen sie hier bewusst
-    # vollqualifiziert (::pdf4tcllib::form::...) auf -- kein namespace import,
-    # damit form:: und forms:: (ein Buchstabe Unterschied) nicht kollidieren.
+    # form:: does export its procedures, but they are called fully
+    # qualified here on purpose (::pdf4tcllib::form::...) and not imported,
+    # so that form:: and forms:: -- one letter apart -- cannot collide.
 }
 
 # ---------------------------------------------------------------- helpers
@@ -77,7 +77,7 @@ proc ::pdf4tcllib::forms::_labelWithRequired {pdf x y label required fieldH} {
 }
 
 proc ::pdf4tcllib::forms::_fieldAddArgs {fdef} {
-    # Nur echte addForm-Optionen — Schema-Keys wie "label" nie durchreichen.
+    # Real addForm options only -- never pass schema keys such as "label".
     # Appearance-Optionen (align/color/border*) brauchen pdf4tcl 0.9.4.30+,
     # calculate pdf4tcl 0.9.4.32+, format pdf4tcl 0.9.4.33+.
     set addArgs {}
@@ -128,7 +128,7 @@ proc ::pdf4tcllib::forms::_addForm {pdf ftype x y w h fdef} {
     ::pdf4tcllib::tag::end $pdf
 }
 
-# Checkbox mit Beschriftung rechts daneben (Telefonprotokoll-Stil).
+# A checkbox with its caption to the right, phone-log style.
 proc ::pdf4tcllib::forms::checkboxLine {pdf ctx yVar fdef {pagebreak 0}} {
     upvar 1 $yVar y
     array set CFG [_cfg]
@@ -222,7 +222,7 @@ proc ::pdf4tcllib::forms::radioGroup {pdf ctx yVar fdef {pagebreak 0}} {
     ::pdf4tcllib::page::_advance $ctx y [expr {$totalH + $CFG(rowGap)}]
 }
 
-# Button-Leiste: eine oder mehrere pushbuttons nebeneinander.
+# Button bar: one or more pushbuttons side by side.
 # fdef: {type buttons items {{id ID caption "Text" action submit|reset|url ?url ".."?} ..}}
 proc ::pdf4tcllib::forms::buttonBar {pdf ctx yVar fdef {pagebreak 0}} {
     upvar 1 $yVar y
@@ -252,8 +252,8 @@ proc ::pdf4tcllib::forms::buttonBar {pdf ctx yVar fdef {pagebreak 0}} {
     ::pdf4tcllib::page::_advance $ctx y [expr {$bh + $CFG(rowGap)}]
 }
 
-# Signaturfeld: Beschriftung (label) darueber, dann eine hohe Signaturbox.
-# fdef: {type signature label "Unterschrift:" ?placeholder "…"? ?fieldh 45? ?readonly?}
+# Signature field: the caption above, then a tall signature box.
+# fdef: {type signature label "Unterschrift:" ?placeholder "..."? ?fieldh 45? ?readonly?}
 proc ::pdf4tcllib::forms::signatureLine {pdf ctx yVar fdef {pagebreak 0}} {
     upvar 1 $yVar y
     array set CFG [_cfg]
@@ -286,7 +286,7 @@ proc ::pdf4tcllib::forms::signatureLine {pdf ctx yVar fdef {pagebreak 0}} {
     ::pdf4tcllib::page::_advance $ctx y [expr {$sigH + $CFG(rowGap)}]
 }
 
-# Ein Feld aus Dict-Spec (text, combobox, password, ...).
+# One field from a dict spec (text, combobox, password, ...).
 proc ::pdf4tcllib::forms::field {pdf ctx yVar fdef {pagebreak 0}} {
     upvar 1 $yVar y
     array set CFG [_cfg]
@@ -315,9 +315,9 @@ proc ::pdf4tcllib::forms::field {pdf ctx yVar fdef {pagebreak 0}} {
     set x  [dict get $ctx SX]
     set sw [dict get $ctx SW]
 
-    # Mehrzeilige Felder: Label auf eigener Zeile oben, Feld in voller Breite
-    # darunter. So kann ein langes Label nicht in die Feldbox hineinragen
-    # (das Label-links/Feld-rechts-Layout ist nur fuer einzeilige Felder gedacht).
+    # Multiline fields: the label on its own line above, the field in full
+    # width below. That way a long label cannot reach into the field box --
+    # the label-left/field-right layout is meant for single-line fields.
     if {$multiline} {
         set lineH [expr {$CFG(fontSizeLabel) + 4}]
         ::pdf4tcllib::forms::_ensureSpace $pdf $ctx y \
@@ -363,7 +363,7 @@ proc ::pdf4tcllib::forms::field {pdf ctx yVar fdef {pagebreak 0}} {
     ::pdf4tcllib::page::_advance $ctx y [expr {$fieldH + $CFG(rowGap)}]
 }
 
-# Tabelle mit optional editierbaren Zellen (addForm text pro Zelle).
+# A table with optionally editable cells, one addForm text field per cell.
 proc ::pdf4tcllib::forms::entryTable {pdf ctx yVar tblSpec {pagebreak 0}} {
     upvar 1 $yVar y
     array set CFG [_cfg]
@@ -384,8 +384,8 @@ proc ::pdf4tcllib::forms::entryTable {pdf ctx yVar tblSpec {pagebreak 0}} {
     }
     if {$editable} {
         lappend args -cellForm $idPrefix
-        # Per-Spalten-Optik: columns {col {align right format {...}} ...}
-        # -> addForm-Optionen pro Spalte (nur editierbare Zellen).
+        # Per-column appearance: columns {col {align right format {...}} ...}
+        # -> addForm options per column, for editable cells only.
         if {[dict exists $tblSpec columns]} {
             set cellOpts {}
             dict for {ci copts} [dict get $tblSpec columns] {
@@ -399,7 +399,7 @@ proc ::pdf4tcllib::forms::entryTable {pdf ctx yVar tblSpec {pagebreak 0}} {
             }
             if {[dict size $cellOpts]} { lappend args -cellOpts $cellOpts }
         }
-        # Platz fuer die gesamte Tabelle sichern (optionaler Seitenumbruch).
+        # Reserve room for the whole table, with an optional page break.
         set rh [expr {$rowH eq {} ? $CFG(fieldH) : $rowH}]
         set nRows [expr {[llength $data] + $emptyRows}]
         set need  [expr {($rh + 2) + $nRows * $rh + $CFG(rowGap)}]
@@ -457,13 +457,13 @@ proc ::pdf4tcllib::forms::_fieldToRowDict {fdef} {
     return $out
 }
 
-# Rendert einen Summen-Eintrag. Statisch (nur label/value) oder als berechnetes
-# Feld, wenn id/calculate/over angegeben ist (-calculate braucht pdf4tcl 0.9.4.32+).
-#   id         Feld-Id der Wert-Zelle
-#   calculate  {op {feld1 feld2 ...}}  (op: sum|product|average|min|max)
-#   over       {idPrefix col count ?start?}  -- Autosumme ueber eine
-#              editierbare Tabellenspalte (Zellen idPrefix_row_col)
-#   init       statischer Vorabwert (in Nicht-JS-Viewern sichtbar)
+# Renders a total line: static with label/value only, or a calculated
+# field when id/calculate/over is given (-calculate needs pdf4tcl 0.9.4.32+).
+#   id         field id of the value cell
+#   calculate  {op {field1 field2 ...}}  (op: sum|product|average|min|max)
+#   over       {idPrefix col count ?start?}  -- automatic total over an
+#              editable table column (cells idPrefix_row_col)
+#   init       a static value up front, visible in viewers without JS
 proc ::pdf4tcllib::forms::_renderSum {pdf ctx yVar s} {
     upvar 1 $yVar y
     set widths [_getdef $s widths {}]
@@ -513,24 +513,50 @@ proc ::pdf4tcllib::forms::renderSection {pdf ctx yVar sdef {pagebreak 0}} {
     }
 }
 
-# Haupt-API: komplettes Formular aus Spec-Dict.
+# The main entry point: a complete form from a spec dict.
+# Rejects an option the caller made up. Without this, `array set opts $args`
+# accepts every key: a typo, a renamed option or an option this version does
+# not implement is silently stored and never read. Measured 2026-08-15:
+# `-quatsch 1` went through pdf4tcltable::render without a word.
+proc ::pdf4tcllib::forms::_checkOpts {who defaults args_} {
+    if {[llength $args_] % 2} {
+        return -code error "$who: expected an even number of option/value words"
+    }
+    foreach {key val} $args_ {
+        if {![dict exists $defaults $key]} {
+            return -code error \
+                "$who: unknown option $key (allowed: [join [lsort [dict keys $defaults]] { }])"
+        }
+    }
+}
+
 proc ::pdf4tcllib::forms::renderSchema {pdf ctx spec args} {
     array set opts {
         -yvar      y
         -pagebreak 0
     }
+    _checkOpts ::pdf4tcllib::forms::renderSchema [array get opts] $args
     array set opts $args
     upvar 1 $opts(-yvar) y
 
     if {![dict exists $spec sections]} {
         error "pdf4tclforms::renderSchema: spec needs 'sections' key"
     }
+    # sections is a DICT, name -> section. Handed a list of sections --
+    # the obvious mistake, and the templates do not show the difference --
+    # `dict for` below fails with a bare "missing value to go with key",
+    # which points at this file rather than at the caller's spec.
+    set secs [dict get $spec sections]
+    if {[llength $secs] % 2} {
+        error "pdf4tclforms::renderSchema: 'sections' must be a dict\
+                (name -> section), not a list of sections"
+    }
 
     if {[dict exists $spec title]} {
         ::pdf4tcllib::forms::_drawTitle $pdf $ctx y [dict get $spec title]
     }
 
-    dict for {skey sdef} [dict get $spec sections] {
+    dict for {skey sdef} $secs {
         ::pdf4tcllib::forms::renderSection $pdf $ctx y $sdef $opts(-pagebreak)
     }
 

@@ -36,6 +36,12 @@ the tree next to the table.
 | `page::grid`, `drawing::gradient_v`, `gradient_h` | Layout artifacts |
 | `text::writeParagraph` | `P` by default, or whatever type you pass |
 | `pdf4tcltable` (tablelist export) | delegates to `table::draw`, so covered |
+| `labels::render` | one `Sect` per label -- each label is a unit of its own |
+| `toc::heading` | `H1`..`H6` by level, plus a PDF bookmark |
+| `toc::render` | `TOC` around the contents, `TOCI` per line, dot leaders as Layout artifacts |
+| `chart::bar`, `line`, `pie` | one `Figure` with alternate text; grid, bars and axis labels as Layout artifacts |
+| `flow::columns` | `P` by default, or whatever type you pass |
+| `drawing::watermark` | Pagination artifact |
 
 Two things worth knowing about that table.
 
@@ -46,7 +52,23 @@ loud between the numbers.
 
 **Pagination is its own artifact type** (ISO 32000-1 clause 14.8.2.2).
 Running heads and page numbers are not what the document says. Tagged as
-content, the title is announced again on every page.
+content, the title is announced again on every page. A watermark belongs
+here too: "DRAFT" says something about the copy in your hand, not about the
+text, and hearing it in the middle of a sentence is worse than not hearing
+it at all.
+
+**A chart is a picture of numbers, and is marked up as one.** `chart::bar`
+and its siblings produce a single `Figure` element with an alternate text
+(`-alt`, falling back to the title) and mark everything inside it as an
+artifact -- the grid, the bars, the axis labels. That is the honest answer:
+a reader gets "Revenue per month, bar chart" rather than a scattering of
+loose numbers in no particular order.
+
+It is also a limit worth stating plainly. **If the numbers themselves
+matter to a reader, put them in a table as well.** `getUntaggedCount`
+reports 0 either way -- it counts what is unmarked, not what is
+understandable, and a figure with a one-line description satisfies it
+completely.
 
 ---
 

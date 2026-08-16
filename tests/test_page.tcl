@@ -95,10 +95,14 @@ test page-ctx-a5 "A5: kleiner als A4" -body {
     expr {[dict get $a5 page_w] < [dict get $a4 page_w]}
 } -result 1
 
-test page-ctx-unknown "Unbekannte Groesse -> Fehler" -body {
+# Prueft die MELDUNG, nicht nur den Fehler: die Liste der bekannten Groessen
+# gehoert hinein, sonst weiss der Aufrufer nicht, was er stattdessen nehmen
+# soll. (Der Text war deutsch und ist jetzt englisch -- die Projektregel
+# sagt englische Meldungen. Dieser Test hing am alten Wortlaut.)
+test page-ctx-unknown "unbekannte Groesse -> Fehler, der die bekannten nennt" -body {
     catch {pdf4tcllib::page::context xxl} err
-    string match "*Unbekannte*" $err
-} -result 1
+    list [string match "*unknown paper size*" $err] [string match "*a4*" $err]
+} -result {1 1}
 
 # ============================================================
 # page::context -- Dict-Vollstaendigkeit
@@ -137,5 +141,64 @@ test page-lh-monoton "Groesserer Font = groessere Zeilenhoehe" -body {
     set h14 [pdf4tcllib::page::lineheight 14]
     expr {$h14 > $h10}
 } -result 1
+
+# ============================================================
+# Seitenbeschriftung im Fuss -- Dokumentinhalt, nicht Meldung
+# ============================================================
+#
+# footer schrieb fest "Seite N" in jedes PDF, waehrend page::number
+# daneben das sprachfreie "- 3 / 10 -" setzt. Die Vorgabe bleibt, damit
+# bestehende Dokumente sich nicht stillschweigend aendern; einstellbar ist
+# es jetzt zweifach.
+
+proc pageFooterText {args} {
+    set out [file join [file dirname [info script]] out zz-footer.pdf]
+    file mkdir [file dirname $out]
+    set pdf [::pdf4tcl::new %AUTO% -paper a4]
+    $pdf startPage
+    set ctx [::pdf4tcllib::page::context a4]
+    ::pdf4tcllib::page::footer $pdf $ctx "Fusstext" 3 9 {*}$args
+    $pdf write -file $out
+    $pdf destroy
+    set txt ""
+    catch {set txt [exec pdftotext $out -]}
+    file delete $out
+    return [string trim $txt]
+}
+
+# pdf4tcl is the one external dependency. Tests that need it are marked,
+# so that a fresh clone WITHOUT pdf4tcl reports skips rather than failures
+# -- a red suite is how a new reader decides the library is broken.
+testConstraint pdf [expr {![catch {package require pdf4tcl}]}]
+
+testConstraint pdftotext [expr {[llength [auto_execok pdftotext]] > 0}]
+
+test page-label-1 "Vorgabe ist unveraendert Seite N" -constraints {pdf pdftotext} -body {
+    string match "*Seite 3*" [pageFooterText]
+} -result 1
+
+test page-label-2 "-pagelabel setzt die Beschriftung je Aufruf" \
+        -constraints {pdf pdftotext} -body {
+    string match "*Page 3*" [pageFooterText -pagelabel "Page %s"]
+} -result 1
+
+test page-label-3 "die Namensraumvariable gilt fuer alle Aufrufe" \
+        -constraints {pdf pdftotext} -body {
+    set save $::pdf4tcllib::page::pageLabelFormat
+    set ::pdf4tcllib::page::pageLabelFormat "p. %s"
+    set got [pageFooterText]
+    set ::pdf4tcllib::page::pageLabelFormat $save
+    string match "*p. 3*" $got
+} -result 1
+
+test page-label-4 "unbekannte Option wird abgelehnt" -constraints pdf -body {
+    set pdf [::pdf4tcl::new %AUTO% -paper a4]
+    $pdf startPage
+    set ctx [::pdf4tcllib::page::context a4]
+    catch {::pdf4tcllib::page::footer $pdf $ctx "x" 1 9 -quatsch 1} e
+    $pdf destroy
+    string match "*unknown option -quatsch*" $e
+} -result 1
+
 
 cleanupTests

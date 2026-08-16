@@ -322,6 +322,6 @@ pdf4tcltext::render $pdf .t $x $y ...
 
 ## See Also
 
-- `docs/API.md` — full pdf4tcllib API reference
-- `docs/pdf4tcltable.md` — tablelist widget export
+- `docs/en/reference/API.md` — full pdf4tcllib API reference
+- `docs/en/reference/pdf4tcltable.md` — tablelist widget export
 - `examples/advanced/57_textwidget_pdf.tcl` — complete demo

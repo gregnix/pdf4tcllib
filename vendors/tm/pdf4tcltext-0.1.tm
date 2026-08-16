@@ -1,17 +1,16 @@
-# pdf4tcltext -- Tk Text-Widget Export nach PDF
+# pdf4tcltext -- export a Tk text widget to PDF
 #
-# Exportiert Tk text-Widgets mit vollstaendiger Tag-Struktur
-# (Bold, Italic, Farben, Einrueckung) als formatiertes PDF.
-# Basiert auf $t dump -all.
+# Exports a Tk text widget with its full tag structure -- bold, italic,
+# colours, indentation -- as formatted PDF. Built on `$t dump -all`.
 #
 # Copyright (c) 2026 Gregor (gregnix)
 # BSD 2-Clause License
 #
-# Verwendung:
+# Usage:
 #   package require pdf4tcltext
 #   pdf4tcltext::render $pdf $tw $x $y ...
 #
-# Abhaengigkeiten:
+# Requires:
 #   pdf4tcllib 0.2+, pdf4tcl 0.9.4.25+, Tk
 
 package require pdf4tcllib 0.2
@@ -20,10 +19,26 @@ package provide pdf4tcltext 0.1
 
 # ============================================================
 # pdf4tcllib::textwidget -- Tk Text-Widget -> PDF
-# Basiert auf $t dump -all -- liest komplette Tag-Struktur.
+# Built on `$t dump -all` -- reads the complete tag structure.
 # ============================================================
 
 namespace eval ::pdf4tcllib::textwidget {}
+
+# Rejects an option the caller made up. Without this, `array set opts $args`
+# accepts every key: a typo, a renamed option or an option this version does
+# not implement is silently stored and never read. Measured 2026-08-15:
+# `-quatsch 1` went through pdf4tcltable::render without a word.
+proc ::pdf4tcllib::textwidget::_checkOpts {who defaults args_} {
+    if {[llength $args_] % 2} {
+        return -code error "$who: expected an even number of option/value words"
+    }
+    foreach {key val} $args_ {
+        if {![dict exists $defaults $key]} {
+            return -code error \
+                "$who: unknown option $key (allowed: [join [lsort [dict keys $defaults]] { }])"
+        }
+    }
+}
 
 proc ::pdf4tcllib::textwidget::render {pdf tw x y args} {
     array set opts {
@@ -31,6 +46,7 @@ proc ::pdf4tcllib::textwidget::render {pdf tw x y args} {
         -linespacing 2    -skipelided  1   -skipinternal 1
         -ctx         {}   -yvar        {}
     }
+    _checkOpts ::pdf4tcllib::textwidget::render [array get opts] $args
     array set opts $args
     set orient 1
     if {$opts(-ctx) ne {}} { catch {set orient [dict get $opts(-ctx) orient]} }
@@ -188,7 +204,7 @@ proc ::pdf4tcllib::textwidget::_flushLine {pdf lineBuffer x maxW curY \
     set baseline [expr {$orient ? $curY+$lineH-3 : $curY-3}]
     set cx [expr {$x + $lmargin}]
 
-    # Hintergründe
+    # Backgrounds
     set cx0 $cx
     foreach seg $lineBuffer {
         lassign $seg text style

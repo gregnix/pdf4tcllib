@@ -25,6 +25,7 @@ Xvfb :99 -screen 0 1280x1024x24 & export DISPLAY=:99
 | | |
 |---|---|
 | [`tutorial-01-accessible-report.md`](tutorials/tutorial-01-accessible-report.md) | A report that is accessible from the first line: font, language, headings, table, caption |
+| [`tutorial-02-full-report.md`](tutorials/tutorial-02-full-report.md) | Everything together: contents page, two-column body, charts, table, watermark |
 
 ## Howtos
 
@@ -37,13 +38,26 @@ Xvfb :99 -screen 0 1280x1024x24 & export DISPLAY=:99
 | [`howto-tablelist-export.md`](howtos/howto-tablelist-export.md) | Export a tablelist widget, display order and all |
 | [`howto-label-sheets.md`](howtos/howto-label-sheets.md) | Label sheets: Zweckform formats, part-used sheets, "1 von 4" |
 | [`howto-shipping-labels.md`](howtos/howto-shipping-labels.md) | Parcel labels: sorting by tour, what goes where, the barcode |
+| [`howto-charts.md`](howtos/howto-charts.md) | Numbers on a page: bars, lines, shares, and a shared scale |
+| [`howto-toc.md`](howtos/howto-toc.md) | A contents page whose numbers are right |
 
 ## Reference
 
+The module documentation. These describe the API; the howtos above show it
+in use.
+
 | | |
 |---|---|
-| [`../accessibility.md`](../accessibility.md) | What each block marks up, what stays your job, how to check |
-| [`../API.md`](../API.md) | The full API |
+| [`reference/API.md`](reference/API.md) | pdf4tcllib -- the full API |
+| [`reference/table-draw.md`](reference/table-draw.md) | `table::draw` -- data-driven tables, Tk-free |
+| [`reference/pdf4tcltable.md`](reference/pdf4tcltable.md) | `pdf4tcltable` -- export a tablelist widget |
+| [`reference/pdf4tcltext.md`](reference/pdf4tcltext.md) | `pdf4tcltext` -- export a Tk text widget |
+| [`reference/pdf4tclforms.md`](reference/pdf4tclforms.md) | `pdf4tclforms` -- declarative fillable forms |
+| [`reference/pdf4tcllabels.md`](reference/pdf4tcllabels.md) | `pdf4tcllabels` -- label sheets, calibration, text fitting |
+| [`reference/pdf4tcltoc.md`](reference/pdf4tcltoc.md) | `pdf4tcltoc` -- table of contents with real page numbers |
+| [`reference/pdf4tclchart.md`](reference/pdf4tclchart.md) | `pdf4tclchart` -- bar, line and pie charts |
+| [`reference/pdf4tclflow.md`](reference/pdf4tclflow.md) | `pdf4tclflow` -- text through columns and pages, plus the watermark |
+| [`reference/accessibility.md`](reference/accessibility.md) | What an accessible document needs, and what no tool can supply |
 
 ## Requirements
 
@@ -54,3 +68,4 @@ scripts here report on them.
 A TrueType font is needed for anything that claims PDF/UA -- the scripts
 look for DejaVu, FreeSans and Arial in the usual places and say so when
 they find none.
+

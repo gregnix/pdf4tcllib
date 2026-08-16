@@ -3,7 +3,16 @@ package require tcltest
 namespace import ::tcltest::*
 
 tcl::tm::path add [file dirname [file normalize [info script]]]/../lib
-package require pdf4tclforms 0.1.1
+
+# pdf4tclforms pulls in pdf4tcl. Without it this file used to fail to load
+# at all, and the runner reported the whole file as failed -- on a fresh
+# clone without the one external dependency that is the first thing a
+# reader sees. Now it says what is missing and skips.
+if {[catch {package require pdf4tclforms} formsErr]} {
+    puts "SKIP test_forms.tcl: $formsErr"
+    ::tcltest::cleanupTests
+    return
+}
 
 # ---------------------------------------------------------------- templates
 

@@ -57,7 +57,7 @@ wrong, look at the widget first.
 | `-footer` | a footer row, from a widget or a plain list |
 | `-formatted 1` | take the formatted cell text, as displayed |
 
-Full reference: [`../pdf4tcltable.md`](../pdf4tcltable.md).
+Full reference: [`reference/pdf4tcltable.md`](../reference/pdf4tcltable.md).
 
 ## The caption stays yours
 

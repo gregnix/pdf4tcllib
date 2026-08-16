@@ -28,12 +28,31 @@ namespace eval ::pdf4tcllib::labels {
     # Pitch is given separately rather than derived, because several
     # formats have gaps and several do not, and guessing that from the
     # numbers is how labels end up half a millimetre out by the last row.
+    #
+    # Every entry must fit its sheet: top + (rows-1)*pitchy + h <= page
+    # height, and the same across. test_labels.tcl checks that for all of
+    # them -- 3475 carried top 4.5, which put its last row 3.6 mm off an A4
+    # page (300.6 mm on 297). Seven rows of 42.3 mm need 296.1 mm, so 0.9 mm
+    # is left for both margins; 0.45 is that split evenly. Check it against
+    # a real sheet before printing a run -- paper is the only measurement
+    # that counts here.
+    # Roll printers (Zebra, Dymo, Brother) are in here too: one label per
+    # page, and the page IS the label. In this module that is a format with
+    # cols 1, rows 1 and no margins, and `paper roll` means "the label
+    # size" -- sheet() turns it into the {width height} pair pdf4tcl takes
+    # for -paper. Nothing else changes: render, place and calibration work
+    # as they do for a sheet, and a run of 300 labels becomes 300 pages.
+    #
+    # NOTE: `#` is not a comment inside these braces -- `array set` reads
+    # them as a plain list. Every remark about the catalogue belongs here,
+    # above it. (Putting one inside cost me a "list must have an even
+    # number of elements" and ten minutes.)
     variable SHEETS
     array set SHEETS {
         3474 {w 70.0  h 37.0  cols 3 rows 8  left 0.0  top 0.0
               pitchx 70.0  pitchy 37.0  paper a4
               desc "Zweckform 3474 -- 24 per sheet, 70 x 37 mm, no gaps"}
-        3475 {w 70.0  h 42.3 cols 3 rows 7  left 0.0  top 4.5
+        3475 {w 70.0  h 42.3 cols 3 rows 7  left 0.0  top 0.45
               pitchx 70.0  pitchy 42.3 paper a4
               desc "Zweckform 3475 -- 21 per sheet, 70 x 42.3 mm"}
         3483 {w 70.0  h 50.8 cols 3 rows 5  left 0.0  top 21.5
@@ -45,6 +64,19 @@ namespace eval ::pdf4tcllib::labels {
         4737 {w 63.5  h 29.6 cols 3 rows 9  left 7.25 top 13.0
               pitchx 66.0  pitchy 29.6 paper a4
               desc "Avery 4737 -- 27 per sheet, 63.5 x 29.6 mm, with gaps"}
+
+        dymo-99012 {w 89.0 h 36.0 cols 1 rows 1  left 0.0 top 0.0
+              pitchx 89.0  pitchy 36.0 paper roll
+              desc "Dymo 99012 -- roll, 89 x 36 mm (large address)"}
+        dymo-11354 {w 57.0 h 32.0 cols 1 rows 1  left 0.0 top 0.0
+              pitchx 57.0  pitchy 32.0 paper roll
+              desc "Dymo 11354 -- roll, 57 x 32 mm (multi purpose)"}
+        zebra-100x150 {w 100.0 h 150.0 cols 1 rows 1  left 0.0 top 0.0
+              pitchx 100.0 pitchy 150.0 paper roll
+              desc "Zebra 100 x 150 mm -- roll, shipping label"}
+        brother-62x100 {w 62.0 h 100.0 cols 1 rows 1  left 0.0 top 0.0
+              pitchx 62.0  pitchy 100.0 paper roll
+              desc "Brother DK-11202 -- roll, 62 x 100 mm (shipping)"}
     }
 
     # Add or replace a format at run time. The five numbers are on the
@@ -61,6 +93,11 @@ namespace eval ::pdf4tcllib::labels {
             }
         }
         if {![dict exists $spec paper]} { dict set spec paper a4 }
+        if {[dict get $spec paper] eq "roll"
+                && ([dict get $spec cols] != 1 || [dict get $spec rows] != 1)} {
+            return -code error "label format $name: paper \"roll\" means one\
+                    label per page, so cols and rows must both be 1"
+        }
         if {![dict exists $spec desc]}  { dict set spec desc  $name }
         set SHEETS($name) $spec
         return $name
@@ -81,8 +118,17 @@ namespace eval ::pdf4tcllib::labels {
                     known: [join [sheets] {, }]"
         }
         set d $SHEETS($name)
+        # "roll" means: the page is the label. pdf4tcl takes a
+        # {width height} pair for -paper, so the geometry answers with one
+        # -- the caller passes [dict get $geo paper] to startPage either
+        # way and never has to know the difference.
+        set paper [dict get $d paper]
+        if {$paper eq "roll"} {
+            set paper [list [::pdf4tcllib::units::mm [dict get $d w]] \
+                            [::pdf4tcllib::units::mm [dict get $d h]]]
+        }
         set out [dict create name $name \
-                paper [dict get $d paper] desc [dict get $d desc] \
+                paper $paper desc [dict get $d desc] \
                 cols [dict get $d cols] rows [dict get $d rows] \
                 perSheet [expr {[dict get $d cols] * [dict get $d rows]}]]
         foreach k {w h left top pitchx pitchy} {
@@ -96,6 +142,16 @@ namespace eval ::pdf4tcllib::labels {
     # counting left to right and top to bottom.
     proc place {geo idx} {
         set cols [dict get $geo cols]
+        set per  [dict get $geo perSheet]
+        # render checks -start and -only against perSheet; place is exported
+        # and shown directly in the howto. Without this check it answered
+        # position 24 of a 24-per-sheet form with the ninth row of an
+        # eight-row sheet (y = 839.1 pt), and -1 with a row above the page --
+        # both silently.
+        if {![string is integer -strict $idx] || $idx < 0 || $idx >= $per} {
+            return -code error "\"$idx\" is not a position on sheet\
+                    [dict get $geo name] (0..[expr {$per - 1}])"
+        }
         set col [expr {$idx % $cols}]
         set row [expr {$idx / $cols}]
         set x [expr {[dict get $geo left] + $col * [dict get $geo pitchx]}]

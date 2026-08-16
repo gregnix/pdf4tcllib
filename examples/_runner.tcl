@@ -32,6 +32,27 @@ namespace eval runner {
     }
 }
 
+# Sammle die Skripte eines Verzeichnisses ein und pruefe, dass es plausibel
+# viele sind. Grund: eine fehlabgelegte Kopie von run_advanced.tcl lag mit
+# drei Beispielen im Wurzelverzeichnis, ihr glob fand genau diese drei, und
+# der Lauf meldete "2 OK / 0 Fehler" -- er sah aus wie ein bestandener
+# advanced-Lauf und hatte 3 von 36 Skripten gesehen. Nicht rot, sondern
+# unvollstaendig gruen, und das ist schlechter.
+#
+# $least ist die Zahl, unter der etwas nicht stimmen KANN -- keine
+# Sollzahl, sondern eine Untergrenze. Sie wird gemeldet, nicht erzwungen:
+# wer ein Verzeichnis absichtlich leert, soll es tun duerfen und es sehen.
+proc runner::collect {dir pattern least what} {
+    set found [lsort [glob -nocomplain -directory $dir $pattern]]
+    if {[llength $found] < $least} {
+        puts "WARNUNG: nur [llength $found] $what in [file normalize $dir]"
+        puts "         erwartet waeren mindestens $least. Laeuft dieser Runner"
+        puts "         im richtigen Verzeichnis? Eine verirrte Kopie findet"
+        puts "         ihre eigenen Nachbarn und meldet den Lauf als bestanden."
+    }
+    return $found
+}
+
 # Run one script. Returns {rc output milliseconds}.
 #   wishNeeded  1 when the script needs a window
 #   extra       further arguments, AFTER the output directory
@@ -44,6 +65,12 @@ proc runner::runScript {f outdir {wishNeeded 0} {extra {}}} {
     set t0 [clock milliseconds]
     set rc [catch { exec {*}$cmd 2>@1 } msg]
     set ms [expr {[clock milliseconds] - $t0}]
+    # Tcl haengt bei rc!=0 "child process exited abnormally" an die
+    # Ausgabe. In der FAIL-Zeile steht dann hinter der eigentlichen
+    # Ursache ("can't find package tkpath") noch ein Satz, der nichts
+    # sagt und wie ein zweiter Fehler aussieht.
+    set msg [string trim [string map \
+            {"child process exited abnormally" ""} $msg]]
     if {$rc && [lindex $::errorCode 0] eq "CHILDSTATUS"
             && [lindex $::errorCode 2] == 124} {
         append msg "\nTIME LIMIT ($timeout s) -- does this script run into\

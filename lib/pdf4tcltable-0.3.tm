@@ -6,16 +6,16 @@
 # Copyright (c) 2026 Gregor (gregnix)
 # BSD 2-Clause License
 #
-# Verwendung:
+# Usage:
 #   package require pdf4tcltable
 #   pdf4tcltable::render $pdf $tbl $x $y ...
 #
-# Abhaengigkeiten:
+# Requires:
 #   pdf4tcllib 0.4+, pdf4tcl 0.9.4.25+, tablelist_tile
 #
-# Ab 0.3: duenner Adapter -- liest das Widget aus und delegiert an den
-# Tk-freien Renderer ::pdf4tcllib::table::draw. render und renderRange teilen
-# sich die Extraktion (_extract). Ausgabe kompatibel zu 0.2.
+# Since 0.3 this is a thin adapter: it reads the widget and delegates to the
+# Tk-free renderer ::pdf4tcllib::table::draw. render and renderRange share the
+# extraction (_extract). Output stays compatible with 0.2.
 
 package require pdf4tcllib 0.4
 
@@ -24,10 +24,10 @@ package provide pdf4tcltable 0.3
 namespace eval ::pdf4tcllib::tablelist {}
 
 # --------------------------------------------------------------------------
-# _extract -- liest sichtbare Spalten und Zeilen [first..last] aus dem Widget
-# und baut cols/data/Styles fuer ::pdf4tcllib::table::draw.
-# Rueckgabe: dict mit cols data cellstyles rowstyles rowindent zebra zebracolor
-#            hbg hfg vis
+# _extract -- read the visible columns and rows [first..last] from the widget
+# and build cols/data/styles for ::pdf4tcllib::table::draw.
+# Returns: dict with cols data cellstyles rowstyles rowindent zebra zebracolor
+#          hbg hfg vis
 # --------------------------------------------------------------------------
 proc ::pdf4tcllib::tablelist::_extract {tbl opts first last} {
     upvar 1 $opts o
@@ -142,8 +142,24 @@ proc ::pdf4tcllib::tablelist::_extract {tbl opts first last} {
 }
 
 # --------------------------------------------------------------------------
-# render -- ganze Tabelle. Mit -ctx: Auto-Seitenumbruch (Kopf pro Seite).
+# render -- the whole table. With -ctx: automatic page breaks, header per page.
 # --------------------------------------------------------------------------
+# Rejects an option the caller made up. Without this, `array set opts $args`
+# accepts every key: a typo, a renamed option or an option this version does
+# not implement is silently stored and never read. Measured 2026-08-15:
+# `-quatsch 1` went through pdf4tcltable::render without a word.
+proc ::pdf4tcllib::tablelist::_checkOpts {who defaults args_} {
+    if {[llength $args_] % 2} {
+        return -code error "$who: expected an even number of option/value words"
+    }
+    foreach {key val} $args_ {
+        if {![dict exists $defaults $key]} {
+            return -code error \
+                "$who: unknown option $key (allowed: [join [lsort [dict keys $defaults]] { }])"
+        }
+    }
+}
+
 proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
     array set opts {
         -maxwidth  480  -fontsize  9   -rowheight 0
@@ -153,6 +169,7 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
         -footer    {}   -footerbg  {}  -footerbold 1
         -font      {}   -boldfont  {}  -pagevar   {}
     }
+    _checkOpts ::pdf4tcllib::tablelist::render [array get opts] $args
     array set opts $args
     set fs $opts(-fontsize)
     set rh $opts(-rowheight)
@@ -162,7 +179,7 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
     if {![llength [dict get $ex vis]]} { return $y }
     set vis [dict get $ex vis]
 
-    # Footer (Widget oder Werteliste)
+    # Footer: either a widget or a list of values
     set footerVals {}
     if {$opts(-footer) ne ""} {
         set fw $opts(-footer)
@@ -207,6 +224,12 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
                          -footerbold $opts(-footerbold)
     }
 
+    # -font / -boldfont were accepted and never applied until 0.3. They now
+    # go to table::draw as -fontreg/-fontbold; empty still means the face
+    # set loaded by fonts::init.
+    if {$opts(-font)     ne ""} { lappend drawArgs -fontreg  $opts(-font) }
+    if {$opts(-boldfont) ne ""} { lappend drawArgs -fontbold $opts(-boldfont) }
+
     set yend [::pdf4tcllib::table::draw $pdf $x $y \
                   [dict get $ex cols] [dict get $ex data] {*}$drawArgs]
 
@@ -216,8 +239,8 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
 }
 
 # --------------------------------------------------------------------------
-# renderRange -- nur Zeilen -firstrow..-lastrow (fuer manuelle Pagination).
-# Zeichnet je Aufruf eine Kopfzeile; kein Footer, kein Auto-Umbruch.
+# renderRange -- rows -firstrow..-lastrow only, for hand-made pagination.
+# Draws a header row per call; no footer, no automatic page break.
 # --------------------------------------------------------------------------
 proc ::pdf4tcllib::tablelist::renderRange {pdf tbl x y args} {
     array set opts {
@@ -227,6 +250,7 @@ proc ::pdf4tcllib::tablelist::renderRange {pdf tbl x y args} {
         -lastrow   -1   -yvar      {}  -ctx       {}
         -headerbg  {}   -headerfg  {}  -font {} -boldfont {}
     }
+    _checkOpts ::pdf4tcllib::tablelist::renderRange [array get opts] $args
     array set opts $args
     set fs $opts(-fontsize)
     set rh $opts(-rowheight)
@@ -235,7 +259,7 @@ proc ::pdf4tcllib::tablelist::renderRange {pdf tbl x y args} {
     set ex [_extract $tbl opts $opts(-firstrow) $opts(-lastrow)]
     if {![llength [dict get $ex vis]]} { return $y }
 
-    # Zebra-Phase an die absolute Startzeile koppeln (wie 0.2)
+    # Tie the zebra phase to the absolute first row, as 0.2 did
     set zstart [expr {$opts(-firstrow) % 2}]
 
     set drawArgs [list \
@@ -246,6 +270,12 @@ proc ::pdf4tcllib::tablelist::renderRange {pdf tbl x y args} {
         -zebrastart $zstart \
         -cellstyles [dict get $ex cellstyles] -rowstyles [dict get $ex rowstyles] \
         -rowindent [dict get $ex rowindent]]
+
+    # -font / -boldfont were accepted and never applied until 0.3. They now
+    # go to table::draw as -fontreg/-fontbold; empty still means the face
+    # set loaded by fonts::init.
+    if {$opts(-font)     ne ""} { lappend drawArgs -fontreg  $opts(-font) }
+    if {$opts(-boldfont) ne ""} { lappend drawArgs -fontbold $opts(-boldfont) }
 
     set yend [::pdf4tcllib::table::draw $pdf $x $y \
                   [dict get $ex cols] [dict get $ex data] {*}$drawArgs]
@@ -279,7 +309,7 @@ proc ::pdf4tcllib::tablelist::_tkColorToRGB {color} {
     return {0.0 0.0 0.0}
 }
 
-# Tk-Font-Spec -> Schluesselwort fuer table::draw (reg|bold|italic|bolditalic|mono).
+# Tk font spec -> keyword for table::draw (reg|bold|italic|bolditalic|mono).
 proc ::pdf4tcllib::tablelist::_fontKw {spec} {
     set s [string tolower $spec]
     set bold [expr {[string match *bold* $s]}]

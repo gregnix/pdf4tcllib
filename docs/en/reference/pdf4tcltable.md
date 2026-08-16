@@ -116,6 +116,9 @@ Alias for `pdf4tcllib::tablelist::renderRange`.
 | `-formatted 0/1` | 1 | Use `getformatted` instead of `get` |
 | `-headerbg {r g b}` | from widget | Header background color (0.0–1.0) |
 | `-headerfg {r g b}` | from widget | Header text color |
+| `-footer {…}` | `{}` | Footer: a footer `tablelist` widget **or** an explicit list of values (`render` only) |
+| `-footerbg {r g b}` | from widget | Footer background; light grey when neither given |
+| `-footerbold 0/1` | 1 | Render the footer in the bold face |
 | `-ctx dict` | — | `page::context` dict for orient-aware layout |
 | `-yvar name` | — | Variable to receive the new Y position |
 | `-firstrow N` | 0 | *(renderRange only)* First row, 0-based |
@@ -248,6 +251,35 @@ $pdf endPage
 
 ---
 
+## Footer row
+
+`render` draws a footer row after the body, separated by a heavier line and
+enclosed by the table border. The footer is bold by default and indexed by
+real column number, like the body rows.
+
+`-footer` is auto-detected: a single existing widget that answers `$w size`
+is read from its row 0 (and its row background is used unless `-footerbg`
+is given); anything else is taken as an explicit cell list.
+
+```tcl
+# from a value list
+::pdf4tcllib::tablelist::render $pdf .tbl $x $y \
+    -maxwidth 320 -footer {Sum 27 "7,70 EUR"}
+
+# from a tkutlfooter widget
+package require tkutils::tkutlfooter
+::tkutils::tkutlfooter::attach  .tbl .foot
+::tkutils::tkutlfooter::autosum .tbl .foot -columns {2} -label "Sum"
+
+::pdf4tcllib::tablelist::render $pdf .tbl $x $y \
+    -maxwidth 320 -footer .foot
+```
+
+> `renderRange` (paginated output) draws no footer -- it renders a row range
+> only. Draw the footer with `render`, or on the last page.
+
+---
+
 ## Font Mapping
 
 Tk font specifications are mapped to standard PDF fonts:
@@ -264,8 +296,46 @@ Tk font specifications are mapped to standard PDF fonts:
 | `{Times N bold}` | Times-Bold |
 | other | Helvetica (fallback) |
 
-For Unicode text (non-Latin characters): load a CIDFont via
-`pdf4tcllib::fonts::init` before exporting.
+### Unicode
+
+The table is drawn with the TTF sans faces of `pdf4tcllib::fonts`
+(`fontSans` / `fontSansBold` / `fontSansItalic` / `fontSansBoldItalic`) when
+they are loaded, so Greek, mathematical symbols, the euro sign, CJK and the
+like render correctly. Without TTF fonts it falls back to Helvetica/Courier,
+which covers ASCII and Latin-1 only.
+
+Initialise the fonts with CID encoding before rendering; no per-call option
+is needed afterwards -- cells, header and footer all follow:
+
+```tcl
+::pdf4tcllib::fonts::init -fontdir /usr/share/fonts/truetype/dejavu -cid 1
+```
+
+### Per-call face overrides
+
+`-font` and `-boldfont` override the regular and the bold face for one call.
+They are passed through to `::pdf4tcllib::table::draw` as `-fontreg` and
+`-fontbold`; left empty, the faces loaded via `fonts::init` apply.
+
+```tcl
+::pdf4tcllib::tablelist::render $pdf .tbl $x $y \
+    -maxwidth 320 -font Times-Roman -boldfont Times-Bold
+```
+
+Measured on the embedded font names of the output:
+
+| call | fonts in the PDF |
+|---|---|
+| no override | Helvetica, Helvetica-Bold |
+| `-font Times-Roman` | Times-Roman, Helvetica-Bold |
+| `-boldfont Courier-Bold` | Helvetica, Courier-Bold |
+
+Per-row and per-cell `-font` settings from the widget still win over these,
+and are mapped to the matching regular/bold/italic/mono face.
+
+> Until 0.3 the two options were accepted and silently ignored. If you have
+> code that passes them and relies on the old behaviour -- that is, on them
+> doing nothing -- it now takes effect.
 
 ---
 
