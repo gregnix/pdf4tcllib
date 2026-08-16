@@ -96,8 +96,11 @@ fixes it.
 
 - **Tcl** 8.6 or later (works with 9.0)
 - **pdf4tcl** 0.9.4.x or later -- required for TrueType font loading
-  and Unicode CID support. The `gregnix` fork (`createFontSpecCID`)
-  is fully supported.
+  and Unicode CID support. Developed against the
+  [gregnix fork](https://github.com/gregnix/pdf4tcl), which adds
+  `createFontSpecCID`, Tagged PDF and `getUntaggedCount`; the upstream
+  [pdf4tcl](https://sourceforge.net/projects/pdf4tcl/) works too, with
+  the limits noted below.
 - **TclOO** (bundled with Tcl 8.6+)
 
 Older pdf4tcl versions without `loadBaseTrueTypeFont` / `createFontSpecCID`
