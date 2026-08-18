@@ -98,4 +98,48 @@ test fonts-searchpaths "Suchpfade sind nicht leer" -body {
     expr {[llength $paths] > 0}
 } -result 1
 
+# ============================================================
+# Nach init: eingebettete Schriften statt der Standard-14
+#
+# Der Grund: PDF/A verlangt jedes Fontprogramm in der Datei, und die
+# vierzehn Standardschriften haben keins. Wer nach init noch Helvetica
+# oder Courier bekommt, kann kein PDF/A schreiben -- veraPDF faellt an
+# Klausel 6.2.11.4.1 darueber.
+# ============================================================
+
+test fonts-init-runs "init laeuft durch" -body {
+    pdf4tcllib::fonts::init
+    expr {[pdf4tcllib::fonts::hasTtf] ? 1 : 1}
+} -result 1
+
+# ttfAvailable wird ganz oben ausgewertet, also VOR init, und ist dort
+# immer 0 -- die folgenden Tests waeren stumm uebersprungen worden und
+# haetten nichts gemessen. Erst hier neu setzen.
+testConstraint ttfLoaded [pdf4tcllib::fonts::hasTtf]
+
+test fonts-init-sans "fontSans ist nach init keine Standardschrift" \
+        -constraints ttfLoaded -body {
+    expr {[pdf4tcllib::fonts::fontSans] ni {Helvetica Courier Times-Roman}}
+} -result 1
+
+test fonts-init-mono "fontMono ist nach init keine Standardschrift" \
+        -constraints ttfLoaded -body {
+    # Wurde frueher NIE gesetzt: init laed die Sans-Familie und liess
+    # fontMono auf Courier stehen, auch wenn eine Monospace-Datei
+    # danebenlag. Ein Dokument mit Monospace konnte damit kein PDF/A
+    # werden.
+    expr {[pdf4tcllib::fonts::fontMono] ne "Courier"}
+} -result 1
+
+test fonts-init-drawing-default "drawing::textRotated nimmt keine feste Schrift" \
+        -body {
+    # Der Vorgabewert im Argument war {font Helvetica} -- unsichtbar fuer
+    # eine Suche nach "setFont Helvetica", und trotzdem der Grund, warum
+    # ein Dokument durchfiel. Jetzt leer, also fonts::fontSans.
+    set spec [info args ::pdf4tcllib::drawing::textRotated]
+    set def ""
+    info default ::pdf4tcllib::drawing::textRotated font def
+    set def
+} -result ""
+
 cleanupTests

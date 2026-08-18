@@ -1123,5 +1123,14 @@ wm geometry . "+50+30"
 if {[lsearch $argv -batch] >= 0} {
     update
     exportPDF
-    destroy .
+    # exit statt "destroy ." -- der Abbau des Hauptfensters bringt tko 0.4
+    # zum Absturz ("alloc: invalid block ... child killed: SIGABRT").
+    # Das passiert NACH dem Schreiben: die PDF-Datei ist vollstaendig und
+    # gueltig, nur der Rueckgabewert des Prozesses ist es nicht, und der
+    # Sammellauf meldet FAIL fuer ein Beispiel, das seine Arbeit getan hat.
+    #
+    # Ursache ist ein fehlendes Tcl_IncrRefCount in tkoWidget.c, nicht
+    # pdf4tcllib.
+    exit 0
 }
+

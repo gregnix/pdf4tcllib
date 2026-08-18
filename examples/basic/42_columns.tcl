@@ -16,7 +16,7 @@ set outdir [expr {$argc > 0 ? [lindex $argv 0] : [file join $scriptDir pdf]}]
 file mkdir $outdir
 set outPDF [file join $outdir "demo_42_columns.pdf"]
 
-set pdf [::pdf4tcl::new %AUTO% -paper a4]
+set pdf [::pdf4tcl::new %AUTO% -paper a4 -pdfa 3b]
 ::pdf4tcllib::fonts::init
 set ctx [::pdf4tcllib::page::context a4]
 

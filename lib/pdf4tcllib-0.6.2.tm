@@ -34,7 +34,7 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.6.1
+package provide pdf4tcllib 0.6.2
 
 namespace eval ::pdf4tcllib {
     variable version 0.3
@@ -232,6 +232,7 @@ proc ::pdf4tcllib::fonts::init {args} {
     set ttfRegular   ""
     set ttfBold      ""
     set ttfItalic    ""
+    set ttfMono      ""
     set ttfBoldItalic ""
 
     set searchPaths [_buildSearchPaths $opt(-fontdir)]
@@ -248,6 +249,16 @@ proc ::pdf4tcllib::fonts::init {args} {
             set tryBI [file join $dir "${family}-BoldOblique.ttf"]
             if {[file exists $tryI]}  { set ttfItalic    $tryI }
             if {[file exists $tryBI]} { set ttfBoldItalic $tryBI }
+            # Optional: a monospaced face beside the others.
+            #
+            # Without it fontMono stayed Courier even where TrueType was
+            # loaded, and a document using it could not be PDF/A: the
+            # standard 14 have no embeddable font program.
+            foreach cand [list "${family}Mono.ttf" "DejaVuSansMono.ttf" \
+                    "LiberationMono-Regular.ttf"] {
+                set tryM [file join $dir $cand]
+                if {[file exists $tryM]} { set ttfMono $tryM; break }
+            }
             break
         }
     }
@@ -355,6 +366,23 @@ proc ::pdf4tcllib::fonts::init {args} {
         } else {
             set fontSansItalic     "Helvetica-Oblique"
             set fontSansBoldItalic "Helvetica-BoldOblique"
+        }
+
+        # Monospace, wenn eine Datei gefunden wurde. Schlaegt das Laden
+        # fehl, bleibt Courier -- besser eine nicht einbettbare Schrift
+        # als ein Abbruch beim Aufrufer.
+        if {$ttfMono ne ""} {
+            if {[catch {
+                ::pdf4tcl::loadBaseTrueTypeFont _Pdf4tcl_Base_Mono $ttfMono
+                if {$cidMode} {
+                    ::pdf4tcl::createFontSpecCID _Pdf4tcl_Base_Mono Pdf4tclMono
+                } else {
+                    ::pdf4tcl::createFontSpecEnc _Pdf4tcl_Base_Mono Pdf4tclMono $subsetList
+                }
+                set fontMono "Pdf4tclMono"
+            }]} {
+                set fontMono "Courier"
+            }
         }
 
         puts stderr "pdf4tcllib::fonts: TTF faces loaded from [file dirname $ttfRegular]"
@@ -1984,12 +2012,22 @@ proc ::pdf4tcllib::math::_pdfBackend {pdf op args} {
     switch -- $op {
         width {
             lassign $args font size text
-            $pdf setFont $size $font
+            # Leerer Vorgabewert heisst: nimm, was fonts:: liefert. Ein fest
+    # verdrahtetes Helvetica machte jedes Dokument PDF/A-untauglich --
+    # die vierzehn Standardschriften haben kein einbettbares
+    # Fontprogramm, und veraPDF faellt darueber (Klausel 6.2.11.4.1).
+    if {$font eq ""} { set font [::pdf4tcllib::fonts::fontSans] }
+    $pdf setFont $size $font
             return [$pdf getStringWidth $text]
         }
         text {
             lassign $args font size x y text
-            $pdf setFont $size $font
+            # Leerer Vorgabewert heisst: nimm, was fonts:: liefert. Ein fest
+    # verdrahtetes Helvetica machte jedes Dokument PDF/A-untauglich --
+    # die vierzehn Standardschriften haben kein einbettbares
+    # Fontprogramm, und veraPDF faellt darueber (Klausel 6.2.11.4.1).
+    if {$font eq ""} { set font [::pdf4tcllib::fonts::fontSans] }
+    $pdf setFont $size $font
             $pdf text $text -x $x -y $y
             return
         }
@@ -2381,6 +2419,11 @@ proc ::pdf4tcllib::page::centerText {pdf ctx text y {size 12} {font "Helvetica"}
 
 
     set x [expr {[dict get $ctx page_w] / 2.0}]
+    # Leerer Vorgabewert heisst: nimm, was fonts:: liefert. Ein fest
+    # verdrahtetes Helvetica machte jedes Dokument PDF/A-untauglich --
+    # die vierzehn Standardschriften haben kein einbettbares
+    # Fontprogramm, und veraPDF faellt darueber (Klausel 6.2.11.4.1).
+    if {$font eq ""} { set font [::pdf4tcllib::fonts::fontSans] }
     $pdf setFont $size $font
     ::pdf4tcllib::unicode::safeText $pdf $text -x $x -y $y -align center
 }
@@ -2422,7 +2465,7 @@ proc ::pdf4tcllib::page::grid {pdf args} {
     # Vertikale Linien
     for {set x 0} {$x <= $pw} {set x [expr {$x + $spacing}]} {
         $pdf line $x 0 $x $ph
-        $pdf setFont 6 Helvetica
+        $pdf setFont 6 [::pdf4tcllib::fonts::fontSans]
         $pdf setFillColor 0.6 0.6 0.6
         $pdf text "[expr {int($x)}]" -x [expr {$x + 2}] -y 8
     }
@@ -2430,7 +2473,7 @@ proc ::pdf4tcllib::page::grid {pdf args} {
     # Horizontale Linien
     for {set y 0} {$y <= $ph} {set y [expr {$y + $spacing}]} {
         $pdf line 0 $y $pw $y
-        $pdf setFont 6 Helvetica
+        $pdf setFont 6 [::pdf4tcllib::fonts::fontSans]
         $pdf setFillColor 0.6 0.6 0.6
         $pdf text "[expr {int($y)}]" -x 2 -y [expr {$y + 8}]
     }
@@ -2470,7 +2513,7 @@ proc ::pdf4tcllib::page::debugGrid {pdf ctx {spacing 50}} {
     }
 
     # Beschriftung an Achsen (alle 100pt)
-    $pdf setFont 6 Helvetica
+    $pdf setFont 6 [::pdf4tcllib::fonts::fontSans]
     $pdf setFillColor 0.6 0.6 0.8
     for {set x 0} {$x <= $pw} {set x [expr {$x + 100}]} {
         $pdf text [expr {int($x)}] -x [expr {$x + 1}] -y 8
@@ -2493,7 +2536,7 @@ proc ::pdf4tcllib::page::orientationLegend {pdf ctx} {
     set paper [dict get $ctx paper]
 
     $pdf gsave
-    $pdf setFont 8 Courier
+    $pdf setFont 8 [::pdf4tcllib::fonts::fontMono]
     $pdf setFillColor 0.5 0.5 0.5
 
     set text "$paper | orient=$orient | y-origin=[expr {$orient ? {top} : {bottom}}] | unit=pt"
@@ -3739,9 +3782,14 @@ proc ::pdf4tcllib::drawing::watermark {pdf ctx text args} {
     return $size
 }
 
-proc ::pdf4tcllib::drawing::textRotated {pdf txt x y angle size {font Helvetica}} {
+proc ::pdf4tcllib::drawing::textRotated {pdf txt x y angle size {font ""}} {
     # Rotated text.
     # angle: degrees, counter-clockwise.
+    # Leerer Vorgabewert heisst: nimm, was fonts:: liefert. Ein fest
+    # verdrahtetes Helvetica machte jedes Dokument PDF/A-untauglich --
+    # die vierzehn Standardschriften haben kein einbettbares
+    # Fontprogramm, und veraPDF faellt darueber (Klausel 6.2.11.4.1).
+    if {$font eq ""} { set font [::pdf4tcllib::fonts::fontSans] }
     $pdf setFont $size $font
     if {![catch {$pdf text $txt -x $x -y $y -angle $angle}]} { return }
 
@@ -3758,11 +3806,16 @@ proc ::pdf4tcllib::drawing::textRotated {pdf txt x y angle size {font Helvetica}
     }
 }
 
-proc ::pdf4tcllib::drawing::textScaled {pdf txt x y sx sy size {font Helvetica}} {
+proc ::pdf4tcllib::drawing::textScaled {pdf txt x y sx sy size {font ""}} {
     # Skalierter Text via gsave/translate/scale/text/grestore.
     # sx: horizontale Skalierung, sy: vertikale Skalierung
     # Koordinaten: x y = Baseline-Position in aktuellen Einheiten
 
+    # Leerer Vorgabewert heisst: nimm, was fonts:: liefert. Ein fest
+    # verdrahtetes Helvetica machte jedes Dokument PDF/A-untauglich --
+    # die vierzehn Standardschriften haben kein einbettbares
+    # Fontprogramm, und veraPDF faellt darueber (Klausel 6.2.11.4.1).
+    if {$font eq ""} { set font [::pdf4tcllib::fonts::fontSans] }
     $pdf setFont $size $font
     $pdf gsave
     $pdf translate $x $y
@@ -3772,7 +3825,7 @@ proc ::pdf4tcllib::drawing::textScaled {pdf txt x y sx sy size {font Helvetica}}
     $pdf grestore
 }
 
-proc ::pdf4tcllib::drawing::textSkewed {pdf txt x y skewX skewY size {font Helvetica}} {
+proc ::pdf4tcllib::drawing::textSkewed {pdf txt x y skewX skewY size {font ""}} {
     # Geneigter Text (Pseudo-Italic).
     # skewX, skewY: Neigungswinkel in Grad
     if {![catch {$pdf text $txt -x $x -y $y -skew $skewX $skewY -size $size -font $font}]} { return }
@@ -3781,6 +3834,11 @@ proc ::pdf4tcllib::drawing::textSkewed {pdf txt x y skewX skewY size {font Helve
     set pi [expr {acos(-1)}]
     set tanx [expr {tan($skewX * $pi / 180.0)}]
     set spacing [expr {$size * 0.6}]
+    # Leerer Vorgabewert heisst: nimm, was fonts:: liefert. Ein fest
+    # verdrahtetes Helvetica machte jedes Dokument PDF/A-untauglich --
+    # die vierzehn Standardschriften haben kein einbettbares
+    # Fontprogramm, und veraPDF faellt darueber (Klausel 6.2.11.4.1).
+    if {$font eq ""} { set font [::pdf4tcllib::fonts::fontSans] }
     $pdf setFont $size $font
     set cx $x
     foreach c [split $txt ""] {

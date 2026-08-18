@@ -21,7 +21,7 @@ pdf4tcllib::fonts::init -cid 1
 catch {wm withdraw .}
 
 set ctx [pdf4tcllib::page::context a4 -margin 25 -orient true]
-set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true]
+set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true -pdfa 3b]
 $pdf startPage
 
 set fontSansBold [pdf4tcllib::fonts::fontSansBold]

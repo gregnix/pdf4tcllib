@@ -7,6 +7,98 @@ and module headers.
 
 ## Unreleased -- features
 
+### Changed -- `vendors/tm/` is gone
+
+The directory held a byte-identical copy of every module, and nothing in
+this repository read it. The projects that bundle pdf4tcllib -- mdstack,
+mdhelp4 -- copy straight out of `lib/` into their **own** `vendors/tm/`,
+as the handbook describes. The copy here only had to be kept in step:
+`make sync` after every change, and a red `make check` when it was
+forgotten.
+
+`make sync`, `check` and `prune` go with it. `make test` is now the
+default target, and `make conform` runs the veraPDF check.
+
+### Changed -- module versions
+
+    pdf4tcllib     0.6.1 -> 0.6.2
+    pdf4tclforms   0.2   -> 0.2.1
+    pdf4tcllabels  0.1   -> 0.1.1
+
+Not documentation: `fontMono` returns a different face and three
+procedures carry a different default, so a caller who bundles the old
+number and gets the new file would see changed behaviour under an
+unchanged version.
+
+### Added -- veraPDF cross-validation
+
+`tools/check-conformance.sh` holds the generated PDFs against veraPDF.
+It checks **only files that make a claim** -- the claim sits in the XMP
+(`pdfaid`, `pdfuaid`), and the profile is read from there rather than
+guessed. A file without a claim asserts nothing and cannot break; listing
+it as failed would be wrong. Missing veraPDF or qpdf exits 0 with a note:
+a missing tool is not a failure of the library.
+
+The first run was unpleasant. Of four files that carried a claim, three
+did not keep it:
+
+    demo_45a_pdfa1b       1b    FAIL
+    demo_45b_pdfa2b       2b    FAIL
+    demo_45c_pdfa3b       3b    FAIL
+    demo_65_tagged_table  ua1   PASS
+
+`demo_65_tagged_table` passes PDF/UA-1 **and** PDF/A-3a, which is a good
+result for the tagged-table work.
+
+Two causes, both in `45_pdfa.tcl`. It set Helvetica -- ISO 19005 clause
+6.3.4 wants every font program embedded, and the standard 14 have none, so
+such a document always fails whatever else is right. And it called
+
+    $pdf embedFile $tmpXml -description ... -mimetype "application/xml"
+
+`embedFile` is the older route for a *visible* attachment and knows
+neither option; its `switch` drops unknown ones silently. The call looked
+right and did something else: the file carried `/Subtype /XML` instead of
+the MIME type and failed clause 6.8. pdf4tcl itself is correct -- it
+escapes the slash to `application#2Fxml` -- the value simply never
+arrived. Now `addEmbeddedFile` with `-afrelationship Alternative`.
+
+### Fixed -- the library forced the standard 14 on its callers
+
+Eight examples already used `fonts::init` and named no standard font, so
+they were one switch away from PDF/A. Setting `-pdfa 3b` on all eight left
+two failing, and the cause was not in the examples.
+
+* **Nine `setFont` calls with a hard-wired standard font** -- grid lines
+  and coordinate labels in `pdf4tcllib`, the required-field asterisk in
+  `pdf4tclforms`, label text in `pdf4tcllabels`. They now go through
+  `fonts::`; without `init` they still return Helvetica and Courier, so
+  nothing changes for existing callers.
+
+* **Three defaults in argument lists** -- `drawing::textRotated`,
+  `textScaled` and `textSkewed` carried `{font Helvetica}`. A search for
+  `setFont Helvetica` does not find these, which is why they survived the
+  first pass; they surfaced only after intercepting `setFont` at runtime
+  and printing the caller. The default is now empty and falls back to
+  `fonts::fontSans`.
+
+* **`fontMono` was never set to a TrueType face.** `init` loaded the sans
+  family and left `fontMono` at `Courier` in four places, even with
+  `DejaVuSansMono.ttf` sitting beside the others. A document using
+  monospace could therefore never be PDF/A. `init` now looks for
+  `<family>Mono`, `DejaVuSansMono` or `LiberationMono-Regular`.
+
+Result: 13 files carry a claim and all 13 keep it.
+
+`tests/test_fonts.tcl` gains four tests for the state *after* `init`:
+`fontSans` and `fontMono` must no longer be a standard font, and
+`textRotated` must not carry a fixed default. The first attempt had six of
+them **silently skipped** -- `testConstraint ttfAvailable` is evaluated at
+the top of the file, before `init`, where it is always 0. A second
+constraint is now set after `init`. A skipped test measures nothing and
+still reports green.
+
+
 ### Docs -- the four new modules reach the howtos, tutorials and reference
 
 The modules arrived with a reference page and one example each. What was

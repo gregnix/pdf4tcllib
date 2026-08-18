@@ -350,7 +350,7 @@ namespace eval ::pdf4tcllib::labels {
         ::pdf4tcllib::tag::artifact $pdf -type Layout
         $pdf setStrokeColor 0 0 0
         $pdf setLineWidth 0.3
-        $pdf setFont 6 Helvetica
+        $pdf setFont 6 [::pdf4tcllib::fonts::fontSans]
         for {set mm 0} {$mm <= 210} {incr mm 5} {
             set x [::pdf4tcllib::units::mm $mm]
             set len [expr {$mm % 10 == 0 ? 6 : 3}]
@@ -363,7 +363,7 @@ namespace eval ::pdf4tcllib::labels {
             $pdf line 0 $y $len $y
             if {$mm % 20 == 0} { $pdf text $mm -x 8 -y [expr {$y + 2}] }
         }
-        $pdf setFont 9 Helvetica
+        $pdf setFont 9 [::pdf4tcllib::fonts::fontSans]
         $pdf text "[dict get $geo desc] -- print at ACTUAL SIZE" \
                 -x [::pdf4tcllib::units::mm 20] \
                 -y [::pdf4tcllib::units::mm 12]
@@ -388,4 +388,4 @@ namespace eval ::pdf4tcllib::labels {
     }
 }
 
-package provide pdf4tcllabels 0.1
+package provide pdf4tcllabels 0.1.1

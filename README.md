@@ -88,9 +88,10 @@ separate packages, each usable on its own -- take only what you use.
 The only external dependency is pdf4tcl. `pdf4tcltable` and `pdf4tcltext`
 additionally need Tk and the widget they export; nothing else needs Tk.
 
-`vendors/tm/` holds a copy of every module for use as a bundled
-dependency. `make check` reports any drift between the two, `make sync`
-fixes it.
+To bundle pdf4tcllib with another project, copy the modules you need
+straight out of `lib/` -- the file name carries the version, which is
+where Tcl reads it from. There is no second copy in this repository to
+keep in step.
 
 ### Requirements
 

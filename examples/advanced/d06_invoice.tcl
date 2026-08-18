@@ -21,7 +21,7 @@ package require pdf4tcl
 catch {wm withdraw .}
 
 set ctx [pdf4tcllib::page::context a4 -margin 25]
-set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true]
+set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true -pdfa 3b]
 $pdf startPage
 
 set fontSans     [pdf4tcllib::fonts::fontSans]

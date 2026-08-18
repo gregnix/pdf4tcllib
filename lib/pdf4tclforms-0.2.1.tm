@@ -18,7 +18,7 @@ package require Tcl 8.6-
 package require pdf4tcllib 0.6
 package require pdf4tcl 0.9.4.34
 
-package provide pdf4tclforms 0.2
+package provide pdf4tclforms 0.2.1
 
 namespace eval ::pdf4tcllib::forms {
     # form:: does export its procedures, but they are called fully
@@ -68,7 +68,7 @@ proc ::pdf4tcllib::forms::_labelWithRequired {pdf x y label required fieldH} {
     set textY [expr {$y + $fieldH - 2}]
     ::pdf4tcllib::unicode::safeText $pdf $label -x $x -y $textY
     if {$required} {
-        $pdf setFont 10 Helvetica-Oblique
+        $pdf setFont 10 [::pdf4tcllib::fonts::fontSansItalic]
         $pdf setFillColor 0.8 0 0
         set lw [pdf4tcllib::text::width $label $CFG(fontSizeLabel) $CFG(fontFamily)]
         $pdf text "*" -x [expr {$x + $lw + 2}] -y $textY
@@ -144,7 +144,7 @@ proc ::pdf4tcllib::forms::checkboxLine {pdf ctx yVar fdef {pagebreak 0}} {
         $pdf setFont $CFG(fontSizeLabel) $CFG(fontFamily)
         ::pdf4tcllib::unicode::safeText $pdf $label -x [expr {$x + $boxH + 6}] -y [expr {$y + $boxH - 2}]
         if {$required} {
-            $pdf setFont 10 Helvetica-Oblique
+            $pdf setFont 10 [::pdf4tcllib::fonts::fontSansItalic]
             $pdf setFillColor 0.8 0 0
             set lw [pdf4tcllib::text::width $label $CFG(fontSizeLabel) $CFG(fontFamily)]
             $pdf text "*" -x [expr {$x + $boxH + 8 + $lw}] -y [expr {$y + $boxH - 2}]
@@ -330,7 +330,7 @@ proc ::pdf4tcllib::forms::field {pdf ctx yVar fdef {pagebreak 0}} {
             if {$required} {
                 set lw [pdf4tcllib::text::width $label \
                     $CFG(fontSizeLabel) $CFG(fontFamily)]
-                $pdf setFont 10 Helvetica-Oblique
+                $pdf setFont 10 [::pdf4tcllib::fonts::fontSansItalic]
                 $pdf setFillColor 0.8 0 0
                 $pdf text "*" -x [expr {$x + $lw + 2}] -y [expr {$y + $lineH - 2}]
             }
