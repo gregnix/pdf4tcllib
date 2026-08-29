@@ -218,4 +218,4 @@ set outfile [file join $outdir "demo_06_invoice.pdf"]
 $pdf write -file $outfile
 $pdf destroy
 catch {destroy .}
-puts "Geschrieben: $outfile"
+puts "Written: $outfile"

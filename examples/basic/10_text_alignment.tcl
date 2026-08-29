@@ -7,14 +7,14 @@
 #   Manual:  pdf4tcl.man @ 2023-09-18
 #   API:     0.9 (pdf4tcl::pdf4tcl create)
 #
-# WINDOWS USERS: 🪟
-#   Für korrekte Umlaute (äöüÄÖÜß€) verwenden Sie:
+# WINDOWS USERS:
+#   For correct umlauts (aeoeueAEOEUEss, euro sign) use:
 #     tclsh examples/main.tcl 10_text_alignment.tcl
 #
-#   NICHT direkt (→ falsche Zeichen im PDF):
+#   NOT directly -- that gives wrong characters in the PDF:
 #     tclsh 10_text_alignment.tcl
 # ============================================================================
-# Lernziele:
+# What this shows:
 #   - Textausrichtung (links, rechts, zentriert)
 #   - -align Parameter verwenden
 #   - Ausrichtung mit verschiedenen Schriftgrößen
@@ -26,23 +26,23 @@
 #   - Zentriert
 #   - Mit verschiedenen Schriftgrößen
 #
-# Encoding-Test: äöüÄÖÜß€
+# Encoding test: äöüÄÖÜß€
 # ============================================================================
 
 # --- Setup ---
 set script_dir [file dirname [file normalize [info script]]]
 
-# Load Helper Library
+# Load helper library
 
 # Require pdf4tcl 0.9.4.11+
 if {[catch {set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl} err]} {
     puts stderr "❌ ERROR: pdf4tcl 0.9.4.11+ required!"
     puts stderr "   Your version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl]"
     puts stderr "   Update: See SPEC.lock for installation"
     exit 1
@@ -66,7 +66,7 @@ proc demo_main {} {
     puts "Starting Demo $demo_num: Text-Alignment"
     puts "  pdf4tcl version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl]"
     puts "  Output: $output_file"
     

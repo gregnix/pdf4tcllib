@@ -21,7 +21,7 @@
 
 package require pdf4tcllib 0.6
 
-package provide pdf4tclchart 0.1
+package provide pdf4tclchart 0.1.1
 
 namespace eval ::pdf4tcllib::chart {
     namespace export bar line pie legend niceScale
@@ -442,8 +442,14 @@ proc ::pdf4tcllib::chart::pie {pdf x y w h data args} {
         $pdf setFillColor $cr $cg $cb
         $pdf setStrokeColor 1 1 1
         $pdf setLineWidth 0.8
-        $pdf arc [expr {$cx - $r}] [expr {$cy - $r}] [expr {2 * $r}] \
-                [expr {2 * $r}] $start $extent -style pieslice -filled 1
+        # pdf4tcl: arc x0 y0 rx ry phi extend -- MITTELPUNKT und zwei
+        # Radien, nicht Ecke und Durchmesser. Hier stand
+        # "[cx-r] [cy-r] [2r] [2r]", also eine Bounding Box: der
+        # Mittelpunkt landete um r nach links oben verschoben und der
+        # Kreis war doppelt so gross wie gedacht. Gemessen an einem
+        # Rahmen x=60..540: der Pfad begann bei x=44 ohne und bei x=-47
+        # mit Legende -- letzteres 107 Punkt neben dem Blatt.
+        $pdf arc $cx $cy $r $r $start $extent -style pieslice -filled 1
         set start [expr {$start + $extent}]
         incr i
     }

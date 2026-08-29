@@ -66,7 +66,7 @@ set result [::pdf4tcllib::flow::columns $pdf $ctx $body \
 $pdf endPage
 $pdf write -file $outPDF
 
-puts "Geschrieben: $outPDF"
+puts "Written: $outPDF"
 puts "  Zeilen:      [dict get $result lines]"
 puts "  Seitenwechsel: [dict get $result pages]"
 puts "  Rest:        '[dict get $result rest]'"

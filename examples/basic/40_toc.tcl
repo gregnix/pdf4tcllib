@@ -59,7 +59,7 @@ set result [::pdf4tcllib::toc::document $pdf a4 {
 
 $pdf write -file $outPDF
 
-puts "Geschrieben: $outPDF"
+puts "Written: $outPDF"
 puts "  Verzeichnis: [dict get $result tocPages] Seite(n)"
 puts "  Inhalt:      [dict get $result contentPages] Seite(n)"
 foreach e [dict get $result entries] {

@@ -16,11 +16,11 @@ that recur in every PDF project.
 ```tcl
 # As a .tm module
 tcl::tm::path add /path/to/lib
-package require pdf4tcllib 0.2
+package require pdf4tcllib
 
 # Or in vendors/tm/ (mdstack, mdhelp4)
 tcl::tm::path add vendors/tm
-package require pdf4tcllib 0.2
+package require pdf4tcllib
 ```
 
 Dependency: pdf4tcl (in `vendors/pkg/` or system-wide).
@@ -31,6 +31,10 @@ Dependency: pdf4tcl (in `vendors/pkg/` or system-wide).
 |---|---|
 | fonts   | Font management: TTF search, fallback, accessor procs, setFont, CID-mode |
 | page    | Page context, grid, orientation, header, footer, debugGrid |
+| tag     | Tagged PDF: structure elements and artifacts |
+| state   | Keep font and colour across a block |
+| measure | How tall a block will be, before drawing it |
+| layout  | Blocks one under another, with page breaks |
 | text    | Unicode-safe text, line wrapping, sub/superscript, math symbols |
 | math    | Inline math formula rendering (eqn-notation, Wiki-style) |
 | table   | Tables: draw (recommended), simpleTable, render |
@@ -256,6 +260,17 @@ pdf4tcllib::page::number $pdf $ctx 3
 pdf4tcllib::page::number $pdf $ctx 3 10
 ```
 
+### Which building blocks handle orient 0
+
+`page::_advance`, `form::*` and `text::writeParagraph` work in both
+directions. `table::draw` does **not**: since 0.6.3 it reads the
+direction from the document, but it can only honour it for the page
+break, so `-orient 0` is refused with an error rather than drawn
+upside down -- see
+[`table-draw.md`](table-draw.md#the-page-direction-063). Everything that
+reads `page::context` assumes `top` and `bottom` measured from the top of
+the page.
+
 ### _advance -- orient-aware y step (internal helper)
 
 Moves `y` in the correct direction for the current orient mode.
@@ -370,6 +385,50 @@ set lines [pdf4tcllib::text::wrap     $text $maxW $fontSize $fontName 0 $pdf]
 
 `table::render` and `_calcColWidths` pass `$pdf` through automatically --
 no manual call needed.
+
+With a CID font, `$pdf` is **not optional**. Without it `width` estimates
+from character classes, and the estimate does not know the font.
+Measured with DejaVu Sans as a CID font, `w35 Mo 17.08.26 CC Sped1` at
+size 8: 110.73 points exact against 89.44 estimated.
+
+### text::wrap -- where a line may break
+
+```tcl
+set lines [pdf4tcllib::text::wrap $text $maxW $fontSize $fontName \
+        $codeContinuation $pdf $hardBreak $separators]
+```
+
+Breaks at spaces, and inside a word at a hyphen or slash **between two
+characters**. The separator stays at the end of the line, so
+`Muster-Beispiel-Stadt` in a narrow column becomes `Muster-` /
+`Beispiel-Stadt` rather than being cut character-wise in the middle of a
+word.
+
+A hyphen after anything but a letter or digit does not break, so
+`-5 Euro` stays together -- the same rule pdf4tcl uses in `drawTextBox`
+since 0.9.4.60. Before pdf4tcllib 0.6.3 the two disagreed, and the same
+string came out differently depending on which of them drew it.
+
+The separators are the last argument and default to `{- /}`; pass `{}`
+for the pre-0.6.3 behaviour.
+
+### text::fitSize and text::fits -- shrink rather than cut
+
+```tcl
+set size [pdf4tcllib::text::fitSize $text $maxW $wanted $fontName \
+        -min 6 -pdf $pdf]
+set ok   [pdf4tcllib::text::fits $text $maxW $size $fontName $pdf]
+```
+
+`truncate` cuts, and sometimes that is the wrong answer: `Sped1` and
+`Sped2` differ in the last character, so a shortened delivery note sends
+the driver on the other tour. The same for two customers of one family,
+and for numbers with decimals -- 12.12 cut is 12.1, which also exists.
+
+`fitSize` returns the largest size at which the text still fits, down to
+`-min` (default 6). Below that it stops and returns `-min`; the caller
+decides whether to let it overhang or cut after all. A `-min` above the
+wanted size is clamped to the wanted size.
 
 ### Baseline positioning
 
@@ -563,7 +622,7 @@ fonts section above).
 
 ```tcl
 package require pdf4tcl
-package require pdf4tcllib 0.2
+package require pdf4tcllib
 
 pdf4tcllib::fonts::init -cid 1
 
@@ -591,6 +650,54 @@ pdf4tcllib::math::renderFormula $pdf 100 230 \
 $pdf write -file output.pdf
 $pdf destroy
 ```
+
+### The LaTeX subset -- math::renderLatex and math::measureLatex
+
+Beside the eqn-style notation above there is a second, smaller entry
+point that takes LaTeX-like input:
+
+```tcl
+lassign [pdf4tcllib::math::measureLatex $pdf {\frac{a}{b}} -size 12] \
+        width above below
+pdf4tcllib::math::renderLatex $pdf $x $y {E = mc^2} -size 12
+```
+
+`measureLatex` returns `{width heightAboveBaseline depthBelow}` so a
+caller can centre a formula or check it fits before drawing;
+`renderLatex` draws it with the baseline at `$y` and returns the x it
+advanced to. `-font` defaults to the loaded TrueType when `fonts::init`
+found one, otherwise to a built-in.
+
+Measured on a document with DejaVu Sans at size 12:
+
+| input | width, above, below |
+|---|---|
+| `x^2 + y^2 = z^2` | 50.95, 12.96, 2.40 |
+| `\frac{a}{b}` | 9.83, 14.98, 11.38 |
+| `\sqrt{x+1}` | 32.70, 10.64, 2.40 |
+| `\sum_{i=1}^{n} i` | 16.20, 12.00, 12.60 |
+| `\alpha \beta \gamma` | 20.40, 8.64, 2.40 |
+
+So: superscripts and subscripts, fractions, roots, large operators with
+limits, and the Greek letters. It is a subset, not LaTeX -- no
+environments, no matrices, no `\left(...\right)` sizing.
+
+**Greek and the operators need a font that has them.** Measured without
+`fonts::init`: `\alpha \sum` produced six question marks in the content
+stream, silently. Call `fonts::init -cid 1` first -- that is what
+`68_math_formula.tcl` does, and why.
+
+### On another backend: renderLatexOn and measureLatexOn
+
+```tcl
+set be [pdf4tcllib::math::pdfBackend $pdf]
+pdf4tcllib::math::renderLatexOn $be $x $y {a^2 + b^2} -size 12 -font $font
+```
+
+The drawing goes through a backend object, so the same formula code can
+write to a PDF or to a Tk canvas: `pdfBackend` and `canvasBackend` supply
+one. `renderLatex` and `measureLatex` are the convenience forms that make
+a PDF backend for you.
 
 ### math::analyseFormula
 
@@ -711,6 +818,73 @@ it. The other way round it would hide the content.
 It is marked as a Pagination artifact: it says something about the copy in
 your hand, not about the text. See [`pdf4tclflow.md`](pdf4tclflow.md).
 
+Since 0.6.3 the mark can go into an optional content layer instead of
+onto the page:
+
+```tcl
+lassign [pdf4tcllib::drawing::watermark $pdf $ctx "ENTWURF" -layer 1] \
+        size layer
+# on the following pages, so they share one layer:
+pdf4tcllib::drawing::watermark $pdf $ctx "ENTWURF" -layer $layer
+```
+
+A layer can be switched off in the reader, which is the point for a draft
+mark: somebody who wants the text without it can have it. `-layer 1`
+creates a layer named after the text and returns its id beside the size;
+`-layer <id>` reuses one. Without the option the behaviour is unchanged.
+
+The watermark stays a `Pagination` artifact in either case — a layer does
+not make it content.
+
+### drawing::arrow, drawing::arrowHead
+
+```tcl
+pdf4tcllib::drawing::arrow $pdf $x1 $y1 $x2 $y2 \
+        -at end -length 8 -width 6 -filled 1
+
+# a head alone, at the end of a path you drew yourself
+pdf4tcllib::drawing::arrowHead $pdf $x $y $angleInRadians -length 8
+```
+
+A connection in a diagram is a line plus a triangle, and the triangle is
+the work: it has to point along the line, and the line has to stop
+**before** it -- otherwise it draws through the filled area and leaves a
+seam down the middle. `-at` takes `end`, `start` or `both`.
+
+The colour is whatever is set; the procedure does not change it. It draws
+no curve -- for a bent connection draw the path yourself and put
+`arrowHead` at its end.
+
+Both are wrapped as artifacts: an arrow carries no text a reader could
+announce. Without that every line and triangle counts as untagged, and a
+diagram has as many holes in its structure tree as it has connections.
+
+### drawing::callout
+
+```tcl
+set lines [pdf4tcllib::drawing::callout $pdf $x $y $w $h $targetX $targetY \
+        $text -fill {0.95 0.95 0.8} -alt "note"]
+```
+
+A rounded box with a pointer at the side facing the target -- which side
+follows from the geometry and is not an option.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `-radius` | 4 | corner radius |
+| `-fill` | {} | `{r g b}`; {} = no fill |
+| `-stroke` | 1 | outline |
+| `-tail` | 12 | width of the pointer at the box |
+| `-pad` | 5 | inner padding for the text |
+| `-fontsize` | 9 | |
+| `-font` | {} | otherwise `fonts::fontSans` |
+| `-alt` | {} | makes the whole thing a `Figure` |
+
+Text too tall for the box is set **smaller, not cut**: a speech bubble
+usually holds one sentence, and half a sentence is none. The box and the
+pointer are artifacts; the text inside is content and stays in the
+structure tree.
+
 ### drawing::frame, drawing::separator
 
 ```tcl
@@ -804,6 +978,152 @@ proc render {pdf tableData x0 yVar maxW yTop yBot pageNoVar \
 Prefer `table::draw`, which takes the same data more ergonomically
 (`-ctx $ctx` replaces the seven positional layout arguments).
 
+### table::breakPoints and table::fitRows -- where a table may be split (0.6.3)
+
+```tcl
+set n  [pdf4tcllib::table::fitRows $space $rows -groups $groups]
+set bp [pdf4tcllib::table::breakPoints $rows -fontsize 9 -groups $groups]
+```
+
+`fitRows` answers how many rows go on a page of that height, stepping back
+to the last allowed break. `breakPoints` returns `rowH`, `headerH`, the
+cumulative `heights`, the number of `rows`, and `forbidden` -- the rows
+**before which no break is allowed**.
+
+Two things forbid one:
+
+- **Inside a cell merged across rows.** It is not repeated on the
+  following page, so a break would tear it apart. Measured: with a
+  `rowspan 3` at the top, 60 points of space take no rows at all rather
+  than two -- the whole block moves to the next page.
+- **Directly after a group heading.** `table::group` returns those row
+  numbers in `groups`; pass them in and they are honoured.
+
+The row height in `table::draw` is uniform and its cells do not wrap, so
+this is arithmetic rather than measurement. **It does not hold for
+`table::render`**, which does wrap.
+
+### table::widths -- the natural and the smallest width (0.6.3)
+
+```tcl
+set w [pdf4tcllib::table::widths $cols $rows -pdf $pdf]
+dict get $w natural   ;# per column, nothing wraps
+dict get $w min       ;# per column, the longest word still fits
+```
+
+Between the two a layout engine can distribute; below `min` something is
+cut or breaks mid-word. `min` is the **longest word**, not the widest
+character -- a word that does not fit is cut character-wise, and that is
+not a lower bound but an emergency.
+
+With a CID font `-pdf` is not optional; without it `text::width`
+estimates from character classes.
+
+### table::pivot -- a cross table (0.6.3)
+
+```tcl
+set p [pdf4tcllib::table::pivot $rows -row 0 -col 1 -value 2 \
+        -agg sum -empty "" -rowlabel "Region"]
+
+pdf4tcllib::table::draw $pdf $x $y $cols [dict get $p rows]
+```
+
+Rows of `{region quarter amount}` become a table with the regions as rows
+and the quarters as columns. Returns a dict: `header`, `rows`, `cols`
+(the column values, without the row label and the total column) and
+`total` (the row number of the totals row, or -1).
+
+| Option | Default | Meaning |
+|---|---|---|
+| `-row` / `-col` / `-value` | 0 / 1 / 2 | which column is which |
+| `-agg` | sum | `sum`, `count`, `avg`, `min`, `max` |
+| `-empty` | {} | what an empty cell says |
+| `-total` | 1 | a totals column and a totals row |
+| `-rowlabel` | {} | title of the first column |
+| `-totallabel` | Gesamt | |
+| `-colorder` | {} | column order; {} = sorted |
+
+**The columns follow from the data.** A value that appears in no row does
+not appear as a column; if you need all four quarters whether or not they
+occur, pass `-colorder`.
+
+**An empty cell is not a zero.** A cross table almost always has gaps,
+and "nothing measured" is a different statement from "measured, zero".
+
+A value that is not a number is skipped by `sum`, `avg`, `min` and `max`;
+`count` counts it, because it counts rows rather than values.
+
+### table::group -- subtotals per group (0.6.3)
+
+```tcl
+set g [pdf4tcllib::table::group $rows -by 0 -sum 2 -label "Summe %s"]
+
+set styles {}
+foreach r [dict get $g subtotals] { dict set styles $r {-font bold} }
+pdf4tcllib::table::draw $pdf $x $y $cols [dict get $g rows] \
+        -rowstyles $styles
+```
+
+Returns a dict: `rows` (with subtotals inserted), `subtotals`, `groups`
+and `total` — the last three are row numbers, so the caller can style
+them.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `-by` | 0 | column to group by |
+| `-sum` | {} | columns to add up |
+| `-label` | `Summe %s` | subtotal label; `%s` is the group value |
+| `-total` | 1 | append a grand total |
+| `-totallabel` | `Gesamt` | |
+| `-header` | 0 | a heading row before each group |
+| `-blank` | 0 | group value only in the first row of its group |
+| `-strict` | 0 | raise on unsorted rows instead of warning |
+
+**The rows have to be sorted by the group column.** They are not sorted
+here — an order the caller chose deliberately is not the library's to
+rearrange — but an unsorted list adds a warning to
+`::pdf4tcl::warnings`, because otherwise a group falls into several
+blocks and each gets its own subtotal.
+
+A value that is not a number is skipped rather than counted as zero: an
+empty field is not a zero.
+
+The subtotal label is a merged cell spanning the columns before the first
+summed one.
+
+### Merged cells (0.6.3)
+
+A cell may be a dict instead of a string:
+
+```tcl
+rows [list \
+    [list [dict create text "Nord" rowspan 2] Q1 120] \
+    [list Q2 90] \
+    [list [dict create text "Summe" colspan 2] 210]]
+```
+
+Both `table::render` and `table::draw` understand them.
+
+`colspan` adds up the widths of the covered columns; `rowspan` holds the
+column in the following rows, and as in HTML the covered cells are simply
+left out there — `Q2` above is the first entry of its row and belongs in
+the *second* column.
+
+The cell carries `/ColSpan` and `/RowSpan` (ISO 32000-1 table 349). That
+is not decoration: clause 14.8.4.3.4 note 2 says the association between
+a header and its data cells is determined heuristically and "may fail for
+complex tables". A merged cell is exactly such a case, and without the
+attribute a reader announces the wrong heading.
+
+Recognised by a `text` key together with `colspan` or `rowspan`, so a
+plain cell would have to read literally "text … colspan …" to be mistaken
+for one. An unusable span — zero, negative, not a number — counts as one
+rather than raising.
+
+**Limitation:** a merged block that meets a page break is not repeated on
+the next page. Nothing is lost and the tree stays complete, but the merge
+is visually interrupted.
+
 ### When to use which
 
 | Situation | API |
@@ -860,6 +1180,53 @@ page (updating `pageNoVar`) if the image would not fit.
 image::insert   pdf tkImg x    yVar maxW yTop yBot pageNoVar pageW pageH margin fontSize ?debug?
 image::insertAt pdf tkImg xPos yVar maxW yTop yBot pageNoVar pageW pageH margin fontSize ?debug?
 ```
+
+### image::place -- fit a frame without distorting
+
+```tcl
+lassign [pdf4tcllib::image::place $pdf $id $x $y $w $h \
+        -fit contain -anchor center -dpi 150 -alt "the plan"] bx by bw bh
+```
+
+`putImage` takes `-width` and `-height` and stretches the picture onto
+them. Where the aspect ratio differs the picture is distorted, and
+nothing says so.
+
+| `-fit` | |
+|---|---|
+| `contain` | fits inside, margin stays free — nothing is lost |
+| `cover` | fills the frame, overhang is cut — nothing stays empty |
+| `stretch` | the old behaviour |
+
+`-anchor` (`nw n ne w center e sw s se`) says where the picture sits
+inside the frame with `contain`, and which part is dropped with `cover` —
+a portrait with the head at the top wants `n`, a landscape usually
+`center`.
+
+Cutting is done with a clip path, so the picture is drawn at its computed
+size and only the frame shows. What lies outside is still in the file;
+crop beforehand if that matters.
+
+`-dpi` warns below a threshold and switches off the core's own warning
+for that call, because two messages about one picture are one too many.
+`-alt` wraps the image in a `Figure`. Returns the area actually used —
+smaller than the frame with `contain`, equal to it with `cover`.
+
+### image::gallery -- a grid across pages
+
+```tcl
+set pages [pdf4tcllib::image::gallery $pdf $images $x $y $w $h \
+        -cols 2 -rows 3 -gap 8 -caption unten -captionH 14]
+```
+
+Each entry is `{id "caption"}` or just `id`. Beyond the grid options it
+takes `-fit`, `-anchor` and `-dpi` from `place`, plus `-fontsize`,
+`-font` and `-pagecmd` (called before each new page, for a running head).
+
+A caption is written **inside** the image's `Figure` as a `Caption`, so
+the two belong together in the tree rather than standing next to each
+other unconnected. A caption too wide for its cell is set smaller rather
+than cut — see `text::fitSize`.
 
 ---
 ## form
@@ -1034,7 +1401,7 @@ pdf4tcllib::form::sumLine $pdf $ctx y {30 200 50 80} "Total:" "" \
 ### Complete example
 
 ```tcl
-package require pdf4tcllib 0.2
+package require pdf4tcllib
 pdf4tcllib::fonts::init
 
 set pdf [pdf4tcl::new %AUTO% -paper a4]
@@ -1063,6 +1430,130 @@ $pdf destroy
 
 ---
 
+## tag
+
+Tagged PDF: the structure tree. `$pdf tagged 1` turns it on in pdf4tcl;
+these four wrap the calls so a building block does not have to care
+whether tagging is on at all -- with it off they do nothing.
+
+```tcl
+pdf4tcllib::tag::begin $pdf P
+pdf4tcllib::tag::begin $pdf Span
+... draw ...
+pdf4tcllib::tag::end $pdf
+pdf4tcllib::tag::end $pdf
+```
+
+| Command | |
+|---|---|
+| `tag::begin $pdf <type> ?-option value ...?` | open an element; options are passed to `$pdf tagBegin` (`-alt`, `-scope`, `-colspan`, `-rowspan`, `-summary`) |
+| `tag::end $pdf` | close it |
+| `tag::artifact $pdf ?-type Layout\|Pagination\|Page?` | open an artifact -- decoration that carries no content |
+| `tag::artifactEnd $pdf` | close it |
+| `tag::isActive $pdf` | is tagging on for this document |
+| `tag::forget $pdf` | drop the bookkeeping for a destroyed document |
+
+**What goes in an artifact.** Anything a reader should not announce
+because it says nothing: zebra stripes, rules, the frame of a callout,
+running heads, page numbers, a watermark. Everything that carries text a
+reader would want gets an element instead.
+
+The measure of whether a block got this right is `$pdf getUntaggedCount`:
+it counts drawing operations that sit in neither. Zero is the goal, and
+every module in this library is checked against it -- see
+`tests/test_tagging.tcl`.
+
+## state
+
+Keeps the drawing state across a block. A building block leaves font and
+colour as it last needed them, not as it found them: measured around
+`table::draw`, 20 pt bold red went in and 9 pt regular black came out.
+
+```tcl
+pdf4tcllib::state::with $pdf {20 Helvetica-Bold} {1 0 0} {
+    pdf4tcllib::table::draw $pdf ...
+}
+
+# or by hand
+set z [pdf4tcllib::state::save $pdf 20 Helvetica-Bold {1 0 0}]
+...
+pdf4tcllib::state::restore $pdf $z
+```
+
+The values come from the caller because pdf4tcl has no getter for the
+current font or colour -- `getFontMetric` exists, `getFont` does not.
+What was not saved is not touched: a default would be a claim rather
+than a restoration. `with` restores even when the block raises.
+
+**Why not `gsave`/`grestore`.** The PDF pair `q`/`Q` does save the state,
+and inside one page it is the right tool. But it applies per content
+stream, and every page has its own: a `q` on page 1 with its `Q` on page
+2 leaves two unbalanced streams -- and neither pdf4tcl nor qpdf says
+anything, because each stream on its own stays readable. That happens
+with every block that breaks pages by itself.
+
+## measure
+
+How tall will a block be, before it is drawn and before it is known which
+page it goes on.
+
+```tcl
+set m [pdf4tcllib::measure::block mp {
+    pdf4tcllib::table::draw $mp 0 0 $cols $rows -maxwidth 400 -ctx $ctx
+} -paper a4]
+dict get $m height    ;# how much height it needs
+dict get $m pages     ;# how many pages it runs over
+dict get $m value     ;# what the block returned
+
+pdf4tcllib::measure::height mp $script ?-option ...?
+pdf4tcllib::measure::fits $space mp $script ?-option ...?
+```
+
+The block is really drawn, into a throwaway document that is never
+written, so the measurement is by construction the same thing that comes
+out later. Fonts are shared across documents, so the throwaway one knows
+the same CID fonts.
+
+**The page count is a property of the call, not of the block.** Without
+`-ctx`, `table::draw` does not break and draws past the page edge, and
+the measurement says one page. Measure the way you will draw.
+
+A block returning something other than a number gets an empty height
+rather than an invented one.
+
+## layout
+
+```tcl
+pdf4tcllib::layout::stack $pdf $x $y $w {
+    {script {pdf4tcllib::text::writeParagraph $bpdf $intro $bx $by $bw}}
+    {gap 12}
+    {script {pdf4tcllib::table::draw $bpdf $bx $by $cols $rows
+                    -maxwidth $bw} keep 1}
+} -ctx $ctx -font {10 Helvetica}
+```
+
+Blocks one under another: the loop every report contains, written once.
+Returns `y`, `pages` and `boxes` -- **one shape for all of them**,
+`{x y w h}`, whether the block itself returns a y, an area or a line
+count.
+
+| Option | |
+|---|---|
+| `-ctx` | page context; without it nothing is broken |
+| `-gap` | space between blocks |
+| `-font {size name}` / `-fill {r g b}` | set before each block, restored after |
+| `-pagecmd` | called after each page change |
+| `-paper` | for the measuring |
+
+`keep 1` measures the block first and starts a new page if it would not
+fit whole. Without it nothing is measured and nothing is broken.
+
+In each script `$bpdf`, `$bx`, `$by` and `$bw` are available. **`$bpdf`
+rather than `$pdf`**: while measuring it is the throwaway document, and a
+script naming `$pdf` would draw into the real one during the
+measurement. The script runs in the caller's scope, so its own variables
+are visible.
+
 ## Utility functions
 
 ### validate_pdf
@@ -1081,7 +1572,7 @@ if {[pdf4tcllib::validate_pdf "output.pdf"]} {
 
 ```tcl
 puts [pdf4tcllib::version]
-# -> 0.2
+# -> 0.6.3   (the same number as [package provide pdf4tcllib])
 ```
 
 ### readFile

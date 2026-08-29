@@ -14,9 +14,13 @@ pdf4tcllib fills the most common gaps in pdf4tcl:
 - **Table of contents** -- real page numbers and bookmarks, through a two-pass layout (`pdf4tcltoc`)
 - **Charts** -- bar, line and pie from data, Tk-free, tagged as figures (`pdf4tclchart`)
 - **Column flow** -- text through columns and pages, and a diagonal watermark (`pdf4tclflow`)
+- **Tree widgets** -- a `ttk::treeview` as an indented table or as an outline with bookmarks (`pdf4tcltreeview`)
+- **Images** -- fit or cover a frame with an anchor, and galleries across pages with captions (`image::place`, `image::gallery`)
+- **Diagrams** -- arrows with heads that point the right way, and callouts that shrink their text rather than cut it (`drawing::arrow`, `drawing::callout`)
+- **Aggregation** -- subtotals per group and cross tables, where an empty cell stays empty rather than becoming a zero (`table::group`, `table::pivot`)
 
 
-## Accessible documents (0.6.1)
+## Accessible documents (0.6)
 
 Not only tables: with `$pdf tagged 1` every building block marks up what it
 draws. Form fields sit in a `Form` element together with their label,
@@ -70,23 +74,26 @@ tcl::tm::path add /path/to/lib
 package require pdf4tcllib 0.6
 ```
 
-`pdf4tcllib-0.6.1.tm` is one file and holds the core: fonts, unicode, text,
+`pdf4tcllib-0.6.3.tm` is one file and holds the core: fonts, unicode, text,
 math, table, page, drawing, units, image, form, tag. The others are
 separate packages, each usable on its own -- take only what you use.
 
 | file | `package require` | |
 |---|---|---|
-| `lib/pdf4tcllib-0.6.1.tm` | `pdf4tcllib` | the core, needed by all of the below |
-| `lib/pdf4tcltable-0.3.tm` | `pdf4tcltable` | export a Tk `tablelist` widget |
-| `lib/pdf4tcltext-0.1.tm` | `pdf4tcltext` | export a Tk `text` widget |
-| `lib/pdf4tclforms-0.2.tm` | `pdf4tclforms` | declarative AcroForm layouts |
-| `lib/pdf4tcllabels-0.1.tm` | `pdf4tcllabels` | label sheets and roll labels |
+| `lib/pdf4tcllib-0.6.3.tm` | `pdf4tcllib` | the core, needed by all of the below |
+| `lib/pdf4tcltable-0.3.1.tm` | `pdf4tcltable` | export a Tk `tablelist` widget |
+| `lib/pdf4tcltreeview-0.1.tm` | `pdf4tcltreeview` | export a `ttk::treeview`, as a table or as an outline |
+| `lib/pdf4tclcanvas-0.1.tm` | `pdf4tclcanvas` | place a canvas in a frame, to scale and in the structure tree |
+| `lib/pdf4tcltext-0.2.tm` | `pdf4tcltext` | export a Tk `text` widget |
+| `lib/pdf4tclforms-0.2.3.tm` | `pdf4tclforms` | declarative AcroForm layouts |
+| `lib/pdf4tcllabels-0.1.1.tm` | `pdf4tcllabels` | label sheets and roll labels |
 | `lib/pdf4tcltoc-0.1.tm` | `pdf4tcltoc` | table of contents with real page numbers |
 | `lib/pdf4tclchart-0.1.tm` | `pdf4tclchart` | bar, line and pie charts |
 | `lib/pdf4tclflow-0.1.tm` | `pdf4tclflow` | text through columns and pages |
 
-The only external dependency is pdf4tcl. `pdf4tcltable` and `pdf4tcltext`
-additionally need Tk and the widget they export; nothing else needs Tk.
+The only external dependency is pdf4tcl. `pdf4tcltable`, `pdf4tcltreeview`,
+`pdf4tclcanvas` and `pdf4tcltext` additionally need Tk and the widget they export; nothing
+else needs Tk.
 
 To bundle pdf4tcllib with another project, copy the modules you need
 straight out of `lib/` -- the file name carries the version, which is
@@ -528,7 +535,7 @@ All functions are designed for reuse in any pdf4tcl-based project.
 ## Running the tests
 
 ```bash
-make test                 # 348 tests in 16 files
+make test                 # 527 tests in 27 files
 tclsh tests/run_all.tcl   # the same, directly
 ```
 

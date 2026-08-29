@@ -131,4 +131,4 @@ set outfile [file join $outdir "demo_04_tables.pdf"]
 $pdf write -file $outfile
 $pdf destroy
 catch {destroy .}
-puts "Geschrieben: $outfile"
+puts "Written: $outfile"

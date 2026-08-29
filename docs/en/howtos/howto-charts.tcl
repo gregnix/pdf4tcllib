@@ -31,7 +31,7 @@ set y [dict get $ctx top]
 # x, y, width, height; the call returns the y below it, so charts stack.
 
 set y [::pdf4tcllib::chart::bar $pdf $x $y $w 150 \
-    {Jan 120 Feb 145 Mrz 98 Apr 160} \
+    {Jan 120 Feb 145 Mar 98 Apr 160} \
     -title "1. Plain bar chart" -values 1 -format %.0f]
 
 # --- 2. fixing the scale ----------------------------------------------------
@@ -61,7 +61,7 @@ set y [::pdf4tcllib::chart::line $pdf $x [expr {$y + 16}] $w 150 \
 # a coloured wedge and nothing else.
 
 set y [::pdf4tcllib::chart::pie $pdf $x [expr {$y + 16}] $w 170 \
-    {Nord 35 Sued 25 Ost 20 West 20} \
+    {North 35 South 25 East 20 West 20} \
     -title "4. Shares, with a legend" -legend 1]
 
 $pdf endPage
@@ -72,19 +72,19 @@ $pdf endPage
 
 $pdf startPage
 set y [dict get $ctx top]
-set y [::pdf4tcllib::chart::bar $pdf $x $y $w 150 {Jan 120 Feb 145 Mrz 98} \
+set y [::pdf4tcllib::chart::bar $pdf $x $y $w 150 {Jan 120 Feb 145 Mar 98} \
     -title "5. Tagged" \
     -alt "Bar chart: revenue January to March, 120, 145 and 98 kEUR"]
 
 # ... and then the numbers again, as a table, for a reader who needs them.
 set y [::pdf4tcllib::table::draw $pdf $x [expr {$y + 16}] \
-    {{-header Monat} {-header "kEUR" -align right}} \
-    {{Jan 120} {Feb 145} {Mrz 98}} -maxwidth $w]
+    {{-header Month} {-header "kEUR" -align right}} \
+    {{Jan 120} {Feb 145} {Mar 98}} -maxwidth $w]
 
 puts "untagged drawing operations: [$pdf getUntaggedCount]"
 $pdf endPage
 
 set out [pdf4tcllib::doc::outfile howto-charts.pdf]
 $pdf write -file $out
-puts "Geschrieben: $out"
+puts "Written: $out"
 exit 0

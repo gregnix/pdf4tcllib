@@ -345,4 +345,57 @@ test chart-tag-2 "getUntaggedCount bleibt bei 0" -constraints {chart pdf} -body 
     return $n
 } -result 0
 
+
+# ---------------------------------------------------------------------------
+# Der Kreis liegt im Rahmen
+#
+# pdf4tcl: arc x0 y0 rx ry phi extend -- Mittelpunkt und zwei Radien.
+# chart::pie uebergab Ecke und Durchmesser, als waere es eine Bounding
+# Box: der Mittelpunkt lag um r verschoben, der Kreis war doppelt so
+# gross. Gemessen an einem Rahmen x=60..540: der Pfad begann bei x=44
+# ohne und bei x=-47 mit Legende -- letzteres 107 Punkt neben dem Blatt.
+#
+# pdftotext sieht das nicht: ein Kreis ist gezeichnet, nicht geschrieben.
+# ---------------------------------------------------------------------------
+
+proc ::chartPfadX {out} {
+    set minx 1e9 ; set maxx -1e9
+    foreach l [split $out "\n"] {
+        if {[regexp {^([-0-9.]+) ([-0-9.]+) [ml]$} $l -> x y]} {
+            if {$x < $minx} { set minx $x }
+            if {$x > $maxx} { set maxx $x }
+        }
+    }
+    return [list $minx $maxx]
+}
+
+test chart-pie-frame-1 {der Kreis bleibt im Rahmen} \
+        -constraints {chart pdf} -body {
+    set res {}
+    foreach leg {0 1} {
+        set pdf [pdf4tcl::new %AUTO% -paper a4 -compress 0]
+        $pdf startPage
+        ::pdf4tcllib::chart::pie $pdf 60 100 480 200 \
+                {North 35 South 25 East 20 West 20} -title "T" -legend $leg
+        set out [$pdf get]
+        $pdf destroy
+        lassign [::chartPfadX $out] minx maxx
+        lappend res [expr {$minx >= 60 && $maxx <= 540}]
+    }
+    set res
+} -result {1 1}
+
+test chart-pie-frame-2 {und ganz auf dem Blatt} -constraints {chart pdf} -body {
+    set pdf [pdf4tcl::new %AUTO% -paper a4 -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::chart::pie $pdf 60 100 480 200 \
+            {North 35 South 25 East 20 West 20} -legend 1
+    set out [$pdf get]
+    $pdf destroy
+    lassign [::chartPfadX $out] minx maxx
+    expr {$minx > 0 && $maxx < 595.28}
+} -result 1
+
+rename ::chartPfadX {}
+
 cleanupTests

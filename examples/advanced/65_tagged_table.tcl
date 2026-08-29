@@ -4,7 +4,7 @@
 # ============================================================================
 # Ausgabe: pdf/demo_65_tagged_table.pdf
 #
-# Lernziele:
+# What this shows:
 #   - Tagging einschalten und was pdf4tcllib daraufhin selbst erledigt
 #   - warum eine Tabelle ohne Struktur fuer einen Screenreader wertlos ist
 #   - PDF/A-3a und PDF/UA-1 in einem Dokument
@@ -79,7 +79,7 @@ set outfile [file join $outdir demo_65_tagged_table.pdf]
 $pdf write -file $outfile
 $pdf destroy
 
-puts "Geschrieben: $outfile"
+puts "Written: $outfile"
 puts "Pruefen:"
 puts "  verapdf -f ua1 $outfile"
 puts "  verapdf -f 3a  $outfile"

@@ -3,28 +3,30 @@
 # Copyright (c) 2026 Gregor (gregnix)
 # BSD 2-Clause License -- see LICENSE for details
 #
-# Provides: fonts, unicode, text, table, page, drawing,
-#           units, image, form namespaces
-# Requires: pdf4tcl 0.9.4.23+, Tcl 8.6+
-
-# pdf4tcllib-0.1.tm -- Extension library for pdf4tcl
-#
-# Single file: all modules in one file. (2544 lines)
-# No external dependencies except pdf4tcl itself.
+# Single file: all modules in one file. No external dependencies except
+# pdf4tcl itself; Tk only for the image:: namespace.
 #
 # Modules (as namespaces):
 #   pdf4tcllib::units    Unit conversion
 #   pdf4tcllib::fonts    Font management (TTF + fallback)
 #   pdf4tcllib::unicode  Unicode sanitization
-#   pdf4tcllib::text     Text layout (wrapping, width, tabs)
-#   pdf4tcllib::page     Page numbers, header/footer
-#   pdf4tcllib::table    Table rendering
-#   pdf4tcllib::drawing  Drawing functions
-#   pdf4tcllib::image    Image integration (Tk)
-#   pdf4tcllib::form     Form helpers for addForm (Label+Field, rows, tables)
+#   pdf4tcllib::text     Text layout (wrapping, width, fitting, tabs)
+#   pdf4tcllib::math     Formula rendering
+#   pdf4tcllib::page     Page numbers, header/footer, context
+#   pdf4tcllib::tag      Tagged PDF: elements and artifacts
+#   pdf4tcllib::table    Table rendering, merged cells
+#   pdf4tcllib::drawing  Shapes, gradients, arrows, callouts
+#   pdf4tcllib::image    Image placement and galleries (Tk)
+#   pdf4tcllib::form     Form helpers for addForm (label + field, rows)
+#
+# Separate packages build on this one: pdf4tcltable, pdf4tcltreeview,
+# pdf4tcltext, pdf4tclforms, pdf4tcllabels, pdf4tcltoc, pdf4tclchart,
+# pdf4tclflow.
+#
+# Requires: pdf4tcl 0.9.4.23+, Tcl 8.6+
 #
 # Usage:
-#   package require pdf4tcllib 0.1
+#   package require pdf4tcllib
 #   pdf4tcllib::fonts::init
 #   set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true]
 #   $pdf startPage
@@ -34,10 +36,13 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.6.2
+package provide pdf4tcllib 0.6.3
 
 namespace eval ::pdf4tcllib {
-    variable version 0.3
+    # Aus package provide abgeleitet statt daneben gepflegt: die beiden
+    # Zahlen liefen auseinander, weil eine von ihnen bei jedem Bump
+    # vergessen wurde -- package provide stand auf 0.6.3, version auf 0.3.
+    variable version [package provide pdf4tcllib]
 }
 
 proc ::pdf4tcllib::version {} {
@@ -1176,6 +1181,56 @@ proc ::pdf4tcllib::text::width {text fontSize fontName {pdf {}}} {
     return [expr {$len * $fontSize * $factor}]
 }
 
+# Ein Wort in Stuecke zerlegen, an denen umbrochen werden darf.
+#
+# Der Trenner bleibt am ENDE des vorigen Stuecks: "Muster-" sagt dem
+# Leser, dass es weitergeht -- ohne ihn liest sich die Zeile wie ein
+# vollstaendiges Wort.
+#
+# EIN Strich trennt nur zwischen zwei Zeichen, nicht am Wortanfang: sonst
+# wuerde "-5 Euro" zu "-" und "5 Euro". Genau diese Regel hat pdf4tcl in
+# drawTextBox seit 0.9.4.60, und beide muessen dieselbe haben -- sonst
+# bricht derselbe Text im Kern anders um als in der Bibliothek.
+proc ::pdf4tcllib::text::_stuecke {wort trenner} {
+    if {![llength $trenner]} { return [list $wort] }
+    set out {}
+    set rest $wort
+    set weiter 1
+    while {$weiter} {
+        set weiter 0
+        # Den fruehesten Trenner suchen, der weder am Anfang noch am Ende
+        # steht und auf ein Buchstaben- oder Ziffernzeichen folgt.
+        set beste -1
+        foreach z $trenner {
+            set von 1
+            while {1} {
+                set i [string first $z $rest $von]
+                if {$i < 0 || $i >= [string length $rest] - 1} { break }
+                if {[string is alnum -strict [string index $rest [expr {$i - 1}]]]} {
+                    if {$beste < 0 || $i < $beste} { set beste $i }
+                    break
+                }
+                set von [expr {$i + 1}]
+            }
+        }
+        if {$beste >= 0} {
+            lappend out [string range $rest 0 $beste]
+            set rest [string range $rest [expr {$beste + 1}] end]
+            set weiter 1
+        }
+    }
+    if {$rest ne ""} { lappend out $rest }
+    if {![llength $out]} { set out [list $wort] }
+    return $out
+}
+
+proc ::pdf4tcllib::text::_endetAufTrenner {s trenner} {
+    foreach z $trenner {
+        if {[string index $s end] eq $z} { return 1 }
+    }
+    return 0
+}
+
 proc ::pdf4tcllib::text::_hardBreak {word maxW fontSize fontName {pdf {}}} {
     # Greedily splits a single over-wide word into pieces that each fit maxW.
     # Always emits at least one character per piece, so a single glyph wider
@@ -1198,8 +1253,9 @@ proc ::pdf4tcllib::text::_hardBreak {word maxW fontSize fontName {pdf {}}} {
     return $pieces
 }
 
-proc ::pdf4tcllib::text::wrap {line maxW fontSize fontName {codeContinuation 0} {pdf {}} {hardBreak 0}} {
-    # Wraps a line at word boundaries.
+proc ::pdf4tcllib::text::wrap {line maxW fontSize fontName {codeContinuation 0} {pdf {}} {hardBreak 0} {trenner {- /}}} {
+    # Wraps a line at word boundaries, and inside a word at a hyphen or
+    # slash between two characters.
     #
     # Returns a list of sub-lines that each fit within maxW.
     # hardBreak 0 (default): over-wide words are truncated (unchanged legacy
@@ -1208,30 +1264,55 @@ proc ::pdf4tcllib::text::wrap {line maxW fontSize fontName {codeContinuation 0} 
     #
     # codeContinuation: if 1, a wrapped code line is marked with a
     # trailing " \\", Tcl style.
+    #
+    # trenner: the characters a word may additionally break at. Up to
+    # 0.6.2 there were none, so "Muster-Beispiel-Stadt" was cut
+    # character-wise in a narrow column -- "Muster-Beispi" / "el-Stadt",
+    # with no hyphen to show it continues. pdf4tcl breaks at the hyphen in
+    # drawTextBox since 0.9.4.60, and the two have to agree: otherwise the
+    # same string comes out differently depending on which of them drew
+    # it. Pass {} for the old behaviour.
+    #
+    # The measurement takes $pdf everywhere. It used to be passed at ONE
+    # of four places, so the other three fell back to the character-class
+    # estimate -- which does not know the font. Measured with DejaVu Sans
+    # as a CID font, "w35 Mo 17.08.26 CC Sped1" at size 8: 110.73 points
+    # exact against 89.44 estimated. A table in a CID font therefore broke
+    # in the wrong place.
 
-    if {[width $line $fontSize $fontName] <= $maxW} {
+    if {[width $line $fontSize $fontName $pdf] <= $maxW} {
         return [list $line]
     }
 
     # Bei Code-Continuation Platz for " \" reservieren
     if {$codeContinuation} {
-        set wrapMaxW [expr {$maxW - [width " \\" $fontSize $fontName]}]
+        set wrapMaxW [expr {$maxW - [width " \\" $fontSize $fontName $pdf]}]
     } else {
         set wrapMaxW $maxW
     }
 
-    set words [split $line " "]
+    # Jedes Wort in Stuecke, an denen umbrochen werden darf. Ohne Trenner
+    # ist das Stueck das Wort, und die Schleife arbeitet wie zuvor.
+    set words {}
+    foreach wort [split $line " "] {
+        foreach st [_stuecke $wort $trenner] { lappend words $st }
+    }
     set lines {}
     set current ""
 
     foreach word $words {
         if {$current eq ""} {
             set test $word
+        } elseif {[_endetAufTrenner $current $trenner]} {
+            # Nach einem Trenner KEIN Leerzeichen: "Muster-" und
+            # "Beispiel" gehoeren zusammen, wenn beides in eine Zeile
+            # passt.
+            set test "$current$word"
         } else {
             set test "$current $word"
         }
 
-        if {[width $test $fontSize $fontName] <= $wrapMaxW} {
+        if {[width $test $fontSize $fontName $pdf] <= $wrapMaxW} {
             set current $test
         } else {
             if {$current ne ""} {
@@ -1302,6 +1383,46 @@ proc ::pdf4tcllib::text::truncate {text maxW fontSize fontName {pdf {}}} {
 
     if {$lo == 0} { return "..." }
     return "[string range $text 0 $lo-1]..."
+}
+
+# Die groesste Schriftgroesse, bei der der Text noch in maxW passt.
+#
+# truncate schneidet ab, und manchmal ist genau das falsch: "Sped1" und
+# "Sped2" unterscheiden sich am letzten Zeichen, und ein gekuerzter Beleg
+# schickt den Fahrer auf die andere Tour. Dasselbe bei Kundennamen zweier
+# Betriebe derselben Familie und bei Zahlen mit Nachkommastellen -- 12.12
+# gekuerzt ist 12.1, und das gibt es auch.
+#
+# -min: kleiner wird nicht gesetzt, Vorgabe 6. Passt es auch dort nicht,
+# kommt -min zurueck; der Aufrufer entscheidet dann, ob er ueberstehen
+# laesst oder doch kuerzt. Ein Text, den niemand lesen kann, hilft auch
+# nicht. Liegt -min ueber der Wunschgroesse, gilt die Wunschgroesse --
+# sonst kaeme eine GROESSERE Schrift zurueck, als verlangt war.
+#
+# -pdf: bei einer CID-Schrift nicht weglassen. Ohne das Objekt schaetzt
+# width ueber Zeichenklassen; gemessen an DejaVu Sans, Groesse 8: 110.73
+# Punkt exakt gegen 89.44 geschaetzt. Die Schaetzung haelt fuer passend,
+# was 20 Punkt uebersteht.
+proc ::pdf4tcllib::text::fitSize {text maxW wunschGroesse fontName args} {
+    array set opt {-min 6 -pdf {}}
+    foreach {k v} $args {
+        if {![info exists opt($k)]} {
+            return -code error "text::fitSize: unknown option $k\
+                    (known: [join [lsort [array names opt]] { }])"
+        }
+        set opt($k) $v
+    }
+    if {$text eq "" || $maxW <= 0} { return $wunschGroesse }
+    if {$opt(-min) > $wunschGroesse} { set opt(-min) $wunschGroesse }
+    for {set g $wunschGroesse} {$g > $opt(-min)} {incr g -1} {
+        if {[width $text $g $fontName $opt(-pdf)] <= $maxW} { return $g }
+    }
+    return $opt(-min)
+}
+
+# Passt der Text bei dieser Groesse? width und Vergleich in einem.
+proc ::pdf4tcllib::text::fits {text maxW fontSize fontName {pdf {}}} {
+    return [expr {[width $text $fontSize $fontName $pdf] <= $maxW}]
 }
 
 proc ::pdf4tcllib::text::expandTabs {line {tabWidth 4}} {
@@ -2636,11 +2757,1033 @@ proc ::pdf4tcllib::tag::artifactEnd {pdf} {
     catch {$pdf tagArtifactEnd}
 }
 
+# ============================================================
+# state -- Zeichenzustand sichern und zuruecksetzen
+# ============================================================
+#
+# Ein Baustein hinterlaesst Schrift und Farbe so, wie er sie zuletzt
+# brauchte, nicht so, wie er sie vorfand. Gemessen an table::draw:
+#
+#     vorher   /Pdf4tclSansBold 20 Tf,  1 0 0 rg
+#     nachher  /Pdf4tclSans 9 Tf,       0 0 0 rg
+#
+# Wer von Hand zeichnet, merkt es kaum; wer Bausteine hintereinander
+# setzt, bekommt Ergebnisse, die von der Reihenfolge abhaengen.
+#
+# WARUM NICHT EINFACH gsave/grestore
+#
+# Das PDF-Paar q/Q sichert den Zeichenzustand samt Schrift und Farbe, und
+# fuer einen Block innerhalb EINER Seite ist es das richtige Mittel. Nur
+# gilt es je Inhaltsstrom, und jede Seite hat ihren eigenen: ein q auf
+# Seite 1 und das Q auf Seite 2 ergibt zwei unausgeglichene Stroeme.
+# Nachgemessen -- pdf4tcl meldet dabei nichts, und qpdf auch nicht, weil
+# beide Stroeme fuer sich genommen lesbar bleiben.
+#
+# Genau das passiert bei jedem Baustein, der selbst umbrechen kann:
+# table::draw, flow::columns, toc::document. Deshalb sichert dieses
+# Modul den Zustand auf der Tcl-Seite und setzt ihn mit setFont und
+# setFillColor zurueck -- das ueberlebt einen Seitenwechsel.
+#
+# Die Werte kommen nicht aus pdf4tcl: getFontMetric gibt es, einen
+# Getter fuer die aktuelle Schrift oder Farbe nicht. Gesichert wird
+# deshalb, was der Aufrufer selbst gesetzt hat -- er weiss es, und ein
+# Layouter fuehrt es ohnehin mit.
+#
+#   ::pdf4tcllib::state::with $pdf {12 Helvetica} {0 0 0} {
+#       ::pdf4tcllib::table::draw $pdf ...
+#   }
+#
+# oder von Hand:
+#
+#   set z [::pdf4tcllib::state::save $pdf 12 Helvetica {0 0 0}]
+#   ...
+#   ::pdf4tcllib::state::restore $pdf $z
+namespace eval ::pdf4tcllib::state {}
+
+# Einen Zustand festhalten. Schrift und Farbe gibt der Aufrufer an,
+# weil pdf4tcl sie nicht herausgibt.
+proc ::pdf4tcllib::state::save {pdf {size {}} {font {}} {fill {}} {stroke {}}} {
+    set z [dict create]
+    if {$size ne "" && $font ne ""} {
+        dict set z size $size
+        dict set z font $font
+    }
+    if {[llength $fill]   == 3} { dict set z fill   $fill }
+    if {[llength $stroke] == 3} { dict set z stroke $stroke }
+    # Was pdf4tcl doch herausgibt, wird nicht abgefragt, sondern
+    # mitgenommen: Zeilenabstand und Kerning aendern, was ein Text misst.
+    catch {dict set z linespacing [$pdf getLineSpacing]}
+    catch {dict set z kerning     [$pdf getKerning]}
+    return $z
+}
+
+# Den Zustand wieder herstellen. Was nicht gesichert wurde, wird nicht
+# angefasst -- eine Voreinstellung waere hier eine Behauptung.
+proc ::pdf4tcllib::state::restore {pdf z} {
+    if {[dict exists $z size] && [dict exists $z font]} {
+        catch {$pdf setFont [dict get $z size] [dict get $z font]}
+    }
+    if {[dict exists $z fill]} {
+        catch {$pdf setFillColor {*}[dict get $z fill]}
+    }
+    if {[dict exists $z stroke]} {
+        catch {$pdf setStrokeColor {*}[dict get $z stroke]}
+    }
+    if {[dict exists $z linespacing]} {
+        catch {$pdf setLineSpacing [dict get $z linespacing]}
+    }
+    if {[dict exists $z kerning]} {
+        catch {$pdf setKerning [dict get $z kerning]}
+    }
+    return
+}
+
+# Ein Block, um den herum der Zustand erhalten bleibt -- auch wenn der
+# Block wirft. Das Ergebnis des Blocks kommt zurueck.
+proc ::pdf4tcllib::state::with {pdf schrift farbe script} {
+    set size {} ; set font {}
+    if {[llength $schrift] == 2} { lassign $schrift size font }
+    set z [save $pdf $size $font $farbe]
+    set rc [catch {uplevel 1 $script} res opts]
+    restore $pdf $z
+    if {$rc} { return -options $opts $res }
+    return $res
+}
+
+# ============================================================
+# measure -- messen, ohne zu zeichnen
+# ============================================================
+#
+# Ein Layouter muss fragen koennen: WIE HOCH wird dieser Block bei 300
+# Punkt Breite -- und zwar bevor er weiss, auf welche Seite er kommt.
+# Kein Baustein dieser Bibliothek beantwortet das; alle zeichnen und
+# geben hinterher ein y zurueck.
+#
+# Der billige Weg waere, jeder Zeichenprozedur ein -dryrun beizubringen.
+# Das hiesse, in jeder von ihnen zwei Faelle zu fuehren, und der
+# Messfall wuerde seltener benutzt als der Zeichenfall -- also wuerde er
+# als erster falsch. Stattdessen wird hier WIRKLICH gezeichnet, nur in
+# ein Wegwerf-Dokument, das nie geschrieben wird. Was gemessen wird, ist
+# damit per Bauart dasselbe, was spaeter herauskommt.
+#
+# Geladene Schriften sind objektuebergreifend (::pdf4tcl fuehrt sie im
+# Namensraum, nicht je Dokument), das Wegwerf-Dokument kennt also
+# dieselben Fonts. Nachgemessen mit einer CID-Schrift: gleiche Breite in
+# beiden Objekten.
+#
+#   set m [::pdf4tcllib::measure::block mpdf {
+#       ::pdf4tcllib::table::draw $mpdf 0 0 $cols $rows -maxwidth 400
+#   } -paper a4]
+#   dict get $m height     ;# wieviel Hoehe der Block braucht
+#   dict get $m pages      ;# ueber wieviele Seiten er laeuft
+#   dict get $m value      ;# was der Block zurueckgab
+#
+# Die Hoehe kommt aus dem Rueckgabewert des Blocks, wenn der eine Zahl
+# ist -- die Bausteine geben ihr y zurueck. Ist er es nicht, steht dort
+# der leere String: geraten wird nicht.
+namespace eval ::pdf4tcllib::measure {}
+
+proc ::pdf4tcllib::measure::block {varName script args} {
+    array set o {-paper a4 -orient 1 -margin 0 -y 0 -landscape 0}
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "measure::block: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    set mpdf [::pdf4tcl::new %AUTO% -paper $o(-paper) -orient $o(-orient) \
+            -margin $o(-margin) -landscape $o(-landscape)]
+    # upvar auf einen Namen, den der Aufrufer schon benutzt, waere ein
+    # Fehler ("variable already exists"); deshalb erst freimachen.
+    upvar 1 $varName zielVar
+    catch {unset zielVar}
+    upvar 1 $varName zielVar
+    set zielVar $mpdf
+    $mpdf startPage
+    set rc [catch {uplevel 1 $script} res opts]
+    catch {$mpdf endPage}
+    set seiten 1
+    catch {set seiten [$mpdf pageCount]}
+    catch {$mpdf destroy}
+    if {$rc} { return -options $opts $res }
+
+    set hoehe ""
+    if {[string is double -strict $res]} {
+        set hoehe [expr {abs($res - $o(-y))}]
+    }
+    return [dict create height $hoehe pages $seiten value $res]
+}
+
+# Nur die Hoehe. Leerer String, wenn der Block sie nicht hergibt.
+proc ::pdf4tcllib::measure::height {varName script args} {
+    set m [uplevel 1 [list ::pdf4tcllib::measure::block $varName $script \
+            {*}$args]]
+    return [dict get $m height]
+}
+
+# Passt der Block in $platz Punkt Hoehe, ohne umzubrechen?
+#
+# Geprueft wird beides: die Hoehe UND die Seitenzahl. Ein Block kann in
+# die Hoehe passen und trotzdem umgebrochen haben, wenn das
+# Wegwerf-Dokument kleiner war als der Platz -- deshalb sollte -paper
+# dem echten Dokument entsprechen.
+proc ::pdf4tcllib::measure::fits {platz varName script args} {
+    set m [uplevel 1 [list ::pdf4tcllib::measure::block $varName $script \
+            {*}$args]]
+    set h [dict get $m height]
+    if {$h eq ""} { return "" }
+    return [expr {$h <= $platz && [dict get $m pages] == 1}]
+}
+
+# ============================================================
+# layout::stack -- Bloecke untereinander setzen
+# ============================================================
+#
+# Was ein Aufrufer heute von Hand schreibt: einen Block zeichnen, das
+# zurueckgegebene y nehmen, einen Abstand addieren, den naechsten
+# zeichnen -- und beim Seitenumbruch selbst aufpassen. Das ist die
+# Schleife, die jeder Bericht enthaelt, und sie ist jedes Mal ein wenig
+# anders falsch.
+#
+# stack macht daraus einen Aufruf und benutzt dabei, was heute dazukam:
+# measure, um VORHER zu wissen, ob ein Block noch auf die Seite passt,
+# und state, damit ein Block dem naechsten nicht die Schrift verstellt.
+#
+#   ::pdf4tcllib::layout::stack $pdf $x $y $w {
+#       {script {::pdf4tcllib::text::writeParagraph $bpdf "..." $bx $by $bw}}
+#       {gap 12}
+#       {script {::pdf4tcllib::table::draw $bpdf $bx $by $cols $rows \
+#                        -maxwidth $bw} keep 1}
+#   } -ctx $ctx -font {10 Helvetica} -fill {0 0 0}
+#
+# In jedem script stehen bereit:
+#
+#   $bpdf   das Dokument -- NICHT $pdf. Beim Messen ist es ein
+#           Wegwerf-Dokument, beim Zeichnen das echte; wer $pdf schreibt,
+#           zeichnet beim Messen versehentlich ins richtige Dokument.
+#   $bx $by $bw   Ort und Breite des Blocks
+#
+# Eintraege:
+#   {script ...}        ein Block
+#   {gap 12}            Abstand vor dem naechsten Block
+#   {script ... keep 1} zusammenhalten: passt er nicht mehr ganz auf die
+#                       Seite, kommt er ganz auf die naechste, statt
+#                       aufgeteilt zu werden
+#
+# Optionen:
+#   -ctx       Seitenkontext; ohne ihn wird nicht umgebrochen
+#   -gap       Abstand zwischen Bloecken (0)
+#   -font      {groesse name} -- wird vor jedem Block gesetzt und danach
+#              wiederhergestellt
+#   -fill      Fuellfarbe, ebenso
+#   -pagecmd   wird nach jedem Seitenwechsel gerufen (Kopfzeile o.ae.)
+#   -paper     fuers Messen (a4)
+#
+# Rueckgabe: dict mit
+#   y        das y nach dem letzten Block
+#   boxes    je Block {x y w h} -- EINE Form fuer alle, auch fuer die,
+#            die von sich aus nur ein y zurueckgeben
+#   pages    wieviele Seitenwechsel stattgefunden haben
+namespace eval ::pdf4tcllib::layout {}
+
+proc ::pdf4tcllib::layout::stack {pdf x y w blocks args} {
+    array set o {
+        -ctx {} -gap 0 -font {} -fill {} -pagecmd {} -paper a4
+    }
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "layout::stack: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    set haveCtx [expr {[llength $o(-ctx)] > 0}]
+    set yTop 0 ; set yBot 0
+    if {$haveCtx} {
+        set yTop [dict get $o(-ctx) SY]
+        set yBot [expr {[dict get $o(-ctx) SY] + [dict get $o(-ctx) SH]}]
+    }
+
+    set boxes {}
+    set wechsel 0
+    set gap $o(-gap)
+
+    foreach eintrag $blocks {
+        if {[llength $eintrag] == 2 && [lindex $eintrag 0] eq "gap"} {
+            set y [expr {$y + [lindex $eintrag 1]}]
+            continue
+        }
+        if {![dict exists $eintrag script]} {
+            return -code error "layout::stack: an entry needs a script\
+                    (or must be {gap <n>})"
+        }
+        set script [dict get $eintrag script]
+        set keep 0
+        if {[dict exists $eintrag keep]} { set keep [dict get $eintrag keep] }
+
+        # Vorher messen -- nur dafuer ist measure da. Der Block wird in
+        # ein Wegwerf-Dokument gezeichnet, also muss er $bpdf benutzen.
+        set hoehe ""
+        if {$haveCtx && $keep} {
+            set hoehe [_messen 2 $script $x $y $w $o(-paper) $o(-font) $o(-fill)]
+        }
+        if {$haveCtx && $hoehe ne "" && ($y + $hoehe) > $yBot && $y > $yTop} {
+            $pdf endPage
+            $pdf startPage
+            incr wechsel
+            set y $yTop
+            if {$o(-pagecmd) ne ""} { uplevel 1 $o(-pagecmd) }
+        }
+
+        set vorher $y
+        set z [::pdf4tcllib::state::save $pdf \
+                [lindex $o(-font) 0] [lindex $o(-font) 1] $o(-fill)]
+        if {[llength $o(-font)] == 2} {
+            catch {$pdf setFont [lindex $o(-font) 0] [lindex $o(-font) 1]}
+        }
+        if {[llength $o(-fill)] == 3} {
+            catch {$pdf setFillColor {*}$o(-fill)}
+        }
+        set res [_ausfuehren 2 $script $pdf $x $y $w]
+        ::pdf4tcllib::state::restore $pdf $z
+
+        # Eine Form fuer alle: {x y w h}. Wer ein y zurueckgibt, bekommt
+        # die Hoehe daraus; wer schon eine Flaeche liefert, behaelt sie.
+        if {[llength $res] == 4 && [string is double -strict [lindex $res 3]]} {
+            lappend boxes $res
+            set y [expr {[lindex $res 1] + [lindex $res 3]}]
+        } elseif {[string is double -strict $res]} {
+            lappend boxes [list $x $vorher $w [expr {$res - $vorher}]]
+            set y $res
+        } else {
+            lappend boxes [list $x $vorher $w 0]
+        }
+        set y [expr {$y + $gap}]
+    }
+    return [dict create y $y boxes $boxes pages $wechsel]
+}
+
+# Den Block ausfuehren.
+#
+# Das Skript wird im Gueltigkeitsbereich des AUFRUFERS ausgewertet -- es
+# soll seine Variablen sehen (Spalten, Zeilen, Texte). Die vier Namen
+# bpdf, bx, by, bw werden dort gesetzt und danach wieder auf ihren alten
+# Wert gebracht, damit stack nichts hinterlaesst.
+proc ::pdf4tcllib::layout::_ausfuehren {ebene script zielPdf x y w} {
+    upvar $ebene bpdf bpdf bx bx by by bw bw
+    foreach {n v} [list bpdf $zielPdf bx $x by $y bw $w] {
+        upvar $ebene $n var
+        if {[info exists var]} {
+            set alt($n) $var
+        }
+        set var $v
+    }
+    set rc [catch {uplevel $ebene $script} res opts]
+    foreach n {bpdf bx by bw} {
+        upvar $ebene $n var
+        if {[info exists alt($n)]} { set var $alt($n) } else { unset -nocomplain var }
+    }
+    if {$rc} { return -options $opts $res }
+    return $res
+}
+
+# Die Hoehe eines Blocks, ohne ihn zu zeichnen.
+# Die Hoehe eines Blocks, ohne ihn zu zeichnen.
+#
+# measure::block waere der naheliegende Weg, aber es wertet das Skript
+# selbst eine Ebene hoeher aus -- zwei geschachtelte uplevel, und die
+# Rechnung stimmt nicht mehr. Das Wegwerf-Dokument entsteht deshalb hier,
+# und der Block laeuft auf DERSELBEN Ebene wie beim Zeichnen. Was
+# gemessen wird, ist damit dasselbe, was gleich gezeichnet wird.
+proc ::pdf4tcllib::layout::_messen {ebene script x y w paper font fill} {
+    set h ""
+    set mpdf [::pdf4tcl::new %AUTO% -paper $paper -orient 1]
+    $mpdf startPage
+    if {[llength $font] == 2} {
+        catch {$mpdf setFont [lindex $font 0] [lindex $font 1]}
+    }
+    if {[llength $fill] == 3} { catch {$mpdf setFillColor {*}$fill} }
+    set rc [catch {_ausfuehren [expr {$ebene + 1}] $script $mpdf $x $y $w} res]
+    catch {$mpdf destroy}
+    if {$rc} { return "" }
+    if {[llength $res] == 4 && [string is double -strict [lindex $res 3]]} {
+        return [lindex $res 3]
+    }
+    if {[string is double -strict $res]} {
+        return [expr {abs($res - $y)}]
+    }
+    return ""
+}
+
 namespace eval ::pdf4tcllib::table {}
 
 # ============================================================
 # Oeffentliche API
 # ============================================================
+
+# Options for tagBegin Table, from a -summary that may be empty.
+#
+# /Summary says what the table shows and how it is built. A reader that
+# cannot see the grid announces it before the cells, so someone listening
+# knows what is coming instead of hearing a run of numbers.
+#
+# ISO 32000-1 clause 14.8.5.7; pdf4tcl takes -summary from 0.9.4.56 on.
+# Older versions raise on the unknown option, which tag::begin swallows --
+# the table is still tagged, only without the summary.
+# --- verbundene Zellen ---------------------------------------------
+#
+# Eine Zelle darf statt eines Textes ein Dict sein:
+#
+#     [dict create text "Summe" colspan 3]
+#
+# Damit ueberdeckt sie drei Spalten: die Breiten werden addiert, die
+# folgenden Spalten entfallen in DIESER Zeile, und das TD bekommt
+# /ColSpan 3 (ISO 32000-1 Tabelle 349, Klausel 14.8.5.7). Ohne das
+# Attribut ist der Baum falsch: Klausel 14.8.4.3.4 Anmerkung 2 sagt, die
+# Zuordnung von Kopfzelle zu Datenzelle werde heuristisch ermittelt und
+# koenne "fail for complex tables" -- eine verbundene Zelle ist genau so
+# ein Fall, und ein Vorleseprogramm nennt dann die falsche Ueberschrift.
+#
+# ERKANNT wird die Dict-Form an der Kombination: gerade Anzahl Elemente,
+# Schluessel "text" UND Schluessel "colspan". Eine gewoehnliche Zelle
+# muesste also woertlich "text ... colspan ..." lauten, um verwechselt zu
+# werden -- alles andere bleibt Text und wird unveraendert gezeichnet.
+#
+# rowspan gibt es hier nicht. Ueber Zeilen hinweg zu verbinden verlangt
+# eine Buchhaltung ueber die Zeilenbaender, die Gitterlinien und den
+# Seitenumbruch hinweg; das ist ein eigener Schritt.
+# Die Zelle, die in Spalte $idx BEGINNT -- und nur wenn sie dort auch
+# endet. Verbundene Zellen und die von ihnen ueberdeckten Spalten liefern
+# \uFFFF, damit die Breitenrechnung sie ueberspringt.
+# Wieviele Spalten eine Zeile belegt -- eine Zelle mit colspan 2 zaehlt
+# doppelt. Ohne das ergibt eine Kopfzeile {Region {text Zahlen colspan 2}}
+# nur zwei Spalten, und die dritte faellt aus der Tabelle heraus.
+# Der Belegungsplan einer Tabelle.
+#
+# Bei rowspan reicht die Zeile allein nicht mehr aus, um zu wissen, in
+# welcher Spalte eine Zelle steht: eine Zelle aus einer frueheren Zeile
+# haelt eine Spalte besetzt, und die folgende Zeile zaehlt deshalb anders
+# als sie geschrieben ist. Wie in HTML laesst der Aufrufer die
+# ueberdeckten Zellen einfach WEG.
+#
+# Geliefert wird je Zeile eine Liste von Eintraegen
+#
+#     {spalte colspan rowspan zelle}
+#
+# und zwar nur fuer die Zellen, die in DIESER Zeile beginnen.
+proc ::pdf4tcllib::table::_gridPlan {rows nCols} {
+    set plan {}
+    array set belegt {}          ;# belegt(zeile,spalte) = 1
+    set r 0
+    foreach row $rows {
+        set eintraege {}
+        set col 0
+        foreach cell $row {
+            # Zur naechsten freien Spalte weiterruecken.
+            while {$col < $nCols && [info exists belegt($r,$col)]} { incr col }
+            if {$col >= $nCols} { break }
+            set cs [_cellSpan $cell]
+            set rs [_cellRowSpan $cell]
+            if {$col + $cs > $nCols} { set cs [expr {$nCols - $col}] }
+            lappend eintraege [list $col $cs $rs $cell]
+            for {set dr 0} {$dr < $rs} {incr dr} {
+                for {set dc 0} {$dc < $cs} {incr dc} {
+                    set belegt([expr {$r + $dr}],[expr {$col + $dc}]) 1
+                }
+            }
+            incr col $cs
+        }
+        lappend plan $eintraege
+        incr r
+    }
+    return $plan
+}
+
+# Welche Spalten in Zeile $r von einer Zelle ueberdeckt werden, die
+# WEITER unten reicht -- dort darf keine Trennlinie gezogen werden.
+proc ::pdf4tcllib::table::_spannedAt {plan r} {
+    set out {}
+    for {set s 0} {$s <= $r} {incr s} {
+        foreach e [lindex $plan $s] {
+            lassign $e col cs rs
+            if {$s + $rs - 1 > $r && $r >= $s} {
+                for {set dc 0} {$dc < $cs} {incr dc} {
+                    lappend out [expr {$col + $dc}]
+                }
+            }
+        }
+    }
+    return $out
+}
+
+proc ::pdf4tcllib::table::_rowCols {row} {
+    set n 0
+    foreach cell $row { incr n [_cellSpan $cell] }
+    return $n
+}
+
+proc ::pdf4tcllib::table::_cellAt {row idx} {
+    set i 0
+    foreach cell $row {
+        set span [_cellSpan $cell]
+        if {$i == $idx} {
+            return [expr {$span > 1 ? "\uFFFF" : $cell}]
+        }
+        if {$idx < $i + $span} { return "\uFFFF" }
+        incr i $span
+    }
+    return "\uFFFF"
+}
+
+# ============================================================
+# group -- Zeilen gruppieren und Zwischensummen einziehen
+# ============================================================
+#
+# Eine Liste nach einer Spalte gruppieren, je Gruppe eine Zwischensumme,
+# am Ende eine Gesamtsumme. Die Rechnung ist trivial; die Arbeit ist,
+# was danach kommt:
+#
+#   - die Zeilen muessen sortiert sein, sonst zerfaellt eine Gruppe in
+#     mehrere. Das macht diese Prozedur NICHT von sich aus -- eine
+#     Reihenfolge, die der Aufrufer bewusst gewaehlt hat, umzustellen
+#     waere anmassend. Sie meldet es stattdessen.
+#   - die Zwischensumme braucht eine Beschriftung, die ueber die
+#     Textspalten reicht: das ist eine verbundene Zelle.
+#   - der Aufrufer will die Summenzeilen hervorheben, muss also wissen,
+#     WELCHE Zeilen das sind.
+#
+# Deshalb gibt group nicht nur Zeilen zurueck, sondern ein Dict:
+#
+#   rows        die neuen Zeilen, Zwischensummen eingefuegt
+#   subtotals   die Zeilennummern der Zwischensummen
+#   groups      die Zeilennummern der Gruppenkoepfe (mit -header 1)
+#   total       die Zeilennummer der Gesamtsumme, oder -1
+#
+# Optionen:
+#   -by       Spaltennummer, nach der gruppiert wird (0)
+#   -sum      Liste der Spalten, die addiert werden ({})
+#   -label    Beschriftung der Zwischensumme; %s wird durch den
+#             Gruppenwert ersetzt ("Summe %s")
+#   -total    Gesamtsumme anhaengen (1); Beschriftung -totallabel
+#   -header   je Gruppe eine Kopfzeile mit dem Gruppenwert (0)
+#   -blank    den Gruppenwert nur in der ersten Zeile der Gruppe
+#             stehen lassen (0) -- eine Wiederholung sagt nichts
+#   -strict   bei unsortierten Zeilen werfen statt zu melden (0)
+#
+# Nicht summierbare Werte werden uebersprungen, nicht zu 0 gemacht: ein
+# leeres Feld ist keine Null, und "k.A." erst recht nicht.
+proc ::pdf4tcllib::table::group {rows args} {
+    array set o {
+        -by 0 -sum {} -label "Summe %s" -total 1
+        -totallabel "Gesamt" -header 0 -blank 0 -strict 0
+    }
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "table::group: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    if {![llength $rows]} {
+        return [dict create rows {} subtotals {} groups {} total -1]
+    }
+    set nCols [llength [lindex $rows 0]]
+    if {$o(-by) < 0 || $o(-by) >= $nCols} {
+        return -code error "table::group: -by $o(-by) is outside the row\
+                (0..[expr {$nCols - 1}])"
+    }
+
+    # Sind die Zeilen nach der Gruppenspalte sortiert? Wenn nicht, faellt
+    # eine Gruppe in mehrere Bloecke auseinander, und die Zwischensummen
+    # stimmen zwar je Block, aber nicht je Gruppe.
+    set gesehen {}
+    set vorher "\uFFFF"
+    set unsortiert 0
+    foreach zeile $rows {
+        set g [_cellText [lindex $zeile $o(-by)]]
+        if {$g ne $vorher} {
+            if {[lsearch -exact $gesehen $g] >= 0} { set unsortiert 1 ; break }
+            lappend gesehen $g
+            set vorher $g
+        }
+    }
+    if {$unsortiert} {
+        set text "table::group: the rows are not sorted by column\
+                $o(-by); a group falls into several blocks and each gets\
+                its own subtotal"
+        if {$o(-strict)} { return -code error $text }
+        lappend ::pdf4tcl::warnings $text
+    }
+
+    set neu {}
+    set subtotals {}
+    set groups {}
+    set summe {}
+    set gesamt {}
+    foreach c $o(-sum) { dict set summe $c 0 ; dict set gesamt $c 0 }
+    set aktuell "\uFFFF"
+    set idx 0
+    set ersteDerGruppe 1
+
+    foreach zeile $rows {
+        set g [_cellText [lindex $zeile $o(-by)]]
+        if {$g ne $aktuell} {
+            if {$aktuell ne "\uFFFF"} {
+                lappend neu [_summenZeile $aktuell $nCols $o(-by) $summe \
+                        $o(-label) $o(-sum)]
+                lappend subtotals $idx
+                incr idx
+            }
+            foreach c $o(-sum) { dict set summe $c 0 }
+            set aktuell $g
+            set ersteDerGruppe 1
+            if {$o(-header)} {
+                lappend neu [list [dict create text $g colspan $nCols]]
+                lappend groups $idx
+                incr idx
+            }
+        }
+        foreach c $o(-sum) {
+            set v [_cellText [lindex $zeile $c]]
+            # Ein leeres Feld ist keine Null.
+            if {[string is double -strict $v]} {
+                dict set summe $c [expr {[dict get $summe $c] + $v}]
+                dict set gesamt $c [expr {[dict get $gesamt $c] + $v}]
+            }
+        }
+        if {$o(-blank) && !$ersteDerGruppe} {
+            lset zeile $o(-by) ""
+        }
+        set ersteDerGruppe 0
+        lappend neu $zeile
+        incr idx
+    }
+    if {$aktuell ne "\uFFFF"} {
+        lappend neu [_summenZeile $aktuell $nCols $o(-by) $summe \
+                $o(-label) $o(-sum)]
+        lappend subtotals $idx
+        incr idx
+    }
+    set totalIdx -1
+    if {$o(-total) && [llength $o(-sum)]} {
+        lappend neu [_summenZeile "" $nCols $o(-by) $gesamt \
+                $o(-totallabel) $o(-sum)]
+        set totalIdx $idx
+    }
+    return [dict create rows $neu subtotals $subtotals groups $groups \
+            total $totalIdx]
+}
+
+# Eine Summenzeile: die Beschriftung reicht ueber alle Spalten bis zur
+# ersten Summenspalte, die Summen stehen in ihren eigenen Spalten.
+proc ::pdf4tcllib::table::_summenZeile {gruppe nCols byCol summe label sumCols} {
+    if {[string first %s $label] >= 0} {
+        set text [format $label $gruppe]
+    } else {
+        set text $label
+    }
+    set erste $nCols
+    foreach c $sumCols { if {$c < $erste} { set erste $c } }
+    if {$erste <= 0} { set erste 1 }
+
+    set zeile {}
+    if {$erste > 1} {
+        lappend zeile [dict create text $text colspan $erste]
+    } else {
+        lappend zeile $text
+    }
+    for {set c $erste} {$c < $nCols} {incr c} {
+        if {[dict exists $summe $c]} {
+            lappend zeile [dict get $summe $c]
+        } else {
+            lappend zeile ""
+        }
+    }
+    return $zeile
+}
+
+# ============================================================
+# pivot -- eine Liste zur Kreuztabelle
+# ============================================================
+#
+# Aus Zeilen der Form {Region Quartal Umsatz} wird eine Tabelle mit den
+# Regionen als Zeilen und den Quartalen als Spalten. Was die Rechnung
+# nicht sagt, aber jede Kreuztabelle entscheiden muss:
+#
+#   - WELCHE Spalten es gibt. Sie ergeben sich aus den Daten, nicht aus
+#     einer Angabe -- und ihre Reihenfolge auch: -colorder legt sie fest,
+#     sonst wird sortiert. Ein Quartal, das in keiner Zeile vorkommt,
+#     taucht nicht auf; wer alle vier will, gibt sie an.
+#   - WAS in einer leeren Zelle steht. Eine Kreuztabelle hat fast immer
+#     Luecken, und "0" ist etwas anderes als "nichts gemessen".
+#     Voreinstellung ist der leere String, nicht 0.
+#   - WAS bei mehreren Werten je Feld passiert. Voreinstellung ist
+#     summieren; count, avg, min und max gibt es auch.
+#
+# Optionen:
+#   -row      Spaltennummer fuer die Zeilen (0)
+#   -col      Spaltennummer fuer die Spalten (1)
+#   -value    Spaltennummer fuer die Werte (2)
+#   -agg      sum | count | avg | min | max   (sum)
+#   -empty    was in einer leeren Zelle steht ("")
+#   -total    Summenspalte und Summenzeile anhaengen (1)
+#   -rowlabel Titel der ersten Spalte (der Wert von -row als Text)
+#   -totallabel  "Gesamt"
+#   -colorder Reihenfolge der Spalten; {} = sortiert
+#
+# Rueckgabe: dict mit
+#   header    die Kopfzeile
+#   rows      die Datenzeilen
+#   cols      die Spaltenwerte ohne Kopf und ohne Summenspalte
+#   total     Zeilennummer der Summenzeile, oder -1
+# ============================================================
+# breakPoints -- wo eine Tabelle geteilt werden darf
+# ============================================================
+#
+# Ein Layouter fragt nicht "brich um, wenn du musst", sondern "kann ich
+# hier teilen, und wenn ja, wo". table::draw bricht selbst um, aber nach
+# seinen eigenen Regeln, und sagt vorher nichts.
+#
+# Geliefert wird ein dict:
+#
+#   rowH        die Hoehe einer Datenzeile
+#   headerH     die Hoehe der Kopfzeile (0 ohne Kopf)
+#   heights     je Zeile die Hoehe VON OBEN bis einschliesslich dieser
+#               Zeile, ohne Kopf
+#   forbidden   Zeilennummern, VOR denen nicht geteilt werden darf
+#   rows        die Anzahl der Datenzeilen
+#
+# Verboten ist eine Trennstelle an zwei Stellen:
+#
+#   - mitten in einer ueber Zeilen verbundenen Zelle. Eine solche Zelle
+#     wird auf der Folgeseite NICHT wiederholt (siehe rowspan oben), also
+#     waere sie nach einem Umbruch optisch zerrissen.
+#   - direkt nach einer Gruppenkopfzeile. Ein Gruppenkopf allein am
+#     Seitenfuss ist eine Ueberschrift ohne Inhalt; table::group liefert
+#     die Nummern dieser Zeilen in "groups", und wer sie durchreicht,
+#     bekommt sie hier beruecksichtigt.
+#
+# Die Zeilenhoehe von table::draw ist einheitlich (rowheight, sonst
+# 1.8 * fontsize), Zellen werden dort nicht umbrochen -- deshalb ist die
+# Rechnung eine Multiplikation und keine Messung. Fuer table::render,
+# das umbricht, gilt sie nicht.
+# ============================================================
+# widths -- die natuerliche und die kleinste Breite
+# ============================================================
+#
+# Ein Layouter, der Spalten verteilt, fragt zweierlei:
+#
+#   "Wie breit will diese Tabelle sein, wenn sie darf?"  -> natural
+#   "Wie schmal geht es gerade noch?"                    -> min
+#
+# Dazwischen kann er verteilen; darunter nicht, ohne dass etwas
+# abgeschnitten wird oder mitten im Wort umbricht.
+#
+# natural  ist die Breite, bei der keine Zelle umbricht: der breiteste
+#          Inhalt je Spalte plus Innenabstand.
+# min      ist die Breite, bei der jede Zelle noch ohne Trennung
+#          umbrechen kann: das LAENGSTE WORT je Spalte plus
+#          Innenabstand. Nicht die Breite eines Zeichens -- ein Wort, das
+#          nicht passt, wird zeichenweise zerschnitten, und das ist keine
+#          Untergrenze, sondern eine Notlage.
+#
+# Beide werden mit derselben Messung gerechnet wie table::draw, also mit
+# $pdf, wenn es angegeben ist. Ohne $pdf schaetzt text::width ueber
+# Zeichenklassen; bei einer CID-Schrift liegt das weit daneben.
+#
+# Rueckgabe: dict mit
+#   natural       je Spalte
+#   min           je Spalte
+#   naturalTotal  die Summe
+#   minTotal      die Summe
+proc ::pdf4tcllib::table::widths {cols rows args} {
+    array set o {-fontsize 9 -pad 4 -pdf {} -font {} -boldfont {}}
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "table::widths: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    set fReg  $o(-font)
+    set fBold $o(-boldfont)
+    if {$fReg eq ""}  { set fReg  [::pdf4tcllib::fonts::fontSans] }
+    if {$fBold eq ""} { set fBold [::pdf4tcllib::fonts::fontSansBold] }
+    set fs  $o(-fontsize)
+    set pad $o(-pad)
+    set pdf $o(-pdf)
+
+    # Die Kopfzeilen aus der Spaltenbeschreibung, wie draw sie liest.
+    set headers {}
+    foreach c $cols {
+        set h ""
+        if {[dict exists $c -header]} { set h [dict get $c -header] }
+        lappend headers $h
+    }
+    set n [llength $cols]
+    if {!$n && [llength $rows]} { set n [_rowCols [lindex $rows 0]] }
+
+    set natural {}
+    set klein {}
+    for {set i 0} {$i < $n} {incr i} {
+        set hd [lindex $headers $i]
+        set maxNat [::pdf4tcllib::text::width $hd $fs $fBold $pdf]
+        set maxMin [_wortBreite $hd $fs $fBold $pdf]
+        foreach row $rows {
+            set cell [_cellAt $row $i]
+            if {$cell eq "\uFFFF"} { continue }
+            set t [_cellText $cell]
+            set w [::pdf4tcllib::text::width $t $fs $fReg $pdf]
+            if {$w > $maxNat} { set maxNat $w }
+            set m [_wortBreite $t $fs $fReg $pdf]
+            if {$m > $maxMin} { set maxMin $m }
+        }
+        lappend natural [expr {$maxNat + 2 * $pad}]
+        lappend klein   [expr {$maxMin + 2 * $pad}]
+    }
+    set nt 0.0 ; foreach w $natural { set nt [expr {$nt + $w}] }
+    set mt 0.0 ; foreach w $klein   { set mt [expr {$mt + $w}] }
+    return [dict create natural $natural min $klein \
+            naturalTotal $nt minTotal $mt]
+}
+
+# Die Breite des laengsten Wortes -- die Untergrenze, unter der nur noch
+# zeichenweise getrennt werden kann.
+proc ::pdf4tcllib::table::_wortBreite {text fs font pdf} {
+    set max 0
+    foreach wort [split $text " \t\n"] {
+        if {$wort eq ""} { continue }
+        set w [::pdf4tcllib::text::width $wort $fs $font $pdf]
+        if {$w > $max} { set max $w }
+    }
+    return $max
+}
+
+proc ::pdf4tcllib::table::breakPoints {rows args} {
+    array set o {-fontsize 9 -rowheight 0 -header 1 -groups {}}
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "table::breakPoints: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    set fs   $o(-fontsize)
+    set rowH [expr {$o(-rowheight) > 0 ? double($o(-rowheight)) : $fs * 1.8}]
+    set n    [llength $rows]
+    set headerH [expr {$o(-header) ? $rowH : 0}]
+
+    set heights {}
+    set h 0
+    for {set i 0} {$i < $n} {incr i} {
+        set h [expr {$h + $rowH}]
+        lappend heights $h
+    }
+
+    # Verbotene Trennstellen aus den verbundenen Zellen.
+    set nCols 0
+    if {$n} { set nCols [_rowCols [lindex $rows 0]] }
+    set verboten {}
+    if {$nCols} {
+        set plan [_gridPlan $rows $nCols]
+        set r 0
+        foreach eintraege $plan {
+            foreach e $eintraege {
+                lassign $e col cs rs cell
+                if {$rs > 1} {
+                    # Vor jeder Zeile, die eine verbundene Zelle
+                    # fortsetzt, darf nicht getrennt werden.
+                    for {set k 1} {$k < $rs && $r + $k < $n} {incr k} {
+                        lappend verboten [expr {$r + $k}]
+                    }
+                }
+            }
+            incr r
+        }
+    }
+    # Eine Gruppenkopfzeile haelt die folgende Zeile bei sich.
+    foreach g $o(-groups) {
+        if {$g + 1 < $n} { lappend verboten [expr {$g + 1}] }
+    }
+    set verboten [lsort -integer -unique $verboten]
+
+    return [dict create rowH $rowH headerH $headerH heights $heights \
+            forbidden $verboten rows $n]
+}
+
+# Wieviele Zeilen passen in $platz Punkt Hoehe -- die Kopfzeile
+# eingerechnet, verbotene Trennstellen beruecksichtigt.
+#
+# Rueckgabe: die Anzahl der Zeilen, die auf diese Seite duerfen. 0 heisst
+# "nicht einmal die erste Zeile passt"; dann muss der Aufrufer den Platz
+# vergroessern, nicht die Tabelle teilen.
+#
+# Wird wegen einer verbotenen Trennstelle zurueckgegangen, kann das
+# Ergebnis deutlich unter dem liegen, was rechnerisch passen wuerde --
+# das ist der Preis dafuer, eine verbundene Zelle nicht zu zerreissen.
+proc ::pdf4tcllib::table::fitRows {platz rows args} {
+    set bp [breakPoints $rows {*}$args]
+    set frei [expr {$platz - [dict get $bp headerH]}]
+    if {$frei <= 0} { return 0 }
+    set heights   [dict get $bp heights]
+    set verboten  [dict get $bp forbidden]
+    set n         [dict get $bp rows]
+
+    set passt 0
+    for {set i 0} {$i < $n} {incr i} {
+        if {[lindex $heights $i] > $frei} { break }
+        set passt [expr {$i + 1}]
+    }
+    # Auf eine erlaubte Trennstelle zuruecknehmen.
+    while {$passt > 0 && $passt < $n && $passt in $verboten} {
+        incr passt -1
+    }
+    return $passt
+}
+
+proc ::pdf4tcllib::table::pivot {rows args} {
+    array set o {
+        -row 0 -col 1 -value 2 -agg sum -empty {}
+        -total 1 -rowlabel {} -totallabel "Gesamt" -colorder {}
+    }
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "table::pivot: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    if {$o(-agg) ni {sum count avg min max}} {
+        return -code error "table::pivot: -agg must be sum, count, avg,\
+                min or max, not \"$o(-agg)\""
+    }
+    if {![llength $rows]} {
+        return [dict create header {} rows {} cols {} total -1]
+    }
+
+    # Sammeln: je Feld die Liste der Werte. Erst am Ende wird gerechnet,
+    # damit avg und count nicht raten muessen.
+    set zeilenWerte {}
+    set spalten {}
+    set felder [dict create]
+    foreach zeile $rows {
+        set rk [_cellText [lindex $zeile $o(-row)]]
+        set ck [_cellText [lindex $zeile $o(-col)]]
+        set v  [_cellText [lindex $zeile $o(-value)]]
+        if {[lsearch -exact $zeilenWerte $rk] < 0} { lappend zeilenWerte $rk }
+        if {[lsearch -exact $spalten $ck] < 0}     { lappend spalten $ck }
+        dict lappend felder "$rk\u0000$ck" $v
+    }
+
+    if {[llength $o(-colorder)]} {
+        set spalten $o(-colorder)
+    } else {
+        set spalten [lsort $spalten]
+    }
+
+    set kopf {}
+    set rl $o(-rowlabel)
+    if {$rl eq ""} { set rl "" }
+    lappend kopf $rl
+    foreach c $spalten { lappend kopf $c }
+    if {$o(-total)} { lappend kopf $o(-totallabel) }
+
+    set neu {}
+    set spaltenSumme {}
+    foreach c $spalten { dict set spaltenSumme $c {} }
+    set gesamt {}
+    foreach rk $zeilenWerte {
+        set zeile [list $rk]
+        set zeilenSumme {}
+        foreach c $spalten {
+            set key "$rk\u0000$c"
+            if {[dict exists $felder $key]} {
+                set werte [dict get $felder $key]
+                lappend zeile [_agg $o(-agg) $werte $o(-empty)]
+                foreach v $werte {
+                    lappend zeilenSumme $v
+                    dict lappend spaltenSumme $c $v
+                    lappend gesamt $v
+                }
+            } else {
+                # Kein Wert ist nicht dasselbe wie 0.
+                lappend zeile $o(-empty)
+            }
+        }
+        if {$o(-total)} { lappend zeile [_agg $o(-agg) $zeilenSumme $o(-empty)] }
+        lappend neu $zeile
+    }
+
+    set totalIdx -1
+    if {$o(-total)} {
+        set zeile [list $o(-totallabel)]
+        foreach c $spalten {
+            lappend zeile [_agg $o(-agg) [dict get $spaltenSumme $c] $o(-empty)]
+        }
+        lappend zeile [_agg $o(-agg) $gesamt $o(-empty)]
+        set totalIdx [llength $neu]
+        lappend neu $zeile
+    }
+    return [dict create header $kopf rows $neu cols $spalten total $totalIdx]
+}
+
+# Ein Feld zusammenfassen. Werte, die keine Zahl sind, zaehlen nur bei
+# count -- bei sum oder avg waeren sie eine erfundene Null.
+proc ::pdf4tcllib::table::_agg {wie werte leer} {
+    if {$wie eq "count"} { return [llength $werte] }
+    set zahlen {}
+    foreach v $werte {
+        if {[string is double -strict $v]} { lappend zahlen $v }
+    }
+    if {![llength $zahlen]} { return $leer }
+    switch -- $wie {
+        sum { return [::tcl::mathop::+ {*}$zahlen] }
+        avg { return [expr {[::tcl::mathop::+ {*}$zahlen]
+                            / double([llength $zahlen])}] }
+        min { return [::tcl::mathfunc::min {*}$zahlen] }
+        max { return [::tcl::mathfunc::max {*}$zahlen] }
+    }
+    return $leer
+}
+
+proc ::pdf4tcllib::table::_isCellSpec {cell} {
+    if {[llength $cell] % 2} { return 0 }
+    if {[catch {dict size $cell}]} { return 0 }
+    if {![dict exists $cell text]} { return 0 }
+    return [expr {[dict exists $cell colspan] || [dict exists $cell rowspan]}]
+}
+
+# Wieviele Zeilen eine Zelle ueberdeckt. Wie bei colspan gilt eine
+# unsinnige Angabe als eins, statt zu werfen -- eine Tabelle soll nicht
+# an einer Zahl scheitern, die der Aufrufer versehentlich falsch
+# geschrieben hat.
+proc ::pdf4tcllib::table::_cellRowSpan {cell} {
+    if {![_isCellSpec $cell]} { return 1 }
+    if {![dict exists $cell rowspan]} { return 1 }
+    set n [dict get $cell rowspan]
+    if {![string is integer -strict $n] || $n < 1} { return 1 }
+    return $n
+}
+
+proc ::pdf4tcllib::table::_cellText {cell} {
+    if {[_isCellSpec $cell]} { return [dict get $cell text] }
+    return $cell
+}
+
+proc ::pdf4tcllib::table::_cellSpan {cell} {
+    if {![_isCellSpec $cell]} { return 1 }
+    # Seit rowspan dazukam, ist eine Zellangabe auch ohne colspan gueltig.
+    if {![dict exists $cell colspan]} { return 1 }
+    set n [dict get $cell colspan]
+    if {![string is integer -strict $n] || $n < 1} { return 1 }
+    return $n
+}
+
+proc ::pdf4tcllib::table::_summaryArgs {summary} {
+    if {$summary eq ""} { return {} }
+    return [list -summary $summary]
+}
 
 proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar pageW pageH margin fontSize lineH {debug 0} {pageBreakCmd {}}} {
     # Renders a table into the PDF.
@@ -2677,9 +3820,9 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
         set rows   [lrange $tableData 2 end]
     }
 
-    set nCols [llength $header]
+    set nCols [_rowCols $header]
     if {$nCols == 0 && [llength $rows] > 0} {
-        set nCols [llength [lindex $rows 0]]
+        set nCols [_rowCols [lindex $rows 0]]
     }
     if {$nCols == 0} { return }
 
@@ -2715,7 +3858,13 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
     # The whole table is one structure element, so a reader announces it as a
     # table and can navigate it by row and column rather than reading a run
     # of unrelated numbers. Does nothing when tagging is off.
-    ::pdf4tcllib::tag::begin $pdf Table
+    # In the dict form the caller can add a "summary" key; the list form has
+    # nowhere to put one, so it stays untagged in that respect.
+    set summary ""
+    if {[_isDictFormat $tableData] && [dict exists $tableData summary]} {
+        set summary [dict get $tableData summary]
+    }
+    ::pdf4tcllib::tag::begin $pdf Table {*}[_summaryArgs $summary]
 
     # -- Header --
     if {$hasHdr} {
@@ -2728,13 +3877,24 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
 
     # -- Data rows --
     $pdf setFont $fontSize $fontSans
+    # Belegungsplan und Zeilenhoehen im voraus. Ohne rowspan aendert das
+    # nichts; mit rowspan geht es nicht anders, weil die Hoehe einer
+    # verbundenen Zelle von Zeilen abhaengt, die noch nicht gezeichnet
+    # sind.
+    set plan   [_gridPlan $rows $nCols]
+    set hoehen [_rowHeights $plan $colWidths $cellPad $fontSize $fontSans \
+            $lineH $pdf]
+
+    set rowGaps {}
     set rowIdx 0
     foreach row $rows {
-        set rH [_rowHeight $row $colWidths $cellPad $fontSize $fontSans $lineH $pdf]
+        set rH [lindex $hoehen $rowIdx]
 
         # Page break, measured against THIS row's real height
         if {$orient ? (($y + $rH) > $yBot) : (($y - $rH) < $yBot)} {
-            _drawSegmentLines $pdf $x0 $tableStartY $y $hdrBottom $rowYs $totalW $colWidths
+            _drawSegmentLines $pdf $x0 $tableStartY $y $hdrBottom $rowYs \
+                    $totalW $colWidths $rowGaps
+            set rowGaps {}
             set y [_doPageBreak $pdf pageNo $pageW $pageH $margin $fontSize $orient $pageBreakCmd $yTop]
             $pdf setLineWidth 0.5
             set tableStartY $y
@@ -2761,16 +3921,21 @@ proc ::pdf4tcllib::table::render {pdf tableData x0 yVar maxW yTop yBot pageNoVar
         }
 
         ::pdf4tcllib::tag::begin $pdf TR
-        _drawCellsWrapped $pdf $x0 $y $rH $orient $colWidths $aligns $cellPad \
-            $fontSize $fontSans $row $lineH
+        _drawPlanRow $pdf $x0 $y $orient $colWidths $aligns $cellPad \
+            $fontSize $fontSans [lindex $plan $rowIdx] $hoehen $rowIdx $lineH
         ::pdf4tcllib::tag::end $pdf
         set y [expr {$orient ? ($y + $rH) : ($y - $rH)}]
+        # Wo eine Zelle weiter nach unten reicht, darf keine Trennlinie
+        # quer durch sie laufen. Vermerkt wird der Bereich, den die Linie
+        # nach dieser Zeile aussparen muss.
         lappend rowYs $y
+        lappend rowGaps [_spannedAt $plan $rowIdx]
         incr rowIdx
     }
 
     # -- Grid lines for the final (or only) page segment --
-    _drawSegmentLines $pdf $x0 $tableStartY $y $hdrBottom $rowYs $totalW $colWidths
+    _drawSegmentLines $pdf $x0 $tableStartY $y $hdrBottom $rowYs $totalW \
+            $colWidths $rowGaps
 
     ::pdf4tcllib::tag::end $pdf
 
@@ -2804,7 +3969,7 @@ proc ::pdf4tcllib::table::_drawHeaderRow {pdf x0 y totalW orient colWidths align
     return $hH
 }
 
-proc ::pdf4tcllib::table::_drawSegmentLines {pdf x0 tableStartY y hdrBottom rowYs totalW colWidths} {
+proc ::pdf4tcllib::table::_drawSegmentLines {pdf x0 tableStartY y hdrBottom rowYs totalW colWidths {rowGaps {}}} {
     # Draws the grid lines for one on-page table segment: top border, header
     # separator (thicker), row separators and the vertical column lines. Called
     # once per page (at each page break and once at the end) so every page of a
@@ -2818,11 +3983,39 @@ proc ::pdf4tcllib::table::_drawSegmentLines {pdf x0 tableStartY y hdrBottom rowY
         $pdf line $x0 $hdrBottom [expr {$x0 + $totalW}] $hdrBottom
         $pdf setLineWidth 0.5
     }
+    # Die Trennlinie nach jeder Zeile -- ausgespart, wo eine verbundene
+    # Zelle weiter nach unten reicht. Ohne die Aussparung liefe ein Strich
+    # mitten durch sie hindurch, und die Verbindung waere nur im Baum zu
+    # sehen, nicht auf dem Papier.
+    set i 0
     foreach ly [lrange $rowYs 2 end] {
-        $pdf line $x0 $ly [expr {$x0 + $totalW}] $ly
+        set luecke [lindex $rowGaps [expr {$i + 1}]]
+        _drawRowLine $pdf $x0 $ly $totalW $colWidths $luecke
+        incr i
     }
     _drawVLines $pdf $x0 $tableStartY $y $colWidths
     ::pdf4tcllib::tag::artifactEnd $pdf
+}
+
+# Eine waagerechte Trennlinie, unterbrochen an den Spalten in $luecke.
+proc ::pdf4tcllib::table::_drawRowLine {pdf x0 ly totalW colWidths luecke} {
+    if {![llength $luecke]} {
+        $pdf line $x0 $ly [expr {$x0 + $totalW}] $ly
+        return
+    }
+    set x $x0
+    set start $x0
+    set col 0
+    foreach w $colWidths {
+        if {$col in $luecke} {
+            # Bis hierher zeichnen, dann die Spalte ueberspringen.
+            if {$x > $start} { $pdf line $start $ly $x $ly }
+            set start [expr {$x + $w}]
+        }
+        set x [expr {$x + $w}]
+        incr col
+    }
+    if {$x > $start} { $pdf line $start $ly $x $ly }
 }
 
 proc ::pdf4tcllib::table::_isDictFormat {tableData} {
@@ -2839,9 +4032,9 @@ proc ::pdf4tcllib::table::_calcColWidths {header aligns rows maxW fontSize fontS
     #   - floor   = header width (a header never collapses) within [absMin,cap]
     #   - distribute: grow proportionally if room, else shrink only the
     #     above-floor (flexible) portion so floors stay intact.
-    set nCols [llength $header]
+    set nCols [_rowCols $header]
     if {$nCols == 0 && [llength $rows] > 0} {
-        set nCols [llength [lindex $rows 0]]
+        set nCols [_rowCols [lindex $rows 0]]
     }
     if {$nCols == 0} { return {} }
 
@@ -2854,11 +4047,24 @@ proc ::pdf4tcllib::table::_calcColWidths {header aligns rows maxW fontSize fontS
     for {set i 0} {$i < $nCols} {incr i} {
         set hW 0
         if {[llength $header] > 0} {
-            set hW [::pdf4tcllib::text::width [lindex $header $i] $fontSize $fontSansBold $pdf]
+            # Wie bei den Datenzeilen: eine verbundene Kopfzelle darf
+            # keine einzelne Spalte auf ihre Breite ziehen.
+            set hCell [_cellAt $header $i]
+            if {$hCell ne "\uFFFF"} {
+                set hW [::pdf4tcllib::text::width [_cellText $hCell] \
+                        $fontSize $fontSansBold $pdf]
+            }
         }
         set cMax $hW
         foreach row $rows {
-            set cw [::pdf4tcllib::text::width [lindex $row $i] $fontSize $fontSans $pdf]
+            # Eine verbundene Zelle steht ueber mehreren Spalten; ihre
+            # Breite darf keine einzelne davon aufblaehen. Deshalb zaehlt
+            # hier nur, was wirklich in Spalte $i beginnt und dort auch
+            # endet.
+            set cell [_cellAt $row $i]
+            if {$cell eq "\uFFFF"} { continue }
+            set cw [::pdf4tcllib::text::width [_cellText $cell] $fontSize \
+                    $fontSans $pdf]
             if {$cw > $cMax} { set cMax $cw }
         }
         set d [expr {$cMax + $pad}]
@@ -2930,16 +4136,143 @@ proc ::pdf4tcllib::table::_drawCells {pdf x0 y0 cellH colWidths aligns cellPad f
     }
 }
 
+# Die Hoehe jeder Zeile, im voraus und fuer die ganze Tabelle.
+#
+# Ohne rowspan waere das je Zeile fuer sich zu rechnen. Mit rowspan nicht:
+# eine Zelle ueber drei Zeilen braucht so viel Platz, wie die drei
+# zusammen hergeben -- reicht das nicht, muss die LETZTE der drei
+# wachsen, sonst steht der Text ueber der Trennlinie.
+proc ::pdf4tcllib::table::_rowHeights {plan colWidths cellPad fontSize fontName lineH pdf} {
+    set n [llength $plan]
+    set hoehen {}
+    # Erster Durchgang: nur Zellen, die eine einzige Zeile belegen.
+    for {set r 0} {$r < $n} {incr r} {
+        set maxLines 1
+        foreach e [lindex $plan $r] {
+            lassign $e col cs rs cell
+            if {$rs != 1} { continue }
+            set colW [_spanWidth $colWidths $col $cs]
+            if {$colW <= 0} { continue }
+            set availW [expr {$colW - 2 * $cellPad}]
+            set k [llength [::pdf4tcllib::text::wrap [_cellText $cell] \
+                    $availW $fontSize $fontName 0 $pdf 1]]
+            if {$k > $maxLines} { set maxLines $k }
+        }
+        lappend hoehen [expr {$maxLines * $lineH + 2 * $cellPad}]
+    }
+    # Zweiter Durchgang: was die verbundenen Zellen zusaetzlich brauchen.
+    for {set r 0} {$r < $n} {incr r} {
+        foreach e [lindex $plan $r] {
+            lassign $e col cs rs cell
+            if {$rs < 2} { continue }
+            set colW [_spanWidth $colWidths $col $cs]
+            if {$colW <= 0} { continue }
+            set availW [expr {$colW - 2 * $cellPad}]
+            set k [llength [::pdf4tcllib::text::wrap [_cellText $cell] \
+                    $availW $fontSize $fontName 0 $pdf 1]]
+            set noetig [expr {$k * $lineH + 2 * $cellPad}]
+            set letzte [expr {$r + $rs - 1}]
+            if {$letzte >= $n} { set letzte [expr {$n - 1}] }
+            set da 0
+            for {set i $r} {$i <= $letzte} {incr i} {
+                set da [expr {$da + [lindex $hoehen $i]}]
+            }
+            if {$noetig > $da} {
+                lset hoehen $letzte [expr {[lindex $hoehen $letzte]
+                        + $noetig - $da}]
+            }
+        }
+    }
+    return $hoehen
+}
+
+# Die Breite von $cs Spalten ab Spalte $col.
+proc ::pdf4tcllib::table::_spanWidth {colWidths col cs} {
+    set w 0
+    for {set k 0} {$k < $cs && $col + $k < [llength $colWidths]} {incr k} {
+        set w [expr {$w + [lindex $colWidths [expr {$col + $k}]]}]
+    }
+    return $w
+}
+
 proc ::pdf4tcllib::table::_rowHeight {row colWidths cellPad fontSize fontName lineH pdf} {
     # Measures the height a row needs once each cell is wrapped (hardBreak on)
     # to its inner column width: max wrapped line count over the cells.
     set maxLines 1
-    foreach text $row colW $colWidths {
+    set i 0
+    foreach cell $row {
+        set span [_cellSpan $cell]
+        # Eine verbundene Zelle hat mehr Platz, bricht also spaeter um --
+        # wer hier nur die erste Spaltenbreite naehme, machte die Zeile zu
+        # hoch.
+        set colW 0
+        for {set k 0} {$k < $span && $i + $k < [llength $colWidths]} {incr k} {
+            set colW [expr {$colW + [lindex $colWidths [expr {$i + $k}]]}]
+        }
+        incr i $span
+        if {$colW <= 0} { continue }
         set availW [expr {$colW - 2 * $cellPad}]
-        set n [llength [::pdf4tcllib::text::wrap $text $availW $fontSize $fontName 0 $pdf 1]]
+        set n [llength [::pdf4tcllib::text::wrap [_cellText $cell] $availW \
+                $fontSize $fontName 0 $pdf 1]]
         if {$n > $maxLines} { set maxLines $n }
     }
     return [expr {$maxLines * $lineH + 2 * $cellPad}]
+}
+
+# Eine Zeile nach Belegungsplan zeichnen.
+#
+# Anders als _drawCellsWrapped bekommt diese Fassung die Eintraege mit
+# ihrer Spalte, ihrer Spanne und ihrer Hoehe -- eine ueber mehrere Zeilen
+# verbundene Zelle wird EINMAL gezeichnet, in der Zeile, in der sie
+# beginnt, und reicht dann ueber die folgenden Baender.
+proc ::pdf4tcllib::table::_drawPlanRow {pdf x0 y orient colWidths aligns cellPad
+        fontSize fontName eintraege hoehen r lineH {cellTag TD}} {
+    foreach e $eintraege {
+        lassign $e col cs rs cell
+        set colW [_spanWidth $colWidths $col $cs]
+        if {$colW <= 0} { continue }
+        # Hoehe: die eigene Zeile, plus die weiteren, die sie ueberdeckt.
+        set h 0
+        for {set i $r} {$i < $r + $rs && $i < [llength $hoehen]} {incr i} {
+            set h [expr {$h + [lindex $hoehen $i]}]
+        }
+        set x [expr {$x0 + [_spanWidth $colWidths 0 $col]}]
+        set align [lindex $aligns $col]
+        if {$align eq ""} { set align left }
+
+        set spanArgs {}
+        if {$cs > 1} { lappend spanArgs -colspan $cs }
+        if {$rs > 1} { lappend spanArgs -rowspan $rs }
+        if {$cellTag eq "TH"} {
+            ::pdf4tcllib::tag::begin $pdf TH -scope Column {*}$spanArgs
+        } else {
+            ::pdf4tcllib::tag::begin $pdf TD {*}$spanArgs
+        }
+        set availW [expr {$colW - 2 * $cellPad}]
+        set lines [::pdf4tcllib::text::wrap [_cellText $cell] $availW \
+                $fontSize $fontName 0 $pdf 1]
+        if {$orient} {
+            set base [expr {$y + $cellPad + $fontSize}] ; set step $lineH
+        } else {
+            set base [expr {$y + $h - $cellPad - $fontSize}]
+            set step [expr {-$lineH}]
+        }
+        foreach ln $lines {
+            set ln [::pdf4tcllib::unicode::sanitize $ln]
+            if {$align eq "center"} {
+                set tw [::pdf4tcllib::text::width $ln $fontSize $fontName $pdf]
+                set tx [expr {$x + ($colW - $tw) / 2.0}]
+            } elseif {$align eq "right"} {
+                set tw [::pdf4tcllib::text::width $ln $fontSize $fontName $pdf]
+                set tx [expr {$x + $colW - $cellPad - $tw}]
+            } else {
+                set tx [expr {$x + $cellPad}]
+            }
+            ::pdf4tcllib::unicode::safeText $pdf $ln -x $tx -y $base
+            set base [expr {$base + $step}]
+        }
+        ::pdf4tcllib::tag::end $pdf
+    }
 }
 
 proc ::pdf4tcllib::table::_drawCellsWrapped {pdf x0 y rowH orient colWidths aligns cellPad fontSize fontName texts lineH {cellTag TD}} {
@@ -2951,11 +4284,26 @@ proc ::pdf4tcllib::table::_drawCellsWrapped {pdf x0 y rowH orient colWidths alig
     # top-aligned within the row band. Honours the orient flag so it works in
     # both top-left (orient=1) and bottom-left (orient=0) coordinate systems.
     set x $x0
-    foreach text $texts colW $colWidths align $aligns {
+    set i 0
+    foreach cell $texts {
+        set text [_cellText $cell]
+        set span [_cellSpan $cell]
+        # Die Breite einer verbundenen Zelle ist die Summe der Spalten,
+        # die sie ueberdeckt; die Ausrichtung kommt von der ersten.
+        set colW 0
+        for {set k 0} {$k < $span && $i + $k < [llength $colWidths]} {incr k} {
+            set colW [expr {$colW + [lindex $colWidths [expr {$i + $k}]]}]
+        }
+        set align [lindex $aligns $i]
+        if {$align eq ""} { set align left }
+        incr i $span
+        if {$colW <= 0} { continue }
+        set spanArgs {}
+        if {$span > 1} { set spanArgs [list -colspan $span] }
         if {$cellTag eq "TH"} {
-            ::pdf4tcllib::tag::begin $pdf TH -scope Column
+            ::pdf4tcllib::tag::begin $pdf TH -scope Column {*}$spanArgs
         } else {
-            ::pdf4tcllib::tag::begin $pdf TD
+            ::pdf4tcllib::tag::begin $pdf TD {*}$spanArgs
         }
         set availW [expr {$colW - 2 * $cellPad}]
         set lines [::pdf4tcllib::text::wrap $text $availW $fontSize $fontName 0 $pdf 1]
@@ -3065,6 +4413,7 @@ proc ::pdf4tcllib::table::simpleTable {pdf x y col_widths rows args} {
         -header_bg {0.9 0.9 0.9}
         -row_height 20
         -font_size 10
+        -summary {}
     }
     _checkOpts ::pdf4tcllib::table::simpleTable [array get opts] $args
     array set opts $args
@@ -3132,7 +4481,9 @@ proc ::pdf4tcllib::table::simpleTable {pdf x y col_widths rows args} {
     set doTag [expr {$num_rows > 0 && $num_cols > 0}]
     set hasHeader [expr {[llength $opts(-header_bg)] == 3}]
 
-    if {$doTag} { ::pdf4tcllib::tag::begin $pdf Table }
+    if {$doTag} {
+        ::pdf4tcllib::tag::begin $pdf Table {*}[_summaryArgs $opts(-summary)]
+    }
     $pdf setFont $opts(-font_size) [::pdf4tcllib::_defaultFamily]
     for {set r 0} {$r < $num_rows} {incr r} {
         set row [lindex $rows $r]
@@ -3231,7 +4582,13 @@ proc ::pdf4tcllib::table::_dwWidths {pdf wspec headers data aligns fs fReg fBold
             set mw [::pdf4tcllib::text::width $hd $fs $fBold $pdf]
             set r 0
             foreach row $data {
-                set cw [::pdf4tcllib::text::width [lindex $row $i] $fs $fReg $pdf]
+                # Wie in _calcColWidths: eine verbundene Zelle steht ueber
+                # mehreren Spalten und darf keine einzelne davon auf ihre
+                # Breite ziehen.
+                set cell [_cellAt $row $i]
+                if {$cell eq "\uFFFF"} { incr r ; continue }
+                set cw [::pdf4tcllib::text::width [_cellText $cell] $fs \
+                        $fReg $pdf]
                 if {$i == 0 && [dict exists $rowindent $r]} {
                     set cw [expr {$cw + [dict get $rowindent $r]}]
                 }
@@ -3346,11 +4703,49 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
         -zebrastart 0 -headerbg {0.89 0.92 0.95} -headerfg {0 0 0}
         -fontsize 9 -pad 4 -border 1 -rowheight 0
         -cellstyles {} -rowstyles {} -rowindent {} -yvar {} -pagevar {}
-        -orient 1 -pagebreakcmd {}
+        -orient {} -pagebreakcmd {}
         -footer {} -footerbg {0.90 0.90 0.90} -footerbold 1
-        -fontreg {} -fontbold {}
+        -fontreg {} -fontbold {} -summary {}
     }
     array set o $args
+    # Die Richtung kennt das Dokument selbst; sie hier noch einmal
+    # anzugeben ist eine Fehlerquelle. text::writeParagraph fragt seit
+    # jeher das Objekt ($pdf cget -orient); draw verlangte sie als Option
+    # mit der Vorgabe 1, und auf einem Dokument mit -orient 0 stand die
+    # Tabelle damit auf dem Kopf, ohne dass jemand etwas sagte.
+    #
+    # Eine ausdrueckliche Angabe gewinnt weiterhin; sie wird nur nicht
+    # mehr verlangt.
+    if {$o(-orient) eq ""} {
+        set o(-orient) 1
+        catch {set o(-orient) [$pdf cget -orient]}
+    }
+    # -orient 0 wird abgelehnt, nicht halb bedient.
+    #
+    # Die Option steuert hier nur den Seitenumbruch, nicht die Richtung,
+    # in der die Zeilen laufen: unter -orient 0 waechst die Tabelle nach
+    # OBEN, die Kopfzeile steht unten. Gemessen an einem Dreizeiler bei
+    # y=100 -- Kopf auf PDF-y 112, die Zeilen darueber bei 128 und 144.
+    #
+    # Das liesse sich in draw geradeziehen (rund zehn Stellen rechnen mit
+    # y + rowH). Es wuerde aber nur die halbe Kette richten: page::context
+    # liefert top und bottom von OBEN gemessen, und daran haengen der
+    # Seitenumbruch hier, page::header, page::footer, flow::columns und
+    # toc. Die Zeilen liefen dann richtig und der Umbruch gegen eine
+    # Grenze, die das Gegenteil bedeutet.
+    #
+    # Eine Bibliothek, die weiss, dass sie falsch zeichnet, sollte es
+    # nicht trotzdem tun. Wer -orient 0 wirklich braucht, meldet sich --
+    # dann ist auch bekannt, was er sonst noch benutzt.
+    if {!$o(-orient)} {
+        return -code error "table::draw: -orient 0 is not supported.\
+                The rows would grow upwards and the header would end up\
+                at the bottom, because page::context measures top and\
+                bottom from the top of the page. Create the document\
+                with -orient 1 (the pdf4tcl default), or pass -orient 1\
+                here if you know what you are doing."
+    }
+
     set ctx $o(-ctx)
     set haveCtx [expr {$ctx ne ""}]
     if {$o(-maxwidth) eq ""} {
@@ -3399,7 +4794,7 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
     set segTop $y
     # One structure element for the whole table, so a reader can navigate it
     # by row and column instead of reading a run of unrelated values.
-    ::pdf4tcllib::tag::begin $pdf Table
+    ::pdf4tcllib::tag::begin $pdf Table {*}[_summaryArgs $o(-summary)]
 
     if {$o(-header)} {
         set y [_dwHead $pdf $x $y $totalW $colW $aligns $headers $fBold $fs $pad \
@@ -3447,7 +4842,22 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
         set cx $x
         set c 0
         ::pdf4tcllib::tag::begin $pdf TR
-        foreach value $row cw $colW cAl $aligns cFont $colFonts {
+        # Verbundene Zellen wie in table::render: eine Zelle darf ein
+        # Dict mit text und colspan sein. Ohne das stuende die Dict-Form
+        # woertlich im PDF -- "text {Summe Nord} colspan 2" --, und
+        # table::group waere nur mit render zu gebrauchen.
+        foreach value $row {
+            set span [_cellSpan $value]
+            if {$c + $span > [llength $colW]} {
+                set span [expr {[llength $colW] - $c}]
+            }
+            if {$span < 1} { break }
+            set cw 0
+            for {set k 0} {$k < $span} {incr k} {
+                set cw [expr {$cw + [lindex $colW [expr {$c + $k}]]}]
+            }
+            set cAl   [lindex $aligns $c]
+            set cFont [lindex $colFonts $c]
             set eff {}
             if {$rs(-fg)   ne ""} { lappend eff -fg   $rs(-fg) }
             if {$rs(-font) ne ""} { lappend eff -font $rs(-font) }
@@ -3455,11 +4865,16 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
                 set eff [dict merge $eff [dict get $cellstyles "$r,$c"]]
             }
             set cellIndent [expr {$c == 0 ? $ind : 0}]
-            ::pdf4tcllib::tag::begin $pdf TD
-            _dwCell $pdf $cx $y $cw $rowH $value $cAl $cFont $fs $pad $eff $cellIndent $fontOvr
+            if {$span > 1} {
+                ::pdf4tcllib::tag::begin $pdf TD -colspan $span
+            } else {
+                ::pdf4tcllib::tag::begin $pdf TD
+            }
+            _dwCell $pdf $cx $y $cw $rowH [_cellText $value] $cAl $cFont \
+                    $fs $pad $eff $cellIndent $fontOvr
             ::pdf4tcllib::tag::end $pdf
             set cx [expr {$cx + $cw}]
-            incr c
+            incr c $span
         }
         ::pdf4tcllib::tag::end $pdf
         # innere V-Linien (0.75/0.3)
@@ -3689,6 +5104,228 @@ proc ::pdf4tcllib::drawing::roundedRect {pdf x y w h r {stroke 1} {fill 0} args}
     }
 }
 
+# ============================================================
+# arrow -- eine Linie mit Spitze
+# ============================================================
+#
+# Eine Verbindung in einem Schaubild ist eine Linie plus ein Dreieck am
+# Ende, und das Dreieck ist die Arbeit: es muss in die Richtung der Linie
+# zeigen, und die Linie muss VOR der Spitze enden, sonst ragt sie durch.
+#
+#   -at        end | start | both -- wo die Spitzen sitzen
+#   -length    Laenge der Spitze in Punkt (8)
+#   -width     Breite der Spitze in Punkt (6)
+#   -filled    ausgefuellt (1) oder nur umrissen (0)
+#
+# Die Farbe ist die eingestellte Strich- bzw. Fuellfarbe; die Prozedur
+# aendert sie nicht. Sie zeichnet auch keine Kurve -- fuer eine gebogene
+# Verbindung nimmt man den Pfad selbst und setzt die Spitze mit
+# arrowHead an das Ende.
+proc ::pdf4tcllib::drawing::arrow {pdf x1 y1 x2 y2 args} {
+    array set o {-at end -length 8 -width 6 -filled 1}
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "drawing::arrow: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    if {$o(-at) ni {end start both}} {
+        return -code error "drawing::arrow: -at must be end, start or both,\
+                not \"$o(-at)\""
+    }
+    set dx [expr {$x2 - $x1}]
+    set dy [expr {$y2 - $y1}]
+    set len [expr {hypot($dx, $dy)}]
+    if {$len == 0} { return }
+
+    # Ein Pfeil ist Zierrat, solange ihn niemand beschreibt: er traegt
+    # keinen Text, den ein Vorleseprogramm ausgeben koennte. Ohne diese
+    # Klammer zaehlt jede Linie und jedes Dreieck als ungetaggt, und der
+    # Strukturbaum eines Schaubildes hat so viele Loecher wie es
+    # Verbindungen hat. Gemessen an drei Pfeilen und zwei Sprechblasen:
+    # 9 offene Zeichenbefehle.
+    #
+    # Tut nichts, wenn Tagging aus ist.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
+
+    # Die Linie endet vor der Spitze, sonst zeichnet sie durch die
+    # ausgefuellte Flaeche hindurch und die Spitze bekommt einen Strich
+    # in der Mitte.
+    set ux [expr {$dx / $len}]
+    set uy [expr {$dy / $len}]
+    set ax1 $x1 ; set ay1 $y1
+    set ax2 $x2 ; set ay2 $y2
+    if {$o(-at) in {end both}} {
+        set ax2 [expr {$x2 - $ux * $o(-length)}]
+        set ay2 [expr {$y2 - $uy * $o(-length)}]
+    }
+    if {$o(-at) in {start both}} {
+        set ax1 [expr {$x1 + $ux * $o(-length)}]
+        set ay1 [expr {$y1 + $uy * $o(-length)}]
+    }
+    $pdf line $ax1 $ay1 $ax2 $ay2
+
+    if {$o(-at) in {end both}} {
+        arrowHead $pdf $x2 $y2 [expr {atan2($dy, $dx)}] \
+                -length $o(-length) -width $o(-width) -filled $o(-filled)
+    }
+    if {$o(-at) in {start both}} {
+        arrowHead $pdf $x1 $y1 [expr {atan2(-$dy, -$dx)}] \
+                -length $o(-length) -width $o(-width) -filled $o(-filled)
+    }
+    ::pdf4tcllib::tag::artifactEnd $pdf
+}
+
+# Eine Spitze an einem Punkt, in Richtung $winkel (Bogenmass, 0 = nach
+# rechts). Getrennt, damit sie auch an das Ende eines Pfades passt, den
+# der Aufrufer selbst gezeichnet hat.
+proc ::pdf4tcllib::drawing::arrowHead {pdf x y winkel args} {
+    array set o {-length 8 -width 6 -filled 1}
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "drawing::arrowHead: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    set bx [expr {$x - $o(-length) * cos($winkel)}]
+    set by [expr {$y - $o(-length) * sin($winkel)}]
+    set hw [expr {$o(-width) / 2.0}]
+    # Senkrecht zur Richtung.
+    set px [expr {-sin($winkel) * $hw}]
+    set py [expr { cos($winkel) * $hw}]
+    $pdf polygon $x $y [expr {$bx + $px}] [expr {$by + $py}] \
+            [expr {$bx - $px}] [expr {$by - $py}] \
+            -stroke [expr {!$o(-filled)}] -filled $o(-filled)
+}
+
+# ============================================================
+# callout -- eine Sprechblase mit Zeiger
+# ============================================================
+#
+# Ein Kasten mit abgerundeten Ecken und einem Dreieck, das auf die Stelle
+# zeigt, um die es geht. Der Zeiger sitzt an der Seite, die dem Ziel
+# zugewandt ist -- das ergibt sich aus der Lage und muss nicht angegeben
+# werden.
+#
+#   -radius    Eckenradius (4)
+#   -fill      Fuellfarbe als {r g b}; {} = nicht fuellen
+#   -stroke    Umriss zeichnen (1)
+#   -tail      Breite des Zeigers am Kasten (12)
+#   -pad       Innenabstand fuer den Text (5)
+#   -fontsize  Schriftgroesse (9); der Text wird umbrochen und, wenn er
+#              nicht passt, verkleinert -- gekuerzt wird nicht
+#   -font      Schrift, sonst die aus fonts::init
+#   -alt       Text fuer den Strukturbaum
+#
+# Rueckgabe: die Anzahl der gesetzten Zeilen.
+proc ::pdf4tcllib::drawing::callout {pdf x y w h zielX zielY text args} {
+    array set o {
+        -radius 4 -fill {} -stroke 1 -tail 12 -pad 5
+        -fontsize 9 -font {} -alt {}
+    }
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "drawing::callout: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    if {$w <= 0 || $h <= 0} {
+        return -code error "drawing::callout: width and height must be\
+                positive"
+    }
+    set font $o(-font)
+    if {$font eq ""} { set font [::pdf4tcllib::fonts::fontSans] }
+
+    set tag [expr {$o(-alt) ne ""}]
+    if {$tag} { catch {::pdf4tcllib::tag::begin $pdf Figure -alt $o(-alt)} }
+
+    if {$o(-fill) ne ""} {
+        lassign $o(-fill) r g b
+        $pdf setFillColor $r $g $b
+    }
+    set fuellen [expr {$o(-fill) ne ""}]
+    # Kasten und Zeiger sind Zierrat -- der Inhalt ist der Text darin.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
+    roundedRect $pdf $x $y $w $h $o(-radius) $o(-stroke) $fuellen
+
+    # Der Zeiger: an der Seite, die dem Ziel am naechsten liegt.
+    set mx [expr {$x + $w / 2.0}]
+    set my [expr {$y + $h / 2.0}]
+    set halb [expr {$o(-tail) / 2.0}]
+    if {$zielY < $y} {
+        set seite oben
+    } elseif {$zielY > $y + $h} {
+        set seite unten
+    } elseif {$zielX < $x} {
+        set seite links
+    } else {
+        set seite rechts
+    }
+    switch -- $seite {
+        oben  { set ax [_klemme $zielX [expr {$x + $o(-radius) + $halb}] \
+                        [expr {$x + $w - $o(-radius) - $halb}]]
+                set pts [list [expr {$ax - $halb}] $y \
+                        [expr {$ax + $halb}] $y $zielX $zielY] }
+        unten { set ax [_klemme $zielX [expr {$x + $o(-radius) + $halb}] \
+                        [expr {$x + $w - $o(-radius) - $halb}]]
+                set pts [list [expr {$ax - $halb}] [expr {$y + $h}] \
+                        [expr {$ax + $halb}] [expr {$y + $h}] $zielX $zielY] }
+        links { set ay [_klemme $zielY [expr {$y + $o(-radius) + $halb}] \
+                        [expr {$y + $h - $o(-radius) - $halb}]]
+                set pts [list $x [expr {$ay - $halb}] \
+                        $x [expr {$ay + $halb}] $zielX $zielY] }
+        rechts { set ay [_klemme $zielY [expr {$y + $o(-radius) + $halb}] \
+                        [expr {$y + $h - $o(-radius) - $halb}]]
+                set pts [list [expr {$x + $w}] [expr {$ay - $halb}] \
+                        [expr {$x + $w}] [expr {$ay + $halb}] $zielX $zielY] }
+    }
+    $pdf polygon {*}$pts -stroke $o(-stroke) -filled $fuellen
+    ::pdf4tcllib::tag::artifactEnd $pdf
+
+    # Der Text. Passt er nicht in die Hoehe, wird verkleinert statt
+    # gekuerzt -- in einer Sprechblase steht meist ein Satz, und ein
+    # halber Satz ist keiner.
+    set zeilen 0
+    if {$text ne ""} {
+        $pdf setFillColor 0 0 0
+        set innenW [expr {$w - 2 * $o(-pad)}]
+        set innenH [expr {$h - 2 * $o(-pad)}]
+        set fs $o(-fontsize)
+        while {$fs > 5} {
+            set ls [::pdf4tcllib::text::wrap $text $innenW $fs $font 0 $pdf 1]
+            if {[llength $ls] * $fs * 1.25 <= $innenH} { break }
+            set fs [expr {$fs - 1}]
+        }
+        set ls [::pdf4tcllib::text::wrap $text $innenW $fs $font 0 $pdf 1]
+        $pdf setFont $fs $font
+        set ty [expr {$y + $o(-pad) + $fs}]
+        # Der Text IST der Inhalt der Sprechblase; ohne diese Klammer
+        # bleibt er ausserhalb des Strukturbaums, waehrend der Kasten
+        # drumherum ordentlich als Artefakt gefasst ist.
+        set eigenP [expr {!$tag}]
+        if {$eigenP} { catch {::pdf4tcllib::tag::begin $pdf P} }
+        foreach ln $ls {
+            ::pdf4tcllib::unicode::safeText $pdf $ln \
+                    -x [expr {$x + $o(-pad)}] -y $ty
+            set ty [expr {$ty + $fs * 1.25}]
+            incr zeilen
+        }
+        if {$eigenP} { catch {::pdf4tcllib::tag::end $pdf} }
+    }
+    if {$tag} { catch {::pdf4tcllib::tag::end $pdf} }
+    return $zeilen
+}
+
+proc ::pdf4tcllib::drawing::_klemme {v min max} {
+    if {$max < $min} { return [expr {($min + $max) / 2.0}] }
+    if {$v < $min} { return $min }
+    if {$v > $max} { return $max }
+    return $v
+}
+
 proc ::pdf4tcllib::drawing::frame {pdf x y w h {lineWidth 1}} {
     # Einfacher Rahmen.
     $pdf setLineWidth $lineWidth
@@ -3730,8 +5367,19 @@ proc ::pdf4tcllib::drawing::separator {pdf x y w {color {0.7 0.7 0.7}} {lineWidt
 #
 # Returns the font size used, which is the interesting number when the text
 # was fitted.
+# -layer: das Wasserzeichen in eine Ebene legen, statt es fest auf die
+# Seite zu zeichnen. Im Leser laesst sich eine Ebene abschalten -- fuer
+# ein "ENTWURF" ueber einem Text, den jemand ohne den Aufdruck lesen oder
+# drucken soll, ist das der Unterschied zwischen brauchbar und laestig.
+#
+# Der Wert ist entweder eine Ebenen-Kennung aus $pdf addLayer, oder 1 --
+# dann legt watermark selbst eine an, benannt nach dem Text. Mehrere
+# Aufrufe mit 1 legen mehrere Ebenen an; wer EINE ueber alle Seiten will,
+# ruft addLayer einmal und gibt die Kennung weiter.
+#
+# Ohne -layer bleibt alles wie bisher: ein Artefakt fest auf der Seite.
 proc ::pdf4tcllib::drawing::watermark {pdf ctx text args} {
-    array set o {-angle 45 -size 0 -color {0.86 0.86 0.86} -font {}}
+    array set o {-angle 45 -size 0 -color {0.86 0.86 0.86} -font {} -layer {}}
     foreach {k v} $args {
         if {![info exists o($k)]} {
             return -code error "drawing::watermark: unknown option $k\
@@ -3762,6 +5410,18 @@ proc ::pdf4tcllib::drawing::watermark {pdf ctx text args} {
         if {$size < 6} { set size 6.0 }
     }
 
+    set layer {}
+    if {$o(-layer) ne "" && $o(-layer) ne "0"} {
+        if {$o(-layer) eq "1"} {
+            if {[catch {$pdf addLayer $text} layer]} { set layer {} }
+        } else {
+            set layer $o(-layer)
+        }
+    }
+    if {$layer ne ""} {
+        if {[catch {$pdf beginLayer $layer}]} { set layer {} }
+    }
+
     ::pdf4tcllib::tag::artifact $pdf -type Pagination
     lassign $o(-color) r g b
     $pdf setFillColor $r $g $b
@@ -3779,6 +5439,10 @@ proc ::pdf4tcllib::drawing::watermark {pdf ctx text args} {
 
     $pdf setFillColor 0 0 0
     ::pdf4tcllib::tag::artifactEnd $pdf
+    if {$layer ne ""} { catch {$pdf endLayer} }
+    # Die Ebenenkennung kommt mit zurueck, damit ein zweiter Aufruf auf
+    # der naechsten Seite dieselbe Ebene benutzen kann.
+    if {$layer ne ""} { return [list $size $layer] }
     return $size
 }
 
@@ -3900,6 +5564,272 @@ proc ::pdf4tcllib::image::_needTk {} {
 # ============================================================
 # Oeffentliche API
 # ============================================================
+
+# ============================================================
+# place -- ein Bild in einen Rahmen setzen
+# ============================================================
+#
+# putImage nimmt -width und -height und zieht das Bild darauf. Weicht das
+# Seitenverhaeltnis ab, verzerrt es -- und niemand sagt es. Wer das nicht
+# will, rechnet von Hand, und dabei ist die Frage, WELCHE der beiden
+# Antworten gemeint war:
+#
+#   -fit contain   ganz hinein, Rand bleibt frei      (nichts geht verloren)
+#   -fit cover     ganz ausfuellen, Ueberstand faellt weg (nichts bleibt leer)
+#   -fit stretch   das alte Verhalten, verzerrt
+#
+# Und wenn beschnitten wird: VON WO AUS. Ein Portraet, dessen Kopf oben
+# sitzt, will -anchor n; eine Landschaft meist center. Genau das ist die
+# Entscheidung, die eine Bibliothek treffen darf und putImage nicht.
+#
+# Beschnitten wird mit einem Clip-Pfad: das Bild wird in voller
+# berechneter Groesse gezeichnet, sichtbar bleibt der Rahmen. Der Inhalt
+# ausserhalb steht weiterhin in der Datei -- wer das nicht will, schneidet
+# das Bild vorher zu.
+#
+# -dpi warnt, wenn die Aufloesung unter dem Schwellwert liegt. pdf4tcl
+# meldet das seit 0.9.4.60 selbst fuer jedes putImage; hier laesst es
+# sich je Bild anders setzen, weil ein Logo andere Ansprueche hat als
+# eine Abbildung. 0 schaltet die Pruefung fuer diesen Aufruf ab.
+#
+# Rueckgabe: die tatsaechlich belegte Flaeche {x y w h}. Bei contain ist
+# sie kleiner als der Rahmen, bei cover gleich.
+proc ::pdf4tcllib::image::place {pdf id x y w h args} {
+    array set o {-fit contain -anchor center -dpi {} -alt {} -clip 1}
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "image::place: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    if {$o(-fit) ni {contain cover stretch}} {
+        return -code error "image::place: -fit must be contain, cover or\
+                stretch, not \"$o(-fit)\""
+    }
+    if {$w <= 0 || $h <= 0} {
+        return -code error "image::place: width and height must be positive"
+    }
+
+    lassign [$pdf getImageSize $id] px py
+    if {$px <= 0 || $py <= 0} {
+        return -code error "image::place: image $id has no size"
+    }
+
+    set skalaW [expr {double($w) / $px}]
+    set skalaH [expr {double($h) / $py}]
+    switch -- $o(-fit) {
+        contain { set s [expr {min($skalaW, $skalaH)}] }
+        cover   { set s [expr {max($skalaW, $skalaH)}] }
+        stretch { set s {} }
+    }
+
+    if {$s eq ""} {
+        set bw $w ; set bh $h
+    } else {
+        set bw [expr {$px * $s}]
+        set bh [expr {$py * $s}]
+    }
+
+    # Ausrichtung im Rahmen. Bei contain verschiebt sie das Bild darin,
+    # bei cover entscheidet sie, welcher Teil wegfaellt.
+    lassign [_ausrichten $o(-anchor) $x $y $w $h $bw $bh] bx by
+
+    set tag [expr {$o(-alt) ne ""}]
+    if {$tag} {
+        if {[catch {::pdf4tcllib::tag::begin $pdf Figure -alt $o(-alt)}]} {
+            catch {::pdf4tcllib::tag::begin $pdf Figure}
+            set tag 1
+        }
+    }
+
+    # pdf4tcl meldet seit 0.9.4.60 selbst, wenn ein Bild unter 150 dpi
+    # gesetzt wird. Wer hier -dpi angibt, will einen eigenen Schwellwert
+    # -- dann waeren zwei Meldungen zu derselben Sache eine zuviel, und
+    # die eigene ist die genauere.
+    set kernSchwelle $::pdf4tcl::imageDpiWarn
+    if {$o(-dpi) ne ""} { set ::pdf4tcl::imageDpiWarn 0 }
+
+    set clip [expr {$o(-clip) && ($bw > $w + 0.01 || $bh > $h + 0.01)}]
+    if {$clip} {
+        # Nur was im Rahmen liegt, soll zu sehen sein. Der Clip-Pfad gilt
+        # bis zum naechsten grestore -- deshalb das Paar drumherum, sonst
+        # beschneidet er alles Folgende gleich mit.
+        $pdf gsave
+        $pdf clip $x $y $w $h
+    }
+    $pdf putImage $id $bx $by -width $bw -height $bh
+    if {$clip} {
+        $pdf grestore
+    }
+    if {$tag} { ::pdf4tcllib::tag::end $pdf }
+    set ::pdf4tcl::imageDpiWarn $kernSchwelle
+
+    # Aufloesung: die kleinere der beiden Richtungen zaehlt.
+    if {$o(-dpi) ne "" && $o(-dpi) > 0} {
+        set dpiX [expr {$px / ($bw / 72.0)}]
+        set dpiY [expr {$py / ($bh / 72.0)}]
+        set dpi [expr {min($dpiX, $dpiY)}]
+        if {$dpi < $o(-dpi)} {
+            lappend ::pdf4tcl::warnings [format \
+                    "image::place: %s at %.0f dpi (%dx%d pixels on\
+                     %.1fx%.1f points), below %g" \
+                    $id $dpi $px $py $bw $bh $o(-dpi)]
+        }
+    }
+
+    if {$clip} {
+        return [list $x $y $w $h]
+    }
+    return [list $bx $by $bw $bh]
+}
+
+# Wohin das Bild im Rahmen rueckt. Bei cover ist bw/bh groesser als der
+# Rahmen; dann verschiebt dieselbe Rechnung den Ausschnitt.
+proc ::pdf4tcllib::image::_ausrichten {anchor x y w h bw bh} {
+    set dx [expr {$w - $bw}]
+    set dy [expr {$h - $bh}]
+    switch -- $anchor {
+        nw { return [list $x $y] }
+        n  { return [list [expr {$x + $dx / 2.0}] $y] }
+        ne { return [list [expr {$x + $dx}] $y] }
+        w  { return [list $x [expr {$y + $dy / 2.0}]] }
+        e  { return [list [expr {$x + $dx}] [expr {$y + $dy / 2.0}]] }
+        sw { return [list $x [expr {$y + $dy}]] }
+        s  { return [list [expr {$x + $dx / 2.0}] [expr {$y + $dy}]] }
+        se { return [list [expr {$x + $dx}] [expr {$y + $dy}]] }
+        default { return [list [expr {$x + $dx / 2.0}] \
+                               [expr {$y + $dy / 2.0}]] }
+    }
+}
+
+# ============================================================
+# gallery -- Bilder in ein Raster, ueber mehrere Seiten
+# ============================================================
+#
+# Fotobuch und Prospekt sind dasselbe Problem: Bilder in ein Raster
+# setzen, mit Unterschriften, ueber mehrere Seiten. Was daran Arbeit
+# macht, ist nicht das Raster, sondern was drumherum haengt --
+# Seitenverhaeltnis, verschieden lange Unterschriften, der Seitenwechsel.
+#
+# Jedes Bild ist ein Eintrag:
+#
+#     {id "Bildunterschrift"}      oder nur   id
+#
+# id ist, was addImage zurueckgab. Die Unterschrift darf fehlen.
+#
+# Optionen:
+#   -cols/-rows   Raster je Seite (2 x 3)
+#   -gap          Abstand zwischen den Zellen in Punkt (8)
+#   -caption      unten | keine -- wo die Unterschrift steht
+#   -captionH     Hoehe des Unterschriftenbandes (14); zu lange
+#                 Unterschriften werden auf die Breite verkleinert,
+#                 statt in die Nachbarzelle zu laufen
+#   -fit/-anchor  wie bei place
+#   -fontsize     Schriftgroesse der Unterschrift (8)
+#   -dpi          Schwellwert je Bild, {} = der des Kerns
+#   -ctx          Seitenkontext; ohne ihn gelten x/y/w/h wie uebergeben
+#   -pagecmd      wird vor jeder neuen Seite gerufen (Kopfzeile o.ae.)
+#
+# Die Bildunterschrift wird als Caption getaggt und steht INNERHALB der
+# Figure des Bildes -- so gehoeren beide im Baum zusammen, statt als zwei
+# unverbundene Dinge nebeneinanderzustehen.
+#
+# Rueckgabe: die Anzahl der benutzten Seiten.
+proc ::pdf4tcllib::image::gallery {pdf bilder x y w h args} {
+    array set o {
+        -cols 2 -rows 3 -gap 8 -caption unten -captionH 14
+        -fit contain -anchor center -fontsize 8 -dpi {}
+        -font {} -pagecmd {} -alt {}
+    }
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "image::gallery: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    if {$o(-cols) < 1 || $o(-rows) < 1} {
+        return -code error "image::gallery: -cols and -rows must be at\
+                least 1"
+    }
+    set font $o(-font)
+    if {$font eq ""} { set font [::pdf4tcllib::fonts::fontSans] }
+    set mitText [expr {$o(-caption) eq "unten"}]
+    set capH [expr {$mitText ? $o(-captionH) : 0}]
+
+    set zellW [expr {($w - ($o(-cols) - 1) * $o(-gap)) / double($o(-cols))}]
+    set zellH [expr {($h - ($o(-rows) - 1) * $o(-gap)) / double($o(-rows))}]
+    set bildH [expr {$zellH - $capH}]
+    if {$zellW <= 0 || $bildH <= 0} {
+        return -code error "image::gallery: the frame is too small for\
+                [$o(-cols)]x[$o(-rows)] cells"
+    }
+
+    set proSeite [expr {$o(-cols) * $o(-rows)}]
+    set i 0
+    set seiten 1
+    foreach eintrag $bilder {
+        if {[llength $eintrag] >= 2} {
+            set id [lindex $eintrag 0]
+            set text [lindex $eintrag 1]
+        } else {
+            set id [lindex $eintrag 0]
+            set text ""
+        }
+
+        if {$i > 0 && $i % $proSeite == 0} {
+            $pdf endPage
+            $pdf startPage
+            if {$o(-pagecmd) ne ""} { uplevel 1 $o(-pagecmd) }
+            incr seiten
+        }
+        set k [expr {$i % $proSeite}]
+        set sp [expr {$k % $o(-cols)}]
+        set ze [expr {$k / $o(-cols)}]
+        set zx [expr {$x + $sp * ($zellW + $o(-gap))}]
+        set zy [expr {$y + $ze * ($zellH + $o(-gap))}]
+
+        set alt $text
+        if {$alt eq "" && $o(-alt) ne ""} { set alt $o(-alt) }
+        set placeArgs [list -fit $o(-fit) -anchor $o(-anchor)]
+        if {$alt ne ""}      { lappend placeArgs -alt $alt }
+        if {$o(-dpi) ne ""}  { lappend placeArgs -dpi $o(-dpi) }
+
+        if {$alt ne "" && $mitText && $text ne ""} {
+            # Bild und Unterschrift in EINER Figure: der Baum soll sagen,
+            # dass der Text zu diesem Bild gehoert.
+            catch {::pdf4tcllib::tag::begin $pdf Figure -alt $alt}
+            set inFigure 1
+            # place soll dann keine zweite Figure aufmachen.
+            set placeArgs [list -fit $o(-fit) -anchor $o(-anchor)]
+            if {$o(-dpi) ne ""} { lappend placeArgs -dpi $o(-dpi) }
+        } else {
+            set inFigure 0
+        }
+
+        place $pdf $id $zx $zy $zellW $bildH {*}$placeArgs
+
+        if {$mitText && $text ne ""} {
+            if {!$inFigure} { catch {::pdf4tcllib::tag::begin $pdf Caption} }
+            if {$inFigure}  { catch {::pdf4tcllib::tag::begin $pdf Caption} }
+            # Zu lange Unterschriften werden verkleinert, nicht gekuerzt:
+            # bei einem Dateinamen oder einer Bildnummer entscheidet oft
+            # das letzte Zeichen.
+            set fs [::pdf4tcllib::text::fitSize $text $zellW $o(-fontsize) \
+                    $font -min 5 -pdf $pdf]
+            $pdf setFont $fs $font
+            set tw [::pdf4tcllib::text::width $text $fs $font $pdf]
+            set tx [expr {$zx + ($zellW - $tw) / 2.0}]
+            ::pdf4tcllib::unicode::safeText $pdf $text \
+                    -x $tx -y [expr {$zy + $bildH + $fs + 2}]
+            catch {::pdf4tcllib::tag::end $pdf}
+        }
+        if {$inFigure} { catch {::pdf4tcllib::tag::end $pdf} }
+        incr i
+    }
+    return $seiten
+}
 
 proc ::pdf4tcllib::image::insert {pdf tkImg x yVar maxW yTop yBot pageNoVar pageW pageH margin fontSize {debug 0}} {
     _needTk

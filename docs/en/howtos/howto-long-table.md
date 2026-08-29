@@ -62,3 +62,24 @@ puts "pages: $pageNo"
 
 `pageNo` is left holding the number of pages the table needed -- useful for
 a footer, and a quick check that the break happened at all.
+
+## Deciding the break yourself (0.6.3)
+
+`render` breaks where it must. A layout engine wants to ask beforehand,
+and `table::draw` answers:
+
+```tcl
+set n [::pdf4tcllib::table::fitRows $space $rows -groups $groups]
+```
+
+`fitRows` says how many rows go on a page of that height, stepping back to
+the last allowed break; `breakPoints` returns the row height, the header
+height and the rows **before which no break is allowed**. Two things forbid
+one: the middle of a cell merged across rows -- it is not repeated on the
+next page, so a break would tear it apart -- and the row right after a
+group heading, because a heading with no content at the foot of a page is
+not a heading.
+
+See [`../reference/API.md`](../reference/API.md#tablebreakpoints----where-a-table-may-be-split)
+for both, and `layout::stack` if what you want is blocks placed one under
+another with the breaking done for you.

@@ -1,7 +1,7 @@
 # pdf4tclforms — Declarative Fillable PDF Forms
 
-**Package:** `pdf4tclforms 0.1.2`  
-**File:** `pdf4tclforms-0.1.2.tm`  
+**Package:** `pdf4tclforms 0.2.3`  
+**File:** `pdf4tclforms-0.2.3.tm`  
 **Requires:** `pdf4tcllib 0.3`, `pdf4tcl 0.9.4.33+` (needs `addForm` with `-format`; `-calculate` 0.9.4.32+, appearance 0.9.4.30+)
 
 Renders complete fillable **AcroForm** documents from a single Tcl dict, or
@@ -438,3 +438,53 @@ spacing, default label width and field height) is set with
 - [ ] editable tables have a unique `idPrefix`
 - [ ] long forms use `-pagebreak 1`
 - [ ] only WinAnsi characters in field values
+
+---
+
+## Reading a filled form back (0.2.3)
+
+```tcl
+set data [::pdf4tcllib::forms::read filled.pdf -schema $schema]
+# -> f_name Meier f_ort Musterstadt f_ok 1
+
+dict set data f_ok 0
+::pdf4tcllib::forms::write filled.pdf out.pdf $data
+```
+
+`pdf4tcl::getForms` has delivered the raw material since 0.9.4.55, but in
+PDF terms — `f_ok -> type /Btn default /Yes value /Yes flags 0`. What the
+caller wants is `1`, and when writing they want to write `1`: the state
+names of a checkbox live in the `/AP` dictionary and are a matter of the
+format, not of the application.
+
+### read
+
+| Option | Default | Meaning |
+|---|---|---|
+| `-schema` | {} | the field definitions the form was built from |
+| `-strict` | 0 | raise instead of warning |
+| `-raw` | 0 | return what `getForms` said, untranslated |
+
+`/Btn` comes back as 1 or 0, `/Tx` as the string, anything else raw. Off
+is tested against `/Off` rather than `/Yes`, because a foreign form may
+name its on-state differently.
+
+With `-schema` the result follows the order of the schema instead of the
+order in the PDF, and missing or extra fields are reported in
+`::pdf4tcl::warnings`. Without a schema neither would be noticed.
+
+### write
+
+| Option | Default | Meaning |
+|---|---|---|
+| `-schema` | {} | reserved, as in `read` |
+| `-strict` | 0 | raise instead of warning |
+
+A boolean at a `/Btn` field becomes `/Yes` or `/Off`; everything else is
+passed through. Fields the document does not have are reported and
+skipped. Returns the number of fields filled.
+
+**Limitation:** `fillForms` in pdf4tcl writes the value but no new
+appearance stream (`/AP`) — a reader that does not regenerate appearances
+shows the old text. That is a known pdf4tcl issue, not one of this
+module.

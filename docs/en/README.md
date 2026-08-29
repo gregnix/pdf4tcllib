@@ -51,6 +51,8 @@ in use.
 | [`reference/API.md`](reference/API.md) | pdf4tcllib -- the full API |
 | [`reference/table-draw.md`](reference/table-draw.md) | `table::draw` -- data-driven tables, Tk-free |
 | [`reference/pdf4tcltable.md`](reference/pdf4tcltable.md) | `pdf4tcltable` -- export a tablelist widget |
+| [`reference/pdf4tcltreeview.md`](reference/pdf4tcltreeview.md) | `pdf4tcltreeview` -- export a ttk::treeview, as a table or an outline |
+| [`reference/pdf4tclcanvas.md`](reference/pdf4tclcanvas.md) | `pdf4tclcanvas` -- place a canvas in a frame, to scale |
 | [`reference/pdf4tcltext.md`](reference/pdf4tcltext.md) | `pdf4tcltext` -- export a Tk text widget |
 | [`reference/pdf4tclforms.md`](reference/pdf4tclforms.md) | `pdf4tclforms` -- declarative fillable forms |
 | [`reference/pdf4tcllabels.md`](reference/pdf4tcllabels.md) | `pdf4tcllabels` -- label sheets, calibration, text fitting |
@@ -61,7 +63,7 @@ in use.
 
 ## Requirements
 
-pdf4tcllib 0.6.1 with pdf4tcl 0.9.4.43. Older pdf4tcl keeps working, but
+pdf4tcllib 0.6.3 with pdf4tcl 0.9.4.60. Older pdf4tcl keeps working, but
 `getUntaggedCount` and the structure checks arrived in 0.9.4.43, and the
 scripts here report on them.
 

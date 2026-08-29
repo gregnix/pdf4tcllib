@@ -1,18 +1,29 @@
 #!/usr/bin/env wish
 # ===========================================================================
-# Demo 58: tablelist miscWidgets_tile -> PDF Export
+# Demo 58: tablelist mit eingebetteten Widgets -> PDF Export
 #
-# Laed miscWidgets_tile.tcl aus der tablelist-Demo-Sammlung,
-# ermittelt den Pfad automatisch ueber package ifneeded,
-# und exportiert das Widget als PDF mit pdf4tcltable.
+# Zeigt, was pdf4tcltable aus einer tablelist macht, deren Zellen ueber
+# Editfenster bearbeitet werden: Combobox, Spinbox, Checkbutton, Entry.
 #
-# Hinweis zu eingebetteten Widgets:
-#   tablelist kann Zellen mit embedded widgets (Checkbutton, Combobox,
-#   Spinbox, Entry, Button) enthalten. pdf4tcltable liest die Zell-
-#   Werte via $tbl get -- eingebettete Widgets erscheinen dabei als
-#   ihr gespeicherter Textwert (z.B. 0/1 fuer Checkbutton, aktueller
-#   Wert fuer Entry/Spinbox). Das ist korrekt fuer den PDF-Export:
-#   der Inhalt wird exportiert, nicht das Widget selbst.
+# WARUM DIESE DEMO IHR WIDGET SELBST BAUT
+#
+# Bis hierher lud sie miscWidgets_tile.tcl aus der tablelist-Sammlung.
+# Das Skript verlangt zwei Fremdpakete, die kein Tk mitbringt: Bryan
+# Oakley's `combobox` und `mentry`. Wo die fehlen, brach die Demo ab --
+# im Stapellauf mit "can't find package combobox", und geprueft wurde sie
+# nie.
+#
+# Dabei braucht es sie nicht: tablelist kennt `ttk::combobox`,
+# `ttk::spinbox` und `ttk::checkbutton` als Editfenster von Haus aus
+# (tablelist.html, "Interactive cell editing"). Diese Demo baut ihre
+# Tabelle deshalb selbst und kommt mit Tk und tablelist aus.
+#
+# ZU EINGEBETTETEN WIDGETS
+#
+# pdf4tcltable liest die Zellwerte ueber `$tbl get`. Ein Editfenster ist
+# nur waehrend des Bearbeitens da; im PDF steht der gespeicherte Wert --
+# 0/1 fuer einen Checkbutton, der gewaehlte Eintrag einer Combobox. Das
+# ist richtig so: exportiert wird der Inhalt, nicht das Bedienelement.
 #
 # Voraussetzung: package tablelist_tile (Csaba Nemethi)
 # ===========================================================================
@@ -25,119 +36,79 @@ package require pdf4tcltable 0.2
 package require pdf4tcl
 
 # ---------------------------------------------------------------------------
-# 1. tablelist laden und Demos-Pfad ermitteln
+# 1. tablelist laden
 # ---------------------------------------------------------------------------
 if {[catch {package require tablelist_tile} err]} {
-    tk_messageBox -type ok -icon warning \
-        -title "Demo 58" \
+    if {[lsearch $argv -batch] >= 0} {
+        puts stderr "Demo 58: tablelist_tile nicht gefunden: $err"
+        exit 1
+    }
+    tk_messageBox -type ok -icon warning -title "Demo 58" \
         -message "tablelist_tile nicht gefunden:\n$err\n\nBitte tablelist installieren."
     exit 1
 }
 
-# Pfad zur tablelist-Library ueber package ifneeded
-set tl_ver  [package require tablelist_tile]
-set tl_info [package ifneeded tablelist_tile $tl_ver]
-# tl_info z.B.: "source /usr/share/tcltk/tablelist6.19/tablelist_tile.tcl"
-set tl_lib  [file dirname [lindex $tl_info end]]
-set tl_demo [file join $tl_lib demos miscWidgets_tile.tcl]
-
-if {![file exists $tl_demo]} {
-    tk_messageBox -type ok -icon warning \
-        -title "Demo 58" \
-        -message "miscWidgets_tile.tcl nicht gefunden:\n$tl_demo\n\
-\nGefundene tablelist-Library: $tl_lib"
-    exit 1
-}
-
 # ---------------------------------------------------------------------------
-# 2. miscWidgets_tile.tcl finden -- der Dialog nur, wenn es sein muss
-# ---------------------------------------------------------------------------
-#
-# Der Pfad wurde oben schon aus `package ifneeded` ermittelt und geprueft.
-# Bis hierher wurde er dann verworfen und trotzdem per tk_getOpenFile
-# gefragt: die im Dateikopf beschriebene automatische Erkennung war toter
-# Code, und das Skript blieb im modalen Dialog stehen -- weshalb es weder
-# im Stapel lief noch je geprueft wurde.
-#
-# Jetzt: gefundener Pfad gewinnt. Nur wenn dort nichts liegt, wird gefragt
-# -- und unter -batch gibt es stattdessen eine Meldung, denn ein Dialog im
-# Stapellauf ist ein Haenger mit Fenster.
-
-set tl_demos [file join $tl_lib demos]
-set batch    [expr {[lsearch $argv -batch] >= 0}]
-
-if {![file exists $tl_demo]} {
-    if {$batch} {
-        puts stderr "Demo 58: miscWidgets_tile.tcl nicht gefunden unter\
-                $tl_demos -- im Stapelbetrieb wird nicht gefragt."
-        exit 1
-    }
-    set tl_demo [tk_getOpenFile \
-        -title       "miscWidgets_tile.tcl auswaehlen" \
-        -initialdir  [expr {[file isdir $tl_demos] ? $tl_demos : $tl_lib}] \
-        -initialfile "miscWidgets_tile.tcl" \
-        -filetypes   {{"Tcl Scripts" {.tcl}} {"All files" *}}]
-
-    if {$tl_demo eq ""} {
-        # Abgebrochen
-        exit 0
-    }
-}
-
-if {![file exists $tl_demo]} {
-    tk_messageBox -type ok -icon error \
-        -title "Demo 58" \
-        -message "Datei nicht gefunden:\n$tl_demo"
-    exit 1
-}
-
-# ---------------------------------------------------------------------------
-# 3. sourcen -- . bleibt versteckt
+# 2. Die Tabelle -- mit ttk-Editfenstern, ohne Fremdpakete
 # ---------------------------------------------------------------------------
 wm withdraw .
 
-set tops_before [winfo children .]
-source $tl_demo
+toplevel .tblTop
+wm title .tblTop "Serielle Schnittstellen"
 
-foreach top [winfo children .] {
-    if {[winfo class $top] eq "Toplevel" && $top ni $tops_before} {
-        wm withdraw $top
-    }
+set tbl .tblTop.tbl
+tablelist::tablelist $tbl \
+    -columns {0 "Anschluss" left  0 "Baudrate" right  0 "Datenbits" right
+              0 "Paritaet" left   0 "Protokoll" left  0 "Aktiv" center} \
+    -stretch all -height 6 -width 74 -selectmode extended
+
+# Ein Checkbutton speichert 0 oder 1; im PDF soll etwas Lesbares stehen.
+# -formatcommand greift auch beim Export, weil pdf4tcltable die
+# formatierten Werte liest, wenn es sie gibt.
+proc ::formatJaNein {val} {
+    return [expr {$val ? "ja" : "nein"}]
 }
+
+$tbl columnconfigure 0 -name port
+$tbl columnconfigure 1 -name baud   -editable yes -editwindow ttk::combobox
+$tbl columnconfigure 2 -name bits   -editable yes -editwindow ttk::spinbox
+$tbl columnconfigure 3 -name par    -editable yes -editwindow ttk::combobox
+$tbl columnconfigure 4 -name proto  -editable yes -editwindow ttk::entry
+$tbl columnconfigure 5 -name aktiv  -editable yes -editwindow ttk::checkbutton \
+        -formatcommand {::formatJaNein}
+
+# Die Auswahllisten der Comboboxen. tablelist reicht -editwindow-Optionen
+# ueber -editstartcommand durch.
+proc ::editStart {tbl row col text} {
+    set w [$tbl editwinpath]
+    switch -- [$tbl columncget $col -name] {
+        baud { $w configure -values {1200 2400 4800 9600 19200 38400 115200} }
+        par  { $w configure -values {keine gerade ungerade} }
+        bits { $w configure -from 5 -to 9 }
+    }
+    return $text
+}
+$tbl configure -editstartcommand ::editStart
+
+foreach zeile {
+    {COM1  9600 8 keine   XON/XOFF 1}
+    {COM2 19200 8 gerade  RTS/CTS  1}
+    {COM3  4800 7 ungerade keine   0}
+    {COM4 115200 8 keine  RTS/CTS  0}
+} {
+    $tbl insert end $zeile
+}
+
+pack $tbl -fill both -expand 1
 update idletasks
 
-# ---------------------------------------------------------------------------
-# 4. Tablelist-Widget finden
-# ---------------------------------------------------------------------------
-proc findTablelist {w} {
-    foreach child [winfo children $w] {
-        if {[winfo class $child] eq "Tablelist"} { return $child }
-        set found [findTablelist $child]
-        if {$found ne ""} { return $found }
-    }
-    return ""
-}
-
-set tbl [findTablelist .]
-foreach top [winfo children .] {
-    if {[winfo class $top] eq "Toplevel"} {
-        set tbl [findTablelist $top]
-        if {$tbl ne ""} break
-    }
-}
-
-if {$tbl eq ""} {
-    tk_messageBox -type ok -icon error \
-        -title "Demo 58" \
-        -message "Kein tablelist-Widget gefunden in:\n$tl_demo"
-    exit 1
-}
+set tl_demo "selbst gebaut (ttk::combobox, ttk::spinbox, ttk::checkbutton)"
 
 # ---------------------------------------------------------------------------
 # 5. Kontrollfenster
 # ---------------------------------------------------------------------------
 toplevel .ctrl
-wm title .ctrl "Demo 58: miscWidgets_tile -> PDF"
+wm title .ctrl "Demo 58: tablelist -> PDF"
 wm geometry .ctrl "520x180+100+100"
 wm resizable .ctrl 0 0
 
@@ -189,18 +160,18 @@ proc exportPDF {} {
     set top [dict get $ctx top]
 
     $pdf startPage
-    pdf4tcllib::page::header $pdf $ctx "Demo 58: tablelist miscWidgets_tile"
+    pdf4tcllib::page::header $pdf $ctx "Demo 58: tablelist mit eingebetteten Widgets"
     pdf4tcllib::page::footer $pdf $ctx "Seite 1" 1
 
     set y [expr {$top + 14}]
 
     $pdf setFont 13 Helvetica-Bold
-    $pdf text "tablelist miscWidgets_tile -- PDF Export" -x $lx -y $y
+    $pdf text "tablelist mit ttk-Editfenstern -- PDF Export" -x $lx -y $y
     set y [expr {$y + 16}]
 
     $pdf setFont 8 Helvetica
     $pdf setFillColor 0.4 0.4 0.4
-    $pdf text "Quelle: [file tail $tl_demo]" -x $lx -y $y
+    $pdf text "Quelle: $tl_demo" -x $lx -y $y
     $pdf setFillColor 0 0 0
     set y [expr {$y + 14}]
 
@@ -233,7 +204,7 @@ proc exportPDF {} {
     $pdf write -file $outPDF
     $pdf destroy
 
-    .ctrl.status configure -text "Geschrieben: [file tail $outPDF]"
+    .ctrl.status configure -text "Written: [file tail $outPDF]"
     .ctrl.btns.exp state disabled
     puts "PDF: $outPDF"
 }

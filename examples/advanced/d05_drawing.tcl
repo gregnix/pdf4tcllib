@@ -12,7 +12,7 @@
 
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 
 pdf4tcllib::fonts::init
 package require pdf4tcl
@@ -209,4 +209,4 @@ set outfile [file join $outdir "demo_05_drawing.pdf"]
 $pdf write -file $outfile
 $pdf destroy
 catch {destroy .}
-puts "Geschrieben: $outfile"
+puts "Written: $outfile"

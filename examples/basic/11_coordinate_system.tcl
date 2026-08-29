@@ -7,18 +7,18 @@
 #   Manual:  pdf4tcl.man @ 2023-09-18
 #   API:     0.9 (pdf4tcl::pdf4tcl create)
 #
-# WINDOWS USERS: 🪟
-#   Für korrekte Umlaute (äöüÄÖÜß€) verwenden Sie:
+# WINDOWS USERS:
+#   For correct umlauts (aeoeueAEOEUEss, euro sign) use:
 #     tclsh examples/main.tcl 11_coordinate_system.tcl
 #
-#   NICHT direkt (→ falsche Zeichen im PDF):
+#   NOT directly -- that gives wrong characters in the PDF:
 #     tclsh 11_coordinate_system.tcl
 #
-# ⚠️ TCL-OKTAL-PROBLEM:
-#   RICHTIG: set demo_num 11  (ohne führende 0)
-#   FALSCH:  set demo_num 011 (Oktal-Fehler!)
+# TCL OCTAL PITFALL:
+#   RIGHT: set demo_num 11   (no leading zero)
+#   WRONG: set demo_num 011  (octal!)
 # ============================================================================
-# Lernziele:
+# What this shows:
 #   - PDF-Koordinatensystem verstehen
 #   - Unterschied zwischen -orient true und false
 #   - Y-Richtung visualisieren
@@ -31,23 +31,23 @@
 #   - Raster zur Orientierung
 #   - Achsen mit Beschriftung
 #
-# Encoding-Test: äöüÄÖÜß€
+# Encoding test: äöüÄÖÜß€
 # ============================================================================
 
 # --- Setup ---
 set script_dir [file dirname [file normalize [info script]]]
 
-# Load Helper Library
+# Load helper library
 
 # Require pdf4tcl 0.9.4.11+
 if {[catch {set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl} err]} {
     puts stderr "❌ ERROR: pdf4tcl 0.9.4.11+ required!"
     puts stderr "   Your version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl]"
     puts stderr "   Update: See SPEC.lock for installation"
     exit 1
@@ -228,11 +228,21 @@ proc draw_coord_system {pdf orient ctx} {
         lassign $example ex ey
         
         # Berechne absolute Position
+        # Die Punkte liegen relativ zum gezeichneten Ursprung.
+        #
+        # Der else-Zweig rechnete "origin_y - (ey - (ph - 150))" -- also
+        # gegen die Seitenhoehe statt gegen den Ursprung. Bei ey=100 auf
+        # A4 ergab das origin_y - (100 - 692) = origin_y + 592, und die
+        # drei Punkte lagen weit unter dem Blatt (gemessen: PDF-y -442,
+        # -342, -242). Auf Seite 2 fehlten sie einfach.
+        #
+        # Beide Zweige rechnen jetzt dasselbe, nur mit dem Vorzeichen der
+        # jeweiligen Richtung: in orient false waechst y nach oben.
         set abs_x [expr {$origin_x + $ex - 100}]
         if {$orient} {
             set abs_y [expr {$origin_y + $ey - 150}]
         } else {
-            set abs_y [expr {$origin_y - ($ey - ($ph - 150))}]
+            set abs_y [expr {$origin_y - ($ey - 150)}]
         }
         
         # Punkt zeichnen
@@ -315,7 +325,7 @@ proc demo_main {} {
     puts "Starting Demo $demo_num: Koordinatensystem"
     puts "  pdf4tcl version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl]"
     puts "  Output: $output_file"
     

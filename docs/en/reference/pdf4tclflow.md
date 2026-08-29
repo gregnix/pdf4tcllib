@@ -61,6 +61,21 @@ whitespace inside a paragraph is collapsed. Returns a dict:
 Returns `{x width}` per column. Public because a caller who wants to place
 a picture in column two needs the same arithmetic.
 
+### `configure ?option value ...?`
+
+Reads or sets the defaults every `columns` call starts from:
+
+```tcl
+pdf4tcllib::flow::configure -columns 3 -gap 24
+set cfg [pdf4tcllib::flow::configure]     ;# read them all back
+```
+
+Known options: `-columns -gap -size -font -align -tag -top -bottom
+-newpage -firstx -firsty`. An unknown one is an error naming the known ones; an
+odd number of arguments likewise. What is set here holds for the rest of
+the program, so a library that calls `flow` should pass its options to
+`columns` rather than change the defaults under its caller.
+
 ### `measure pdf text width size font`
 
 The lines the text makes at that width: the wrapped lines, with an empty

@@ -1,8 +1,14 @@
 # pdf4tcltable — Tablelist Widget PDF Export
 
-**Package:** `pdf4tcltable 0.3`  
-**File:** `pdf4tcltable-0.3.tm`  
+**Package:** `pdf4tcltable 0.3.1`  
+**File:** `pdf4tcltable-0.3.1.tm`  
 **Requires:** `pdf4tcllib 0.4`, `pdf4tcl 0.9.4.25+`, `tablelist_tile` (Csaba Nemethi)
+
+> **0.3.1:** `-formatted` works. Until then `_extract` read the rows with
+> `getformatted` and immediately overwrote every cell with
+> `cellcget -text`, which returns the raw value — so a column with a
+> `-formatcommand` showed `1` in the PDF where the widget showed `ja`,
+> with `-formatted 1` exactly as with 0.
 
 Exports a Tk `tablelist` widget directly to a formatted PDF table.
 Reads cell values, colors, fonts, and tree structure from the widget API —

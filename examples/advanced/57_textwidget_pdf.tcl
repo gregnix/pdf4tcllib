@@ -197,7 +197,7 @@ $t2 insert end "\nInstallation\n" section
 $t2 insert end "Das Paket ist eine einzelne " body
 $t2 insert end ".tm" code
 $t2 insert end "-Datei ohne externe Abhängigkeiten:\n" body
-$t2 insert end "tcl::tm::path add lib\npackage require pdf4tcllib 0.2\n" code
+$t2 insert end "tcl::tm::path add lib\npackage require pdf4tcllib 0.6\n" code
 
 $t2 insert end "\nWichtige Regeln\n" section
 

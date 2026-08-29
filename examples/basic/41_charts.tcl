@@ -47,5 +47,5 @@ set y [::pdf4tcllib::chart::pie $pdf $x [expr {$y + 24}] $w 200 \
 $pdf endPage
 $pdf write -file $outPDF
 
-puts "Geschrieben: $outPDF"
+puts "Written: $outPDF"
 exit 0

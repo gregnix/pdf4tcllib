@@ -32,7 +32,7 @@ set pdf [::pdf4tcl::new %AUTO% -paper a4 -margin 25]
 # picks its pronunciation from it. (metadata takes -title, -author and the
 # rest; passing -lang there is an error, which is how I learnt it.)
 $pdf tagged 1 -lang de-DE
-$pdf metadata -title "Quartalsbericht" -author "pdf4tcllib"
+$pdf metadata -title "Quarterly report" -author "pdf4tcllib"
 set ctx [::pdf4tcllib::page::context a4 -margin 25]
 
 set out [pdf4tcllib::doc::outfile tutorial-02-full-report.pdf]
@@ -55,7 +55,7 @@ proc newPage {} {
     # The watermark goes FIRST: there is no transparency in pdf4tcl, so it
     # has to lie underneath everything else.
     ::pdf4tcllib::drawing::watermark $pdf $ctx "ENTWURF"
-    ::pdf4tcllib::page::header $pdf $ctx "Quartalsbericht 2026"
+    ::pdf4tcllib::page::header $pdf $ctx "Quarterly report 2026"
     ::pdf4tcllib::page::footer $pdf $ctx "vertraulich" $pageNo
     return [expr {[dict get $ctx top] + 34}]
 }
@@ -69,25 +69,25 @@ proc newPage {} {
 # contents in front. So this script must not have side effects -- note that
 # $pageNo is reset before each run rather than counted up across both.
 
-set lorem "Die Zahlen des Quartals folgen dem Muster der Vorjahre: ein
+set lorem "The figures for the quarter follow the pattern of earlier years: a
     schwacher Januar, ein starker Maerz, und ein Ausreisser im April, den
     niemand vorhergesagt hat. Die Abweichung liegt innerhalb dessen, was
-    die Planung als Schwankungsbreite angesetzt hatte."
+    the plan had allowed for as the expected spread."
 
 set body ""
 foreach n {1 2 3 4 5 6} {
     append body [regsub -all {\s+} [string trim $lorem] " "] "\n\n"
 }
 
-set umsatz  {Jan 120 Feb 145 Mrz 98 Apr 160 Mai 132 Jun 178}
-set regionen {Nord 35 Sued 25 Ost 20 West 20}
+set umsatz  {Jan 120 Feb 145 Mar 98 Apr 160 Mai 132 Jun 178}
+set regionen {North 35 South 25 East 20 West 20}
 
 set content {
     set ::pageNo 0
     set y [newPage]
 
     # --- 1. Ueberblick ---------------------------------------------------
-    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Ueberblick"
+    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Overview"
 
     # Two columns of running text. The page break is handed back to us, so
     # every new page gets its watermark and running head.
@@ -96,18 +96,18 @@ set content {
             -firsty $y -newpage {set y [newPage]}]
     set y [dict get $res y]
 
-    # --- 2. Umsatz -------------------------------------------------------
+    # --- 2. Revenue -------------------------------------------------------
     set y [newPage]
-    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Umsatz"
-    ::pdf4tcllib::toc::heading $pdf $ctx y 2 "Nach Monat"
+    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Revenue"
+    ::pdf4tcllib::toc::heading $pdf $ctx y 2 "By month"
 
     # A chart is a Figure with an alternate text. The numbers themselves
     # follow as a table -- see the note at the end of the tutorial.
     set y [::pdf4tcllib::chart::bar $pdf [dict get $ctx left] $y \
             [dict get $ctx text_w] 170 $umsatz \
-            -title "Umsatz je Monat (kEUR)" -values 1 -format %.0f \
-            -alt "Balkendiagramm: Umsatz je Monat, Januar bis Juni,\
-                  zwischen 98 und 178 tausend Euro"]
+            -title "Revenue per month (kEUR)" -values 1 -format %.0f \
+            -alt "Bar chart: revenue per month, January to June,\
+                  between 98 and 178 thousand euro"]
 
     set y [expr {$y + 16}]
     set cols {}
@@ -120,16 +120,16 @@ set content {
 
     # --- 3. Regionen -----------------------------------------------------
     set y [newPage]
-    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Regionen"
+    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Regions"
     set y [::pdf4tcllib::chart::pie $pdf [dict get $ctx left] $y \
             [dict get $ctx text_w] 200 $regionen \
-            -title "Anteile nach Region" -legend 1 \
-            -alt "Kreisdiagramm: Nord 35, Sued 25, Ost 20, West 20 Prozent"]
+            -title "Share by region" -legend 1 \
+            -alt "Pie chart: North 35, South 25, East 20, West 20 per cent"]
 
-    # --- 4. Anhang -------------------------------------------------------
-    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Anhang"
+    # --- 4. Appendix -------------------------------------------------------
+    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Appendix"
     set y [::pdf4tcllib::text::writeParagraph $pdf \
-            "Alle Zahlen in tausend Euro, ungeprueft." \
+            "All figures in thousand euro, unaudited." \
             [dict get $ctx left] $y [dict get $ctx text_w] 10]
 
     $pdf endPage
@@ -146,10 +146,10 @@ set result [::pdf4tcllib::toc::document $pdf a4 $content -title "Inhalt"]
 $pdf finish
 $pdf write -file $out
 
-puts "Geschrieben: $out"
-puts "  Verzeichnis: [dict get $result tocPages] Seite(n)"
-puts "  Inhalt:      [dict get $result contentPages] Seite(n)"
-puts "  ungetaggt:   [$pdf getUntaggedCount]"
+puts "Written: $out"
+puts "  Contents:  [dict get $result tocPages] page(s)"
+puts "  Body:      [dict get $result contentPages] page(s)"
+puts "  untagged:  [$pdf getUntaggedCount]"
 foreach e [dict get $result entries] {
     lassign $e level title page
     puts [format "  %s%-20s %s" [string repeat "  " [expr {$level - 1}]] $title $page]

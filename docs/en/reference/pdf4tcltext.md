@@ -1,7 +1,7 @@
 # pdf4tcltext — Tk Text Widget PDF Export
 
-**Package:** `pdf4tcltext 0.1`  
-**File:** `pdf4tcltext-0.1.tm`  
+**Package:** `pdf4tcltext 0.2`  
+**File:** `pdf4tcltext-0.2.tm`  
 **Requires:** `pdf4tcllib 0.2`, `pdf4tcl 0.9.4.25+`, Tk
 
 Exports a Tk `text` widget to a formatted PDF, preserving fonts, colors,
@@ -325,3 +325,19 @@ pdf4tcltext::render $pdf .t $x $y ...
 - `docs/en/reference/API.md` — full pdf4tcllib API reference
 - `docs/en/reference/pdf4tcltable.md` — tablelist widget export
 - `examples/advanced/57_textwidget_pdf.tcl` — complete demo
+
+---
+
+## Tagged PDF (0.2)
+
+Until 0.2 the export left the structure tree empty: every run of text,
+every coloured box and every rule sat outside it. Measured on a widget
+with four tags, `getUntaggedCount` returned 8.
+
+Now a line is a `P` and the runs inside it are `Span` — they differ in
+markup, not in role. Backgrounds, underlines and overstrikes are
+artifacts: they carry no text a reader could announce.
+
+A word split by a tag boundary is written as two `Tj` operations. That is
+correct — the tag changes mid-word, so the markup does — and the
+extracted text reassembles it.

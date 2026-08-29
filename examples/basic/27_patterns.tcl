@@ -4,10 +4,10 @@
 
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl
 
-# --- Setup (STANDARD) ---
+# --- Setup (standard) ---
 
 set outdir [file join $scriptDir pdf]
 file mkdir $outdir
@@ -73,10 +73,16 @@ $pdf text "Vertical stripes" -x $x2 -y [expr {$y-10}]
 
 # ============================================================================
 # Pattern 3: Dots Grid
+#
+# Second row: at x=520 with a width of 200 this pattern ran to x=720,
+# and an A4 page is 595.28 points wide -- 125 points of it were off the
+# sheet. pdftotext does not see that, because it is drawn, not written;
+# only a geometry check finds it.
 # ============================================================================
-set x3 520; set w3 200; set h3 160
+set y3 320
+set x3 60; set w3 200; set h3 160
 $pdf setFillColor 0.2 0.2 0.2
-for {set yy $y} {$yy < [expr {$y+$h3}]} {incr yy 16} {
+for {set yy $y3} {$yy < [expr {$y3+$h3}]} {incr yy 16} {
     for {set xx $x3} {$xx < [expr {$x3+$w3}]} {incr xx 16} {
         # small filled circles
         $pdf circle $xx $yy 2 -filled 1
@@ -84,9 +90,9 @@ for {set yy $y} {$yy < [expr {$y+$h3}]} {incr yy 16} {
 }
 $pdf setStrokeColor 0 0 0
 $pdf setLineWidth 1
-$pdf rectangle $x3 $y $w3 $h3 -stroke 1
+$pdf rectangle $x3 $y3 $w3 $h3 -stroke 1
 $pdf setFont 9 Helvetica
-$pdf text "Dots grid" -x $x3 -y [expr {$y-10}]
+$pdf text "Dots grid" -x $x3 -y [expr {$y3-10}]
 
 # ============================================================================
 # Footer

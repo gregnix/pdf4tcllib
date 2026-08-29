@@ -155,4 +155,4 @@ set outfile [file join $outdir "demo_07_multipage.pdf"]
 $pdf write -file $outfile
 $pdf destroy
 catch {destroy .}
-puts "Geschrieben: $outfile ($pageNo Seiten)"
+puts "Written: $outfile ($pageNo Seiten)"

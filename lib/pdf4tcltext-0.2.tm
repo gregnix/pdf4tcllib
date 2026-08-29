@@ -15,7 +15,7 @@
 
 package require pdf4tcllib 0.2
 
-package provide pdf4tcltext 0.1
+package provide pdf4tcltext 0.2
 
 # ============================================================
 # pdf4tcllib::textwidget -- Tk Text-Widget -> PDF
@@ -205,6 +205,13 @@ proc ::pdf4tcllib::textwidget::_flushLine {pdf lineBuffer x maxW curY \
     set cx [expr {$x + $lmargin}]
 
     # Backgrounds
+    #
+    # Hintergrundfarben, Unterstreichungen und Durchstreichungen sind
+    # Auszeichnung, kein Inhalt: sie tragen keinen Text, den ein
+    # Vorleseprogramm ausgeben koennte. Ohne die Artefakt-Klammer zaehlt
+    # jeder farbige Kasten und jeder Strich als ungetaggt -- gemessen an
+    # einem Widget mit vier Auszeichnungen: 8 offene Zeichenbefehle.
+    ::pdf4tcllib::tag::artifact $pdf -type Layout
     set cx0 $cx
     foreach seg $lineBuffer {
         lassign $seg text style
@@ -220,8 +227,14 @@ proc ::pdf4tcllib::textwidget::_flushLine {pdf lineBuffer x maxW curY \
         }
         set cx0 [expr {$cx0+$w}]
     }
+    ::pdf4tcllib::tag::artifactEnd $pdf
 
     # Text
+    #
+    # Eine Zeile ist ein Absatz im Sinne des Baums; die einzelnen
+    # Abschnitte darin sind Span, weil sie sich nur in der Auszeichnung
+    # unterscheiden, nicht in der Rolle.
+    ::pdf4tcllib::tag::begin $pdf P
     set cx [expr {$x + $lmargin}]
     foreach seg $lineBuffer {
         lassign $seg text style
@@ -231,7 +244,11 @@ proc ::pdf4tcllib::textwidget::_flushLine {pdf lineBuffer x maxW curY \
         $pdf setFont $fs $fn; $pdf setFillColor {*}$fg
         catch {set text [::pdf4tcllib::unicode::sanitize $text]}
         set w 0; catch {set w [$pdf getStringWidth $text]}
+        ::pdf4tcllib::tag::begin $pdf Span
         $pdf text $text -x $cx -y $baseline
+        ::pdf4tcllib::tag::end $pdf
+        # Die Striche gehoeren zur Auszeichnung, nicht zum Text.
+        ::pdf4tcllib::tag::artifact $pdf -type Layout
         if {$ul} {
             $pdf setStrokeColor {*}$fg; $pdf setLineWidth 0.5
             set uly [expr {$orient ? $baseline+1.5 : $baseline-1.5}]
@@ -242,9 +259,11 @@ proc ::pdf4tcllib::textwidget::_flushLine {pdf lineBuffer x maxW curY \
             set osy [expr {$orient ? $baseline-$fs*0.35 : $baseline+$fs*0.35}]
             $pdf line $cx $osy [expr {$cx+$w}] $osy
         }
+        ::pdf4tcllib::tag::artifactEnd $pdf
         $pdf setFillColor 0 0 0
         set cx [expr {$cx+$w}]
     }
+    ::pdf4tcllib::tag::end $pdf
 
     if {$orient} {return [expr {$curY+$lineH}]} else {return [expr {$curY-$lineH}]}
 }

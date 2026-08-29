@@ -71,7 +71,7 @@ set result [::pdf4tcllib::toc::document $pdf a4 $content \
 set out [pdf4tcllib::doc::outfile howto-toc.pdf]
 $pdf write -file $out
 
-puts "Geschrieben: $out"
+puts "Written: $out"
 puts "  contents: [dict get $result tocPages] page(s)"
 puts "  content:  [dict get $result contentPages] page(s)"
 foreach e [dict get $result entries] {

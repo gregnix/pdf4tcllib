@@ -7,18 +7,18 @@
 #   Manual:  pdf4tcl.man @ 2023-09-18
 #   API:     0.9 (pdf4tcl::pdf4tcl create)
 #
-# WINDOWS USERS: 🪟
-#   Für korrekte Umlaute (äöüÄÖÜß€) verwenden Sie:
+# WINDOWS USERS:
+#   For correct umlauts (aeoeueAEOEUEss, euro sign) use:
 #     tclsh examples/main.tcl 12_units.tcl
 #
-#   NICHT direkt (→ falsche Zeichen im PDF):
+#   NOT directly -- that gives wrong characters in the PDF:
 #     tclsh 12_units.tcl
 #
-# ⚠️ TCL-OKTAL-PROBLEM:
+# TCL OCTAL PITFALL:
 #   RICHTIG: set demo_num 12  (ohne führende 0)
 #   FALSCH:  set demo_num 012 (Oktal-Fehler!)
 # ============================================================================
-# Lernziele:
+# What this shows:
 #   - Einheiten-Umrechnung verstehen (mm, cm, inch -> points)
 #   - Helper-Funktionen für Umrechnung nutzen
 #   - DIN-Formate kennenlernen (A4, A5, A6)
@@ -30,23 +30,23 @@
 #   - Code-Beispiele für Helper-Funktionen
 #   - Praktische Referenz
 #
-# Encoding-Test: äöüÄÖÜß€
+# Encoding test: äöüÄÖÜß€
 # ============================================================================
 
 # --- Setup ---
 set script_dir [file dirname [file normalize [info script]]]
 
-# Load Helper Library
+# Load helper library
 
 # Require pdf4tcl 0.9.4.11+
 if {[catch {set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl} err]} {
     puts stderr "❌ ERROR: pdf4tcl 0.9.4.11+ required!"
     puts stderr "   Your version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl]"
     puts stderr "   Update: See SPEC.lock for installation"
     exit 1
@@ -71,7 +71,7 @@ proc demo_main {} {
     puts "Starting Demo $demo_num: Einheiten-Umrechnung"
     puts "  pdf4tcl version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl]"
     puts "  Output: $output_file"
     
@@ -296,7 +296,7 @@ puts "  xdg-open $result"
 puts "  # oder"
 puts "  evince $result"
 puts ""
-puts "Mit Debug-Grid:"
+puts "With the debug grid:"
 puts "  PDF4TCL_DEBUG=1 tclsh [info script]"
 
 exit 0

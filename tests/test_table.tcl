@@ -427,4 +427,112 @@ test table-fontovr-4 "beide zusammen" -constraints tablelist -body {
 } -result {Times-Bold Times-Roman}
 
 
+
+# ---------------------------------------------------------------------------
+# table-summary-*  -summary auf der Tabelle
+#
+# /Summary sagt, was die Tabelle zeigt und wie sie gebaut ist. Ein Leser,
+# der das Gitter nicht sieht, nennt es vor den Zellen -- sonst hoert jemand
+# eine Reihe von Zahlen ohne zu wissen, was kommt.
+#
+# pdf4tcl nimmt -summary ab 0.9.4.56. Aeltere Fassungen kennen die Option
+# nicht; tag::begin schluckt den Fehler, die Tabelle wird trotzdem
+# ausgezeichnet, nur ohne Zusammenfassung.
+# ---------------------------------------------------------------------------
+
+test table-summary-simple "simpleTable traegt die Zusammenfassung" \
+        -constraints pdf -body {
+    set pdf [tagTestPdf]
+    ::pdf4tcllib::table::simpleTable $pdf 0 40 {80 60 60} \
+            {{Ort Menge Preis} {Bremen 3 12,50}} \
+            -summary "Bestellungen je Ort, drei Spalten"
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    string first "Bestellungen je Ort, drei Spalten" $data
+} -match glob -result {[0-9]*}
+
+test table-summary-draw "draw traegt sie ebenfalls" -constraints pdf -body {
+    set pdf [tagTestPdf]
+    ::pdf4tcllib::table::draw $pdf 0 40 [tagDrawCols] \
+            {{Schraube 100 4,90}} -summary "Lagerbestand, drei Spalten"
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    expr {[string first "/Summary" $data] >= 0
+            && [string first "Lagerbestand, drei Spalten" $data] >= 0}
+} -result 1
+
+test table-summary-absent "ohne -summary steht kein leerer Eintrag" \
+        -constraints pdf -body {
+    # Die Gegenprobe. Ein /Summary mit leerem Text waere schlechter als
+    # keines: ein Leser kuendigt dann eine Tabelle an und sagt nichts.
+    set pdf [tagTestPdf]
+    ::pdf4tcllib::table::draw $pdf 0 40 [tagDrawCols] \
+            {{Schraube 100 4,90}}
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    string first "/Summary" $data
+} -result -1
+
+test table-summary-untagged "ohne tagged bleibt alles unveraendert" \
+        -constraints pdf -body {
+    # -summary darf ein Dokument ohne Auszeichnung nicht anfassen.
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -compress 0]
+    $pdf startPage
+    $pdf setFont 10 Helvetica
+    ::pdf4tcllib::table::draw $pdf 0 40 [tagDrawCols] \
+            {{Schraube 100 4,90}} -summary "wird nicht geschrieben"
+    set data [$pdf get]
+    $pdf destroy
+    ::pdf4tcllib::tag::forget $pdf
+    expr {[string first "/Summary" $data] < 0
+            && [string first "/StructTreeRoot" $data] < 0}
+} -result 1
+
+
+# ---------------------------------------------------------------------------
+# -formatted: der formatierte Wert muss den rohen schlagen
+#
+# _extract holte die Zeilen mit getformatted und ueberschrieb dann jede
+# Zelle mit cellcget -text -- also mit dem ROHEN Wert. -formatted hatte
+# damit keine Wirkung, seit es die Option gibt. In einer Spalte mit
+# -formatcommand stand im PDF 1 statt "ja".
+# ---------------------------------------------------------------------------
+
+proc ::fmtJaNein {v} { return [expr {$v ? "ja" : "nein"}] }
+
+proc ::tblFmtStrom {formatted} {
+    catch {destroy .tblFmt}
+    tablelist::tablelist .tblFmt -columns {0 A left 0 Aktiv center}
+    .tblFmt columnconfigure 1 -formatcommand ::fmtJaNein
+    .tblFmt insert end {COM1 1}
+    pack .tblFmt
+    update idletasks
+    set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true -compress 0]
+    $pdf startPage
+    pdf4tcllib::tablelist::render $pdf .tblFmt 40 60 -maxwidth 300 \
+            -formatted $formatted
+    set out [$pdf get]
+    $pdf destroy
+    destroy .tblFmt
+    return $out
+}
+
+test tbl-fmt-1.1 {-formatted 1 nimmt den formatierten Wert} \
+        -constraints {pdf tablelist} -body {
+    set out [::tblFmtStrom 1]
+    list [regexp {\(ja\)} $out] [regexp {\(1\)} $out]
+} -result {1 0}
+
+test tbl-fmt-1.2 {-formatted 0 nimmt den rohen} \
+        -constraints {pdf tablelist} -body {
+    set out [::tblFmtStrom 0]
+    list [regexp {\(ja\)} $out] [regexp {\(1\)} $out]
+} -result {0 1}
+
+rename ::tblFmtStrom {}
+rename ::fmtJaNein {}
+
 cleanupTests

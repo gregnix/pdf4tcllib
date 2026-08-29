@@ -18,7 +18,7 @@ package require Tcl 8.6-
 package require pdf4tcllib 0.6
 package require pdf4tcl 0.9.4.34
 
-package provide pdf4tclforms 0.2.1
+package provide pdf4tclforms 0.2.3
 
 namespace eval ::pdf4tcllib::forms {
     # form:: does export its procedures, but they are called fully
@@ -48,7 +48,174 @@ proc ::pdf4tcllib::forms::_ensureSpace {pdf ctx yVar needH {pagebreak 0}} {
 }
 
 proc ::pdf4tcllib::forms::_cfg {} {
-    return [::pdf4tcllib::form::configure]
+    # The blocks below read CFG(fontFamily) directly, and CFG holds
+    # Helvetica by default. ::pdf4tcllib::form solved that in _family: a
+    # caller who ran fonts::init wants the loaded TrueType instead. This
+    # module never got the same treatment, so every label and every
+    # checkbox label was drawn in Helvetica -- the one font that has no
+    # embeddable program. Measured: a form with one text field and one
+    # checkbox, built with -pdfa 2b, failed veraPDF and pdf4tcl warned
+    # about a font the caller never asked for.
+    #
+    # An explicit form::configure -fontFamily still wins; only the
+    # default follows fonts::init, exactly as in form::_family.
+    set cfg [::pdf4tcllib::form::configure]
+    dict set cfg fontFamily     [::pdf4tcllib::form::_family]
+    dict set cfg fontFamilyBold [::pdf4tcllib::form::_family bold]
+    return $cfg
+}
+
+# ============================================================
+# read / write -- der Rundlauf
+# ============================================================
+#
+# forms:: erzeugt Felder aus einem Schema. Was fehlte, ist die
+# Rueckrichtung: aus einem ausgefuellten PDF wieder ein Datensatz.
+# pdf4tcl liefert das Rohmaterial (getForms, fillForms seit 0.9.4.55),
+# aber in PDF-Begriffen:
+#
+#     f_ok -> type /Btn default /Yes value /Yes flags 0
+#
+# Was der Aufrufer will, ist `1`. Und beim Schreiben will er `1`
+# hinschreiben duerfen, nicht `/Yes` -- die Zustandsnamen einer Checkbox
+# stehen im /AP-Woerterbuch und sind eine Sache des Formats, nicht der
+# Anwendung.
+#
+# read gibt deshalb eine Zuordnung id -> Wert zurueck:
+#
+#   /Tx   die Zeichenkette
+#   /Btn  1 oder 0
+#   sonst der rohe Wert
+#
+# Mit -schema (denselben Felddefinitionen, aus denen das Formular gebaut
+# wurde) kommen zwei Dinge dazu: die Reihenfolge des Schemas statt der
+# des PDFs, und die Meldung, welche Felder fehlen oder zuviel sind. Ohne
+# Schema faellt beides niemandem auf.
+#
+#   -schema   Liste von Felddefinitionen wie bei forms::render
+#   -strict   fehlende oder unbekannte Felder werfen statt melden (0)
+#   -raw      nichts umrechnen, die Rohwerte von getForms (0)
+proc ::pdf4tcllib::forms::read {file args} {
+    array set o {-schema {} -strict 0 -raw 0}
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "forms::read: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    if {![file readable $file]} {
+        return -code error "forms::read: cannot read \"$file\""
+    }
+    set roh [::pdf4tcl::getForms $file]
+    if {$o(-raw)} { return $roh }
+
+    set out [dict create]
+    dict for {id eintrag} $roh {
+        dict set out $id [_wertLesen $eintrag]
+    }
+
+    if {![llength $o(-schema)]} { return $out }
+
+    # Mit Schema: Reihenfolge und Vollstaendigkeit.
+    set erwartet {}
+    foreach fdef $o(-schema) {
+        set fid [_getdef $fdef id ""]
+        if {$fid ne ""} { lappend erwartet $fid }
+    }
+    set fehlt {}
+    set sortiert [dict create]
+    foreach fid $erwartet {
+        if {[dict exists $out $fid]} {
+            dict set sortiert $fid [dict get $out $fid]
+        } else {
+            lappend fehlt $fid
+        }
+    }
+    set zuviel {}
+    dict for {id v} $out {
+        if {[lsearch -exact $erwartet $id] < 0} {
+            lappend zuviel $id
+            dict set sortiert $id $v
+        }
+    }
+    if {[llength $fehlt] || [llength $zuviel]} {
+        set text "forms::read: [file tail $file] does not match the schema"
+        if {[llength $fehlt]}  { append text "; missing: [join $fehlt {, }]" }
+        if {[llength $zuviel]} { append text "; extra: [join $zuviel {, }]" }
+        if {$o(-strict)} { return -code error $text }
+        lappend ::pdf4tcl::warnings $text
+    }
+    return $sortiert
+}
+
+# Einen Eintrag von getForms in einen brauchbaren Wert uebersetzen.
+proc ::pdf4tcllib::forms::_wertLesen {eintrag} {
+    set typ ""
+    if {[dict exists $eintrag type]} { set typ [dict get $eintrag type] }
+    set v ""
+    if {[dict exists $eintrag value]} { set v [dict get $eintrag value] }
+    switch -- $typ {
+        /Btn {
+            # /Off ist aus, alles andere an. Der EIN-Zustand heisst bei
+            # pdf4tcl /Yes, kann bei fremden Formularen aber anders
+            # heissen -- deshalb wird auf /Off geprueft, nicht auf /Yes.
+            return [expr {$v eq "" || $v eq "/Off" ? 0 : 1}]
+        }
+        default { return $v }
+    }
+}
+
+# Ein Formular ausfuellen, mit denselben Werten, die read liefert.
+#
+#   ::pdf4tcllib::forms::write in.pdf out.pdf {f_name "Meier" f_ok 1}
+#
+# Eine 1 an einem Ankreuzfeld wird zu /Yes, eine 0 zu /Off. Ohne das
+# muesste der Aufrufer die Zustandsnamen des Formats kennen, und die
+# gehoeren nicht in eine Anwendung.
+#
+#   -schema   wie bei read: prueft, ob die Felder ins Schema passen
+#   -strict   fehlende oder unbekannte Felder werfen (0)
+proc ::pdf4tcllib::forms::write {inFile outFile werte args} {
+    array set o {-schema {} -strict 0}
+    foreach {k v} $args {
+        if {![info exists o($k)]} {
+            return -code error "forms::write: unknown option $k\
+                    (known: [join [lsort [array names o]] { }])"
+        }
+        set o($k) $v
+    }
+    if {![file readable $inFile]} {
+        return -code error "forms::write: cannot read \"$inFile\""
+    }
+    set vorhanden [::pdf4tcl::getForms $inFile]
+
+    set umgesetzt {}
+    set unbekannt {}
+    dict for {id v} $werte {
+        if {![dict exists $vorhanden $id]} {
+            lappend unbekannt $id
+            continue
+        }
+        set typ ""
+        catch {set typ [dict get $vorhanden $id type]}
+        if {$typ eq "/Btn" && [string is boolean -strict $v]} {
+            lappend umgesetzt $id [expr {$v ? "/Yes" : "/Off"}]
+        } else {
+            lappend umgesetzt $id $v
+        }
+    }
+    if {[llength $unbekannt]} {
+        set text "forms::write: [file tail $inFile] has no field(s):\
+                [join $unbekannt {, }]"
+        if {$o(-strict)} { return -code error $text }
+        lappend ::pdf4tcl::warnings $text
+    }
+    if {![llength $umgesetzt]} {
+        return -code error "forms::write: nothing to fill in"
+    }
+    ::pdf4tcl::fillForms $inFile $outFile $umgesetzt
+    return [expr {[llength $umgesetzt] / 2}]
 }
 
 proc ::pdf4tcllib::forms::_drawTitle {pdf ctx yVar title} {
@@ -60,8 +227,16 @@ proc ::pdf4tcllib::forms::_drawTitle {pdf ctx yVar title} {
     ::pdf4tcllib::page::_advance $ctx y 28
 }
 
+# The caption next to a field. Lbl is what ISO 32000-1 table 335 provides
+# for it, and without the wrapper the text sits outside the structure tree
+# altogether: the field itself is wrapped in Form by _tagBeginField, its
+# caption was not. Measured on a page with one text field and one
+# checkbox, getUntaggedCount was 2 -- one per caption.
+#
+# Does nothing when tagging is off.
 proc ::pdf4tcllib::forms::_labelWithRequired {pdf x y label required fieldH} {
     array set CFG [_cfg]
+    ::pdf4tcllib::tag::begin $pdf Lbl
     $pdf setFont $CFG(fontSizeLabel) $CFG(fontFamily)
     lassign $CFG(labelColor) lr lg lb
     $pdf setFillColor $lr $lg $lb
@@ -74,6 +249,7 @@ proc ::pdf4tcllib::forms::_labelWithRequired {pdf x y label required fieldH} {
         $pdf text "*" -x [expr {$x + $lw + 2}] -y $textY
         $pdf setFillColor 0 0 0
     }
+    ::pdf4tcllib::tag::end $pdf
 }
 
 proc ::pdf4tcllib::forms::_fieldAddArgs {fdef} {
@@ -141,6 +317,7 @@ proc ::pdf4tcllib::forms::checkboxLine {pdf ctx yVar fdef {pagebreak 0}} {
     set x [dict get $ctx SX]
     ::pdf4tcllib::forms::_addForm $pdf checkbutton $x $y $boxH $boxH $fdef
     if {$label ne ""} {
+        ::pdf4tcllib::tag::begin $pdf Lbl
         $pdf setFont $CFG(fontSizeLabel) $CFG(fontFamily)
         ::pdf4tcllib::unicode::safeText $pdf $label -x [expr {$x + $boxH + 6}] -y [expr {$y + $boxH - 2}]
         if {$required} {
@@ -150,6 +327,7 @@ proc ::pdf4tcllib::forms::checkboxLine {pdf ctx yVar fdef {pagebreak 0}} {
             $pdf text "*" -x [expr {$x + $boxH + 8 + $lw}] -y [expr {$y + $boxH - 2}]
             $pdf setFillColor 0 0 0
         }
+        ::pdf4tcllib::tag::end $pdf
     }
     ::pdf4tcllib::page::_advance $ctx y [expr {$boxH + $CFG(rowGap)}]
 }

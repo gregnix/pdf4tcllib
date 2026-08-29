@@ -16,7 +16,7 @@ set scriptDir [file dirname [file normalize [info script]]]
 set libDir [file normalize [file join $scriptDir ../.. lib]]
 
 tcl::tm::path add $libDir
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 
 # --- Fonts initialisieren ---
 pdf4tcllib::fonts::init
@@ -173,4 +173,4 @@ set outfile [file join $outdir "demo_01_fonts_unicode.pdf"]
 $pdf write -file $outfile
 $pdf destroy
 catch {destroy .}
-puts "Geschrieben: $outfile"
+puts "Written: $outfile"

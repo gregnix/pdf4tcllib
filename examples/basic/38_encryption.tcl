@@ -3,7 +3,7 @@
 
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl
 
 set outdir [expr {$argc > 0 ? [lindex $argv 0] : [file join $scriptDir pdf]}]
@@ -72,5 +72,5 @@ foreach h $hints {
 $pdf endPage
 $pdf write -file $outfile
 $pdf destroy
-puts "Geschrieben: $outfile"
+puts "Written: $outfile"
 puts "(Passwort: benutzer)"

@@ -33,7 +33,7 @@ foreach f $files {
     # `source` sets [info script] to $f, so data-file lookups still work.
     set boot ""
     append boot "tcl::tm::path add [list $libDir]\n"
-    append boot "if {\[catch {package require pdf4tcllib 0.2} e\]} {puts stderr \"LOAD: \$e\"; exit 2}\n"
+    append boot "if {\[catch {package require pdf4tcllib 0.6} e\]} {puts stderr \"LOAD: \$e\"; exit 2}\n"
     append boot "package require tcltest\n"
     if {[llength $passArgs]} {
         append boot "tcltest::configure {*}[list $passArgs]\n"

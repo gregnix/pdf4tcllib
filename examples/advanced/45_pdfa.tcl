@@ -6,7 +6,7 @@
 
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl
 
 set outdir [expr {$argc > 0 ? [lindex $argv 0] : [file join $scriptDir pdf]}]
@@ -95,7 +95,7 @@ makePdfaPage $pdf "1b"
 set f1 [file join $outdir "demo_45a_pdfa1b.pdf"]
 $pdf write -file $f1
 $pdf destroy
-puts "Geschrieben: $f1"
+puts "Written: $f1"
 
 # ---------------------------------------------------------------------------
 # 2. PDF/A-2b
@@ -105,7 +105,7 @@ makePdfaPage $pdf "2b"
 set f2 [file join $outdir "demo_45b_pdfa2b.pdf"]
 $pdf write -file $f2
 $pdf destroy
-puts "Geschrieben: $f2"
+puts "Written: $f2"
 
 # ---------------------------------------------------------------------------
 # 3. PDF/A-3b -- mit Dateianhang (ZUGFeRD-Stil)
@@ -154,7 +154,7 @@ set f3 [file join $outdir "demo_45c_pdfa3b.pdf"]
 $pdf write -file $f3
 $pdf destroy
 file delete $tmpXml
-puts "Geschrieben: $f3"
+puts "Written: $f3"
 
 puts "\nAlle PDF/A-Varianten erzeugt:"
 puts "  1b: [file size $f1] Bytes"

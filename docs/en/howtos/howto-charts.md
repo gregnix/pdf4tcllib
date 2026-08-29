@@ -15,7 +15,7 @@ tclsh howto-charts.tcl [outdir]
 package require pdf4tclchart
 
 set y [::pdf4tcllib::chart::bar $pdf $x $y $w 150 \
-    {Jan 120 Feb 145 Mrz 98 Apr 160} -title "Revenue" -values 1 -format %.0f]
+    {Jan 120 Feb 145 Mar 98 Apr 160} -title "Revenue" -values 1 -format %.0f]
 ```
 
 Labels and numbers, as flat pairs or as a list of `{label value}`. The four
@@ -61,7 +61,7 @@ would otherwise be invisible.
 
 ```tcl
 ::pdf4tcllib::chart::pie $pdf $x $y $w 170 \
-    {Nord 35 Sued 25 Ost 20 West 20} -legend 1
+    {North 35 South 25 East 20 West 20} -legend 1
 ```
 
 Use `-legend 1`. A slice without its name is a coloured wedge and nothing
@@ -88,7 +88,7 @@ above; moving the call to the top made it **0**.
 ### Give the figure an alternate text
 
 ```tcl
-::pdf4tcllib::chart::bar $pdf $x $y $w 150 {Jan 120 Feb 145 Mrz 98} \
+::pdf4tcllib::chart::bar $pdf $x $y $w 150 {Jan 120 Feb 145 Mar 98} \
     -title "Revenue" \
     -alt "Bar chart: revenue January to March, 120, 145 and 98 kEUR"
 ```
@@ -102,8 +102,8 @@ description.
 
 ```tcl
 ::pdf4tcllib::table::draw $pdf $x [expr {$y + 16}] \
-    {{-header Monat} {-header "kEUR" -align right}} \
-    {{Jan 120} {Feb 145} {Mrz 98}} -maxwidth $w
+    {{-header Month} {-header "kEUR" -align right}} \
+    {{Jan 120} {Feb 145} {Mar 98}} -maxwidth $w
 ```
 
 `getUntaggedCount` reports 0 with or without that table. It counts what is

@@ -19,7 +19,7 @@
 
 package require pdf4tcllib 0.4
 
-package provide pdf4tcltable 0.3
+package provide pdf4tcltable 0.3.1
 
 namespace eval ::pdf4tcllib::tablelist {}
 
@@ -96,7 +96,18 @@ proc ::pdf4tcllib::tablelist::_extract {tbl opts first last} {
         foreach c $vis {
             set ct ""
             if {[llength $rowData] > $c} { set ct [lindex $rowData $c] }
-            catch {set t2 [$tbl cellcget $r,$c -text]; if {$t2 ne ""} {set ct $t2}}
+            # cellcget -text liefert den ROHEN Wert und ueberschrieb damit
+            # den formatierten aus getformatted -- -formatted 1 hatte
+            # keine Wirkung, seit es die Option gibt. Gemessen an einer
+            # Spalte mit -formatcommand: im PDF stand 1 statt "ja", mit
+            # -formatted 1 wie mit 0.
+            #
+            # Ohne Formatierung bleibt der Zugriff noetig: dort holt er
+            # Text, den der Aufrufer per cellconfigure -text gesetzt hat.
+            if {!$o(-formatted)} {
+                catch {set t2 [$tbl cellcget $r,$c -text]
+                       if {$t2 ne ""} {set ct $t2}}
+            }
             lappend rowCells $ct
 
             set cstyle {}

@@ -7,6 +7,766 @@ and module headers.
 
 ## Unreleased -- features
 
+### Fixed -- form labels ignored the loaded font
+
+`::pdf4tcllib::form` learned in `_family` that a caller who ran
+`fonts::init` wants the loaded TrueType rather than the built-in
+Helvetica. `::pdf4tcllib::forms`, the newer helper module, never got the
+same treatment: no call to `_family` anywhere, and seventeen direct reads
+of `CFG(fontFamily)`, which holds `Helvetica`.
+
+Every field label and every checkbox label was therefore drawn in the one
+font that has no embeddable program. Measured with a text field and a
+checkbox at `-pdfa 2b`: one warning from pdf4tcl naming a font the caller
+never asked for, and veraPDF **FAIL 2b**. With the fix: no warning,
+**PASS 2b**. An explicit `form::configure -fontFamily` still wins -- only
+the default follows `fonts::init`, exactly as in `form::_family`.
+
+This is what closed the gap the TODO list called "der offene Nachweis":
+no example combined a checkbox with `-pdfa`, and it turned out none could.
+
+### Fixed -- field captions sat outside the structure tree
+
+`_tagBeginField` wraps the field itself in a `Form` element, with `-alt`
+from the label. The *visible* caption beside it was not wrapped. Measured
+with `getUntaggedCount` on a tagged document: one text field 1, one
+checkbox 1, both together 2 -- one hole per caption, which a reader skips
+and PDF/UA fails over. Now wrapped in `Lbl` (ISO 32000-1 table 335), in
+`_labelWithRequired` and in `checkboxLine`. Does nothing when tagging is
+off.
+
+    pdf4tclforms   0.2.1 -> 0.2.2
+
+### Added -- merged cells across columns
+
+A table cell may be given as a dict instead of a string:
+
+    [dict create text "Summe" colspan 3]
+
+The widths of the covered columns are added up, the following columns
+fall away in that row, and the cell carries `/ColSpan 3` (ISO 32000-1
+table 349, clause 14.8.5.7). The attribute is not decoration: clause
+14.8.4.3.4 note 2 says the association between a header and its data
+cells is determined heuristically and "may fail for complex tables". A
+merged cell is exactly such a case, and without the attribute a reader
+announces the wrong heading.
+
+Recognised by the combination of a `text` and a `colspan` key, so a
+plain cell would have to read literally "text ... colspan ..." to be
+mistaken for one. An unusable span -- zero, negative, not a number --
+counts as one rather than raising.
+
+Three places had to learn about it beyond the drawing itself: the column
+count (a header `{Region {text Zahlen colspan 2}}` describes three
+columns, not two -- taking the number of entries lost the third column
+and its data), the width calculation (a merged cell must not pull a
+single column to its width) and the row height (a merged cell has more
+room, so it wraps later).
+
+### Added -- merged cells across rows
+
+`rowspan` works the same way, and as in HTML the covered cells are simply
+left out of the following rows:
+
+    {text "Nord" rowspan 2} Q1 120
+                            Q2  90
+
+Three things had to come with it. An **occupancy plan**, because the row
+alone no longer says which column a cell sits in -- `Q2` above is the
+first entry of its row and belongs in the *second* column. **Row heights
+computed in advance for the whole table**, because a cell spanning three
+rows needs as much room as those three give it, and when they do not give
+enough, the last of them has to grow -- otherwise the text sits on top of
+the separator. And the **separators themselves**, which are now drawn in
+segments: where a cell continues downwards, the line leaves a gap, or the
+merge would exist in the tree but not on the paper.
+
+The cell carries `/RowSpan` (ISO 32000-1 table 349), and the two combine:
+a cell may span rows and columns at once.
+
+**Limitation, measured:** a merged block that meets a page break is not
+repeated on the next page. Nothing is lost and the tree stays complete --
+the text is drawn once, in the row where the cell starts, and the rows on
+the following page keep their own cells. Splitting or repeating a merged
+cell across pages is a separate step.
+
+    pdf4tcllib     0.6.2 -> 0.6.3
+
+### Added -- layout::stack, blocks one under another
+
+    ::pdf4tcllib::layout::stack $pdf $x $y $w {
+        {script {::pdf4tcllib::text::writeParagraph $bpdf $intro $bx $by $bw}}
+        {gap 12}
+        {script {::pdf4tcllib::table::draw $bpdf $bx $by $cols $rows
+                        -maxwidth $bw} keep 1}
+    } -ctx $ctx -font {10 Helvetica}
+
+What a caller writes by hand today: draw a block, take the returned y,
+add a gap, draw the next -- and watch the page break yourself. That loop
+is in every report, and it is a little differently wrong every time.
+
+It uses what came before it: `measure`, to know **before** drawing
+whether a block still fits on the page, and `state`, so one block does
+not leave the next with the wrong font.
+
+**One shape for all of them.** `table::draw` returns a y, `image::place`
+an area, `callout` a line count; `stack` returns `{x y w h}` for each.
+
+`keep 1` measures the block first and starts a new page if it would not
+fit whole -- rather than letting it split. Without it nothing is measured
+and nothing is broken: the block handles it itself, as before.
+
+In each script `$bpdf`, `$bx`, `$by` and `$bw` are available. **`$bpdf`
+rather than `$pdf`** on purpose: while measuring it is the throwaway
+document, and a script naming `$pdf` would draw into the real one during
+the measurement. The script runs in the caller's scope, so its own
+variables are visible; the four names are restored afterwards.
+
+`measure::block` would have been the obvious way to measure here, but it
+evaluates its script one level up -- two nested `uplevel`s and the count
+no longer works out. The throwaway document is therefore created in
+`stack` itself, and the block runs at the same level as when drawn.
+
+### Changed -- table::draw reads the page direction, and refuses the one it cannot serve
+
+`text::writeParagraph` has always asked the document itself
+(`$pdf cget -orient`). `table::draw` wanted the direction as an option
+with default 1, so on a document created with `-orient 0` the page break
+ran the wrong way and nobody said anything. It now reads the document
+when the caller does not say; an explicit `-orient` still wins.
+
+**And `-orient 0` is now refused rather than half served.** The option
+steers only the page break, not the direction the rows run in: under
+`-orient 0` the table grows *upwards* and the header ends up at the
+bottom -- measured on a three-liner at y=100, header at PDF-y 112 with
+the rows above it at 128 and 144.
+
+Straightening that out inside `draw` would be about ten places computing
+`y + rowH`. But it would fix only half the chain: `page::context`
+delivers `top` and `bottom` measured **from the top of the page**, and
+the page break here, `page::header`, `page::footer`, `flow::columns` and
+`toc` all read them. The rows would run the right way and the break would
+test against a boundary meaning the opposite -- half fixed is worse than
+not fixed.
+
+A library that knows it is drawing wrongly should not do it anyway. The
+error names the way out (`-orient 1` on the document, or explicitly on
+the call). Whoever really needs the other direction will now say so, and
+then it is also known what else they use.
+
+### Added -- table::widths, the natural and the smallest width
+
+    set w [::pdf4tcllib::table::widths $cols $rows -pdf $pdf]
+    dict get $w natural   ;# per column, nothing wraps
+    dict get $w min       ;# per column, the longest word still fits
+
+A layout engine distributing columns asks two things: how wide does this
+want to be if allowed, and how narrow can it still go. Between the two it
+can distribute; below `min` something is cut or breaks mid-word.
+
+`min` is the **longest word** per column, not the widest character. A
+word that does not fit is cut character-wise, and that is not a lower
+bound but an emergency.
+
+Both are computed with the same measurement `table::draw` uses, so with
+`-pdf` when it is given -- without it `text::width` estimates from
+character classes, which is far off for a CID font. A cell merged across
+columns does not inflate any single column, as in `_calcColWidths`.
+
+### Added -- table::breakPoints and table::fitRows
+
+    set n [::pdf4tcllib::table::fitRows $space $rows -groups $groups]
+
+A layout engine does not say "break if you must", it asks "may I split
+here, and where". `table::draw` breaks by itself, but by its own rules
+and without saying anything beforehand.
+
+`breakPoints` returns the row height, the header height, the cumulative
+heights and the row numbers **before which no break is allowed**;
+`fitRows` answers how many rows go on a page of a given height, stepping
+back to the last allowed point.
+
+Two things forbid a break:
+
+- **Inside a cell merged across rows.** Such a cell is not repeated on
+  the following page, so a break would tear it apart visually. Measured:
+  with a `rowspan 3` at the top, 60 points of space take **no** rows at
+  all rather than two -- the whole block moves to the next page.
+- **Directly after a group heading.** A heading with no content at the
+  foot of a page is not a heading. `table::group` returns those row
+  numbers in `groups`; pass them in and they are honoured.
+
+The row height in `table::draw` is uniform and its cells do not wrap, so
+this is arithmetic rather than measurement. It does not hold for
+`table::render`, which does wrap.
+
+### Added -- pdf4tcllib::measure, asking how tall a block will be
+
+    set m [::pdf4tcllib::measure::block mp {
+        ::pdf4tcllib::table::draw $mp 0 0 $cols $rows -maxwidth 400 -ctx $ctx
+    } -paper a4]
+    dict get $m height    ;# how much height it needs
+    dict get $m pages     ;# how many pages it runs over
+
+A layout engine has to ask how tall a block will be *before* it knows
+which page it goes on. No building block answers that: they all draw and
+return a y afterwards.
+
+The cheap route would be a `-dryrun` in every drawing procedure. That
+means two cases in each of them, and the measuring case would be used
+less often than the drawing case -- so it would be the one to go wrong
+first. Here the block is really drawn, into a throwaway document that is
+never written. What is measured is by construction the same thing that
+comes out later; `me-1.2` checks that the two agree to a thousandth.
+
+Fonts are shared across documents (pdf4tcl keeps them in the namespace,
+not per document), so the throwaway document knows the same CID fonts --
+measured.
+
+**The page count is a property of the call, not of the block.** Without
+`-ctx`, `table::draw` does not break and draws past the page edge, and
+the measurement says one page. Measure the way you will draw. `me-1.5`
+holds that down so nobody reads it as a promise.
+
+A block that returns something other than a number gets an empty height
+rather than an invented one.
+
+### Added -- pdf4tcllib::state, keeping the drawing state across a block
+
+    ::pdf4tcllib::state::with $pdf {20 Helvetica-Bold} {1 0 0} {
+        ::pdf4tcllib::table::draw $pdf ...
+    }
+
+A building block leaves font and colour as it last needed them, not as it
+found them. Measured around `table::draw`:
+
+    before   /Pdf4tclSansBold 20 Tf,  1 0 0 rg
+    after    /Pdf4tclSans 9 Tf,       0 0 0 rg
+
+Drawing by hand, nobody notices. Putting blocks one after another -- which
+is all a layout engine does -- gives results that depend on the order.
+
+**Why not `gsave`/`grestore`.** The PDF pair `q`/`Q` does save the state
+including font and colour, and inside one page it is the right tool. But
+it applies per content stream, and every page has its own: a `q` on page 1
+with its `Q` on page 2 leaves two unbalanced streams. Measured -- and
+neither pdf4tcl nor qpdf says anything, because each stream on its own
+remains readable. That happens with every block that breaks pages by
+itself: `table::draw`, `flow::columns`, `toc::document`.
+
+So the state is kept on the Tcl side and restored with `setFont` and
+`setFillColor`, which survives a page break. The values come from the
+caller, because pdf4tcl has no getter for the current font or colour --
+`getFontMetric` exists, `getFont` does not. What was not saved is not
+touched: a default would be a claim rather than a restoration.
+
+`with` restores even when the block raises, and passes the block's result
+through.
+
+### Added -- pdf4tclcanvas, a canvas exporter
+
+    package require pdf4tclcanvas
+    ::pdf4tcllib::canvas::place   $pdf $c $x $y $w $h ?-option value ...?
+    ::pdf4tcllib::canvas::fitPage $pdf $c $ctx ?-option value ...?
+
+The drawing is not done here -- `$pdf canvas` has done it for a long
+time, for `tk::canvas`, `tkpath` and `tko::path`. Like `pdf4tcltable` and
+`pdf4tcltreeview` this is an adapter, and it takes over the two things
+around it:
+
+**The scale.** `$pdf canvas` takes `-width` and `-height` and pulls the
+drawing onto them. Where the aspect ratio of the frame differs from that
+of the drawing, it is distorted -- exactly as `putImage` does with an
+image, and just as silently. `place` computes the scale from the bounding
+box and keeps the ratio; `-fit stretch` restores the old behaviour, and
+`-anchor` says where the drawing sits in the frame.
+
+**The structure tree.** A canvas export leaves holes: measured on four
+items -- rectangle, oval, line, text -- three open drawing operations.
+With `-alt` the drawing becomes a `Figure`, without it an artifact. A
+drawing without a description is worth nothing to a reader, but a hole in
+the tree is worse than decoration.
+
+`-caption` writes a caption inside the `Figure` as a `Caption`, set
+smaller rather than cut, as in `image::gallery`. An empty canvas has no
+bounding box, which used to abort `$pdf canvas`; the widget size is used
+instead.
+
+    pdf4tclcanvas 0.1   (new)
+
+### Fixed -- the text widget export left the structure tree empty
+
+`pdf4tcltext` resolves the markup of a text widget -- font, colour,
+underline, overstrike -- including overlapping tags, which Tk allows and
+a structure tree does not like. What it did not do was tag anything:
+every run of text, every coloured box and every rule sat outside the
+tree. Measured on a widget with four tags: **8 open drawing
+operations**.
+
+A line is now a `P` and the runs inside it are `Span` -- they differ in
+markup, not in role. Backgrounds, underlines and overstrikes are
+artifacts: they carry no text a reader could announce.
+
+Note that a word split by a tag boundary is written as two `Tj`
+operations, which is correct -- the extracted text reassembles it.
+
+    pdf4tcltext   0.1 -> 0.2
+
+### Added -- forms::read and forms::write, the round trip
+
+    set data [::pdf4tcllib::forms::read filled.pdf -schema $schema]
+    dict set data f_ok 1
+    ::pdf4tcllib::forms::write filled.pdf out.pdf $data
+
+`forms` built fields from a schema; the way back -- a filled PDF into a
+data set -- was missing. pdf4tcl has delivered the raw material since
+0.9.4.55, but in PDF terms:
+
+    f_ok -> type /Btn default /Yes value /Yes flags 0
+
+What the caller wants is `1`. And when writing, the caller wants to write
+`1`, not `/Yes`: the state names of a checkbox live in the `/AP`
+dictionary and are a matter of the format, not of the application.
+
+`read` returns id → value, with `/Btn` as 1 or 0 and `/Tx` as the string;
+`-raw 1` gives what `getForms` said. "Off" is tested against `/Off`
+rather than `/Yes`, because a foreign form may name its on-state
+differently.
+
+With `-schema` -- the same field definitions the form was built from --
+two more things come out: the order of the schema instead of the order in
+the PDF, and a report of which fields are missing or extra. Without a
+schema neither would be noticed. `-strict 1` raises instead of warning,
+on both procedures.
+
+    pdf4tclforms   0.2.2 -> 0.2.3
+
+### Added -- watermark as an optional content layer
+
+    lassign [drawing::watermark $pdf $ctx "ENTWURF" -layer 1] size layer
+    # on the following pages:
+    drawing::watermark $pdf $ctx "ENTWURF" -layer $layer
+
+`watermark` drew onto the page, and that is a nuisance for a draft mark:
+somebody who wants to read or print the text without "ENTWURF" across it
+cannot. As a layer it can be switched off in the reader.
+
+`-layer 1` creates one named after the text and returns its id together
+with the size; passing that id on the following pages puts them all in
+**one** layer rather than one per page, which is what the reader's layer
+list would otherwise look like.
+
+Without `-layer` nothing changes: an artifact, drawn onto the page. The
+watermark stays an artifact either way -- a layer does not make it
+content.
+
+### Added -- table::pivot, a cross table
+
+    set p [::pdf4tcllib::table::pivot $rows -row 0 -col 1 -value 2]
+    ::pdf4tcllib::table::draw $pdf $x $y $cols [dict get $p rows]
+
+Turns rows of `{region quarter amount}` into a table with the regions as
+rows and the quarters as columns. Three decisions come with that, and the
+arithmetic makes none of them:
+
+- **Which columns exist.** They follow from the data, not from an
+  argument -- a quarter that appears in no row does not appear in the
+  table. `-colorder` fixes the order, otherwise they are sorted.
+- **What an empty cell says.** A cross table almost always has gaps, and
+  `0` is not the same statement as "nothing measured". The default is the
+  empty string; `-empty` sets something else.
+- **What happens when a field has several values.** The default is to
+  add them; `count`, `avg`, `min` and `max` are there too.
+
+A value that is not a number is skipped by `sum`, `avg`, `min` and `max`
+-- counting it as zero would invent a measurement. `count` counts it,
+because it counts rows rather than values.
+
+Returns a dict: `header`, `rows`, `cols` and `total`.
+
+### Added -- table::group, grouping with subtotals
+
+    set g [::pdf4tcllib::table::group $rows -by 0 -sum 2]
+    ::pdf4tcllib::table::draw $pdf $x $y $cols [dict get $g rows] \
+            -rowstyles $styles
+
+Groups a list by a column, puts a subtotal after each group and a grand
+total at the end. The arithmetic is trivial; what takes work is around
+it, and that is what the procedure does:
+
+- **The rows have to be sorted.** They are not sorted here -- an order
+  the caller chose deliberately is not ours to rearrange -- but an
+  unsorted list is reported, because otherwise a group falls into several
+  blocks and each gets its own subtotal. `-strict 1` raises instead.
+- **The subtotal label spans the text columns**, as a merged cell.
+  Otherwise "Summe Nord" would sit in the region column with the quarter
+  empty beside it, and the row would look like data.
+- **The caller has to know which rows are totals** to set them in bold.
+  So `group` returns a dict: `rows`, `subtotals`, `groups`, `total` --
+  the last three being row numbers for `-rowstyles`.
+
+A value that is not a number is skipped rather than counted as zero: an
+empty field is not a zero, and "k.A." even less so.
+
+`-header 1` puts a heading row before each group, `-blank 1` leaves the
+group value only in the first row of its group.
+
+### Fixed -- table::draw ignored merged cells
+
+`colspan` arrived in `table::render` with 0.6.3, but `draw` has its own
+drawing path, and there the dict form was written into the PDF verbatim:
+`text {Summe Nord} colspan 2`. So `table::group` would have worked with
+`render` only. `draw` now reads the same cell specs, sums the widths and
+writes `/ColSpan`.
+
+### Changed -- the two math demos are demos again
+
+`math_formula_demo.tcl` and `math_inline_demo.tcl` did not start with a
+digit, and the batch runner collects `[0-9]*.tcl`. So they were never run
+by `run_advanced.tcl`, never checked, and never in `pdf/` where the
+conformance and geometry checks look. They are now `68_math_formula.tcl`
+and `69_math_inline.tcl`, and they write to `pdf/` like every other demo.
+Both run: 329 and 316 ms, nothing outside the page.
+
+### Documentation -- the LaTeX subset had none
+
+`API.md` described the eqn-style notation and `renderFormula`. The second
+entry point -- `renderLatex`, `measureLatex`, and the backend forms
+`renderLatexOn` / `measureLatexOn` with `pdfBackend` and `canvasBackend`
+-- was in the code and in no page at all, although it handles
+superscripts, subscripts, `\frac`, `\sqrt`, `\sum` with limits and the
+Greek letters.
+
+Documented with measured numbers rather than claims: `measureLatex`
+returns `{width above below}`, and the table in the page lists what five
+formulas actually measure at size 12.
+
+With a note that costs an hour when it is missing: without
+`fonts::init -cid 1` the Greek letters and operators come out as question
+marks. Measured -- `\alpha \sum` produced six of them, and nothing said
+so.
+
+### Documentation -- read, not only run
+
+The how-tos and tutorials were checked against their scripts line by
+line, rather than only run.
+
+They hold up: what `howto-images.md` says about `Figure`, alt text and
+artifacts is what its script does, and the numbers in `howto-charts.md`
+(35 loose drawing operations before the `tagged 1` call moved to the top,
+0 after) are still the numbers the script reports.
+
+Two gaps, both from the library having grown past them:
+
+- `howto-long-table.md` ended at "render breaks where it must". It now
+  points at `fitRows` and `breakPoints` for deciding beforehand, and at
+  `layout::stack`.
+- `API.md` documented `pivot` and `group` but not `breakPoints`,
+  `fitRows` or `widths`. All three are in now.
+
+German left in the documentation: the messages of two scripts, the sample
+data of `howto-charts` (`Mrz`, `Nord`, `Sued`) and most of
+`tutorial-02-full-report`, whose report was German throughout -- headings,
+chart titles, alt texts, the printed summary. Translated, script and
+prose together, and re-run so the output in the text is the output the
+script produces.
+
+### Documentation -- the five namespaces that had none
+
+`API.md` never mentioned `tag`, and since last night not `state`,
+`measure` or `layout` either. All four are in now, with what they are
+for rather than only what they take -- `tag` in particular, because it is
+used by every module and was documented nowhere but in passing.
+
+`pdf4tclcanvas.md` is new: the last module without a reference page.
+
+Version statements that had aged: `docs/en/README.md` and
+`accessibility.md` said "pdf4tcllib 0.6.1 with pdf4tcl 0.9.4.43",
+`table-draw.md` said `pdf4tcltable 0.3`.
+
+`pdf4tclchart.md` records that the pie used to be drawn twice its
+intended size and off to the left, so charts produced with 0.1 look
+different from charts produced now.
+
+`flow::configure` was in the code and in no page.
+
+Checked and found right, contrary to what a first pass suggested:
+`pdf4tcllabels` (its procedures live inside a `namespace eval`, which my
+grep missed), `toc::pageCount` and `chart::niceScale`.
+
+### Changed -- the demos speak English
+
+The demos were part German, part English. Translated so far, across all
+37 files that had German in them: the repeating header block (the Windows
+note, the octal pitfall, "Lernziele"), and the messages they print --
+"Geschrieben:", "Mit Debug-Grid:" and their kin.
+
+**Not yet translated: the text that goes INTO the PDFs**, apart from
+demo 01. That is deliberate. English strings are a different width, and
+we have just spent a session finding drawings that ran off the page --
+translating visible text without re-running the geometry and layout
+checks would put some of it back. So that part goes demo by demo, each
+one run and checked afterwards, rather than as one sweep.
+
+One nuance worth keeping in mind: several demos carry umlauts **as an
+encoding test**. `Umlauts: äöüÄÖÜß` in demo 01 stays in the PDF -- it is
+the point of the line, not an oversight.
+
+### Fixed -- chart::pie drew outside its frame
+
+`pdf4tcl::arc` takes `x0 y0 rx ry phi extend` -- a **centre and two
+radii**. `chart::pie` passed `[cx-r] [cy-r] [2r] [2r]`, a bounding box:
+the centre landed r up and to the left, and the circle came out twice the
+intended size. Measured with a frame at x=60..540: the path started at
+x=44 without a legend and at **x=-47 with one**, 107 points off the
+sheet. That is the pie hanging over the left edge in `demo_41_charts`.
+
+    pdf4tclchart   0.1 -> 0.1.1
+
+### Added -- tools/geometry-check.tcl, and five demos that ran off the page
+
+`layout-check.tcl` reads the text with pdftotext, so it sees nothing that
+is **drawn**. Five demos in `examples/basic` therefore ran past the edge
+without any check noticing:
+
+| demo | what was wrong |
+|---|---|
+| `27_patterns` | third pattern at x=520, 200 wide, on a 595 wide page |
+| `18_address_labels` | 3 columns of 70 mm labels = 609 pt; 8 rows = 873 pt |
+| `19_business_card` | 5 rows of 55 mm cards, last row below the sheet |
+| `04_lines_boxes` | closing box drawn at the running y, past the bottom |
+| `11_coordinate_system` | the orient-false branch computed against the page height instead of the origin, so the three sample points landed at PDF-y -442, -342, -242 |
+
+The counts are now computed from `SW` and `SH` rather than written down,
+and the closing box moves up when it no longer fits.
+
+`geometry-check.tcl` uncompresses with qpdf, walks the content streams
+and reports `re`, `m` and `l` outside the MediaBox. `make geometry` runs
+it. It does **not** see `cm` transformations, which is why the six
+remaining hits in `examples/advanced` are canvas exports and false
+alarms -- that target reports but does not fail. Curves are skipped
+rather than reporting control points that legitimately sit outside.
+
+### Documentation -- the numbers and the refused direction
+
+README said "424 tests in 20 files", measured are 527 in 27.
+`table-draw.md` still listed `-orient 0|1` as a working option "for the
+internal page break" -- it now says the option is read from the document,
+that only `1` is served, and quotes the error with the way out. `API.md`
+gained a short section naming which building blocks handle orient 0 at
+all: `page::_advance`, `form::*` and `text::writeParagraph` do,
+`table::draw` does not.
+
+### Added -- documentation for what was built
+
+`docs/en/reference/pdf4tcltreeview.md` is new. `API.md` gained the parts
+that had none: `text::wrap` and its separators, `text::fitSize`,
+`drawing::arrow` and `callout`, `image::place` and `gallery`, and merged
+cells under `table::render`. `pdf4tcltable.md` records why `-formatted`
+used to do nothing.
+
+### Fixed -- two version numbers that had drifted apart
+
+`package provide` said 0.6.3, `pdf4tcllib::version` returned **0.3**, and
+`API.md` documented 0.2. The second number was maintained beside the
+first and forgotten at every bump, so it is now derived from it:
+
+    variable version [package provide pdf4tcllib]
+
+The file header still described `pdf4tcllib-0.1.tm`, "2544 lines" and
+`package require pdf4tcllib 0.1`; it now lists the eleven namespaces that
+are actually there and the packages built on top. README said "348 tests
+in 16 files" -- measured are 424 in 20 -- and named `pdf4tcllib-0.6.1.tm`
+in the prose while the table said 0.6.3.
+
+63 examples, tests and documents asked for `pdf4tcllib 0.1` or `0.2`.
+They all use features from 0.6, so they now ask for 0.6; the old pin was
+satisfied by any version and said nothing.
+
+### Added -- drawing::arrow, arrowHead and callout
+
+    ::pdf4tcllib::drawing::arrow    $pdf $x1 $y1 $x2 $y2 ?-option ...?
+    ::pdf4tcllib::drawing::callout  $pdf $x $y $w $h $tx $ty $text ?...?
+
+A connection in a diagram is a line plus a triangle, and the triangle is
+the work: it has to point along the line, and the line has to stop
+**before** it, or it draws through the filled area and leaves a seam down
+the middle. `-at` puts heads at the end, the start or both; `arrowHead`
+alone sets a head at the end of a path the caller drew.
+
+`callout` is a rounded box with a pointer at the side facing the target
+-- which side follows from the geometry and is not an option. Text too
+tall for the box is set **smaller, not cut**: a speech bubble usually
+holds one sentence, and half a sentence is none.
+
+Both are wrapped as artifacts where they are decoration. Without that,
+every line and every triangle counts as untagged: measured on three
+arrows and two callouts, nine open drawing operations, so a diagram would
+have as many holes in its structure tree as it has connections. The text
+inside a callout is content and stays in the tree.
+
+### Added -- image::place and image::gallery
+
+    ::pdf4tcllib::image::place   $pdf $id $x $y $w $h ?-option value ...?
+    ::pdf4tcllib::image::gallery $pdf $images $x $y $w $h ?-option ...?
+
+`putImage` takes `-width` and `-height` and stretches the picture onto
+them. Where the aspect ratio differs the picture is distorted, and
+nothing says so. `place` makes the decision instead:
+
+    -fit contain   fits inside, margin stays free  (nothing is lost)
+    -fit cover     fills the frame, overhang is cut (nothing stays empty)
+    -fit stretch   the old behaviour
+
+And when it cuts, `-anchor` says from where -- a portrait with the head
+at the top wants `n`, a landscape usually `center`. Cutting is done with
+a clip path, so the picture is drawn at its computed size and only the
+frame shows. What lies outside is still in the file; crop beforehand if
+that matters.
+
+`-dpi` warns per image below a threshold, and switches off the core's own
+warning for that call, because two messages about one picture are one too
+many. `-alt` wraps the image in a `Figure`.
+
+`gallery` puts images into a grid across pages, with captions. A caption
+is written **inside** the image's `Figure` as a `Caption`, so the two
+belong together in the tree rather than standing next to each other
+unconnected. A caption too wide for its cell is set smaller rather than
+cut -- with a file name or a picture number it is often the last
+character that matters -- which is what `text::fitSize` above is for.
+
+### Fixed -- -formatted had no effect
+
+`pdf4tcltable::_extract` read the rows with `getformatted` and then
+overwrote every cell with `cellcget -text`, which returns the **raw**
+value. So `-formatted` did nothing, for as long as the option has
+existed. Measured on a column with a `-formatcommand`: the PDF showed
+`1` where the widget showed `ja`, with `-formatted 1` exactly as with 0.
+
+The access is still needed without formatting -- there it picks up text a
+caller set through `cellconfigure -text` -- so it now runs only in that
+case.
+
+    pdf4tcltable   0.3 -> 0.3.1
+
+### Changed -- demo 58 builds its own table
+
+It loaded `miscWidgets_tile.tcl` from the tablelist collection, which
+needs two packages Tk does not ship: Bryan Oakley's `combobox` and
+`mentry`. Where those are missing the demo aborted -- in the batch run
+with "can't find package combobox" -- so it was never checked.
+
+It does not need them: tablelist takes `ttk::combobox`, `ttk::spinbox`
+and `ttk::checkbutton` as edit windows on its own. The demo now builds
+its table itself and runs with Tk and tablelist alone. It also shows what
+`-formatted` is for, now that the option works.
+
+### Added -- pdf4tcltreeview, a ttk::treeview exporter
+
+    package require pdf4tcltreeview
+    ::pdf4tcllib::treeview::render  $pdf $tv $x $y ?-option value ...?
+    ::pdf4tcllib::treeview::outline $pdf $tv $x $y ?-option value ...?
+
+A `ttk::treeview` is two things at once: a table with columns and a tree.
+`render` draws the table -- the shape you recognise from the screen --
+with the tree column indented; `outline` draws the tree column alone as
+an indented list with a bookmark per node, which makes it navigable in a
+reader.
+
+The tagging differs between the two, and that is the reason for two
+procedures rather than an option: a table is `Table`/`TR`/`TD`, an
+outline is `L`/`LI`/`LBody`. Which one applies cannot be guessed from
+the widget -- a treeview with three value columns is a table, one with
+only the tree column is a list.
+
+Like `pdf4tcltable` this is a **thin adapter**: it reads the widget and
+hands over to `::pdf4tcllib::table::draw`, which has done indentation
+since 0.3 via `-rowindent`. No second renderer.
+
+A closed branch stays closed: the PDF shows what was on the screen.
+`-all 1` takes everything. Column widths come from the widget in pixels
+and are scaled to `-maxwidth`, the alignment from `-anchor`.
+
+    pdf4tcltreeview 0.1   (new)
+
+### Changed -- one line-breaking rule, not two
+
+`text::wrap` broke at spaces only, and cut an over-wide word
+character-wise: "Muster-Beispiel-Stadt" in a 60 point column came out as
+"Muster-Beispi" / "el-Stadt", with nothing to show the word continues.
+pdf4tcl breaks at the hyphen in `drawTextBox` since 0.9.4.60, so the same
+string came out differently depending on which of the two drew it.
+
+`wrap` now breaks inside a word at a hyphen or slash **between two
+characters**, keeping the separator at the end of the line, and it uses
+the same rule as the core: a hyphen after anything but a letter or digit
+does not break, so "-5 Euro" stays together. The separators are the last
+argument; pass `{}` for the old behaviour.
+
+    "Muster-Beispiel-Stadt"    ->  "Muster-" / "Beispiel-Stadt"
+    "Der Betrag -5 Euro"       ->  "Der Betrag -5" / "Euro"
+
+### Fixed -- wrap measured with the wrong widths
+
+`width` takes an optional pdf object for exact metrics, and `wrap` passed
+it at **one** of four places. The other three fell back to the
+character-class estimate, which does not know the font. Measured with
+DejaVu Sans as a CID font, "w35 Mo 17.08.26 CC Sped1" at size 8: 110.73
+points exact against 89.44 estimated. A table in a CID font therefore
+broke in the wrong place.
+
+### Added -- text::fitSize and text::fits
+
+`truncate` cuts, and sometimes that is the wrong answer: "Sped1" and
+"Sped2" differ in the last character, so a shortened delivery note sends
+the driver on the other tour. The same for two customers of one family,
+and for numbers with decimals -- 12.12 cut is 12.1, which also exists.
+
+`fitSize` returns the largest size at which the text still fits, down to
+`-min` (default 6). Below that it stops and returns `-min`; the caller
+decides whether to let it overhang or cut after all. `fits` is `width`
+and the comparison in one.
+
+Both grew out of a proposal from label printing; the measurements above
+are from that.
+
+### Added -- tests/test_tagging.tcl
+
+Thirty-one tests. The first is the control that makes the rest worth
+something: raw text plus a raw rectangle on a tagged document counts 2,
+so a zero below really means "everything is in the tree" rather than
+"nothing was drawn". Then each building block on its own -- paragraph,
+table, charts, heading, labels, form fields -- and two documents that
+combine them, one on a page, one across two pages. Finally the PDF/A
+case: no warning, no standard font in the file, veraPDF PASS 2b. Twelve
+more cover merged cells: the summary row, the two-level header, what is
+*not* a cell spec, a cell spanning rows, the occupancy plan and the row
+heights.
+
+`labels::render` is checked with a callback that draws *raw* on purpose:
+the frames and captions of a label sheet are decoration, and render has
+to wrap them as artifacts, or every sticker counts.
+
+### Added -- examples/advanced/66_pdfa_forms.tcl
+
+A registration form with two text fields and two checkboxes at
+`-pdfa 2b`, and it checks its own claim: pdf4tcl warnings, standard fonts
+in the file, veraPDF. Exits non-zero when any of the three says no, so a
+regression is a failed example rather than a quiet one.
+
+### Added -- `-summary` on tables
+
+`table::simpleTable` and `table::draw` take `-summary`, and `table::render`
+reads a `summary` key from the dict form. It becomes the `/Summary`
+attribute of the `Table` element: what the table shows and how it is built,
+which a reader announces before the cells.
+
+pdf4tcl takes the option from 0.9.4.56 on. Older versions raise on the
+unknown option, `tag::begin` swallows that, and the table is still tagged --
+only without the summary. Nothing is written when `-summary` is empty: a
+`/Summary` with no text is worse than none, because a reader then announces
+a table and says nothing about it.
+
 ### Changed -- `vendors/tm/` is gone
 
 The directory held a byte-identical copy of every module, and nothing in
@@ -21,8 +781,12 @@ default target, and `make conform` runs the veraPDF check.
 
 ### Changed -- module versions
 
-    pdf4tcllib     0.6.1 -> 0.6.2
-    pdf4tclforms   0.2   -> 0.2.1
+    pdf4tcllib     0.6.1 -> 0.6.2 -> 0.6.3
+    pdf4tcltable           0.3 -> 0.3.1
+    pdf4tclcanvas          0.1 (new)
+    pdf4tcltext            0.1 -> 0.2
+    pdf4tcltreeview        0.1 (new)
+    pdf4tclforms   0.2   -> 0.2.1 -> 0.2.2 -> 0.2.3
     pdf4tcllabels  0.1   -> 0.1.1
 
 Not documentation: `fontMono` returns a different face and three

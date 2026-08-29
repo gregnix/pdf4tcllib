@@ -5,7 +5,7 @@
 `table::draw` renders a table from plain data (no widgets, no Tk) straight
 into a pdf4tcl object. It sits on top of the existing engine
 (`fonts` / `text` / `unicode`) and complements `table::render` and
-`table::simpleTable` without changing them. As of `pdf4tcltable 0.3` the
+`table::simpleTable` without changing them. As of `pdf4tcltable 0.3.1` the
 tablelist widget exporter is a thin adapter over `table::draw`.
 
 ---
@@ -52,8 +52,36 @@ tablelist's `cellconfigure` / `rowconfigure`.
 | `-footerbold 0\|1` | 1 | Footer in bold |
 | `-yvar <name>` | — | Write back the next Y position |
 | `-pagevar <name>` | — | Read/write the page counter (with `-ctx`) |
-| `-orient 0\|1` | 1 | For the internal page break |
+| `-orient 0\|1` | from the document | Only `1` is served; see below |
 | `-pagebreakcmd <cmd>` | — | Custom page-break callback (as in `table::render`) |
+
+### The page direction (0.6.3)
+
+`-orient` is read from the document (`$pdf cget -orient`) when the call
+does not say; an explicit value still wins. It steers **only the internal
+page break**, not the direction the rows run in — and that is why
+`-orient 0` is **refused with an error** rather than drawn wrongly:
+
+```
+table::draw: -orient 0 is not supported. The rows would grow upwards and
+the header would end up at the bottom, because page::context measures top
+and bottom from the top of the page. Create the document with -orient 1
+(the pdf4tcl default), or pass -orient 1 here if you know what you are
+doing.
+```
+
+Measured on a three-liner at y=100 under `-orient 0`: header at PDF-y
+112, rows above it at 128 and 144.
+
+Straightening this out inside `draw` would be about ten places computing
+`y + rowH`, but it would fix only half the chain: `page::context`
+delivers `top` and `bottom` measured from the top of the page, and the
+page break here, `page::header`, `page::footer`, `flow::columns` and
+`toc` all read them. `table::render` is the pattern to follow when
+somebody actually needs the other direction.
+
+The way out named in the error is real: `-orient 1` on the call draws the
+table exactly as on a normal document.
 
 **Style precedence:** cell > row > zebra.
 

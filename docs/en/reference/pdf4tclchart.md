@@ -66,6 +66,18 @@ Slices clockwise from twelve o'clock, percentages computed from the sum. A
 negative value is an error: a slice of a whole cannot be negative. So is a
 total of zero.
 
+The circle sits inside `x y w h`, with room kept on the right when
+`-legend 1` is given.
+
+> **0.1.1:** it did not. `pdf4tcl::arc` takes a **centre and two radii**
+> (`x0 y0 rx ry phi extend`), and `pie` passed `[cx-r] [cy-r] [2r] [2r]`
+> -- a bounding box. The centre landed r up and to the left and the
+> circle came out twice the intended size. Measured with a frame at
+> x=60..540: the path started at x=44 without a legend and at **x=-47**
+> with one, 107 points off the sheet. Charts drawn with 0.1 therefore
+> look different from charts drawn now; regenerate anything that shows a
+> pie.
+
 ### `legend pdf x y pairs opts ?-total N?`
 
 The legend `pie -legend 1` uses. Colour swatch, label, and the share in

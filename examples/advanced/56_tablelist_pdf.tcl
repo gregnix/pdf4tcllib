@@ -18,7 +18,7 @@
 package require Tk
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-#package require pdf4tcllib 0.2
+#package require pdf4tcllib 0.6
 package require pdf4tcltable 0.2
 package require pdf4tcl
 
@@ -419,7 +419,7 @@ proc exportPDF {} {
     $pdf write -file $outPDF
     $pdf destroy
 
-    .status configure -text "Geschrieben: [file tail $outPDF]"
+    .status configure -text "Written: [file tail $outPDF]"
     .btns.exp configure -bg "#006600" -state disabled \
         -text "Exportiert: [file tail $outPDF]"
     puts "PDF: $outPDF"

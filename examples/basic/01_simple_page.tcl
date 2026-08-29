@@ -1,47 +1,47 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 01: Einfache Seite
+# Demo 01: A simple page
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
 #   Manual:  pdf4tcl.man @ 2023-09-18
 #   API:     0.9 (pdf4tcl::pdf4tcl create)
 #
-# WINDOWS USERS: 🪟
-#   Für korrekte Umlaute (äöüÄÖÜß€) verwenden Sie:
+# WINDOWS USERS:
+#   For correct umlauts (aeoeueAEOEUEss, euro sign) use:
 #     tclsh examples/main.tcl 01_simple_page.tcl
 #
-#   NICHT direkt (→ falsche Zeichen im PDF):
+#   NOT directly -- that gives wrong characters in the PDF:
 #     tclsh 01_simple_page.tcl
 # ============================================================================
-# Lernziele:
-#   - PDF erstellen mit pdf4tcl 0.9.4.11 API
-#   - Explizite Defaults setzen (-orient, -paper, -unit)
-#   - Text auf eine Seite schreiben
-#   - Encoding-Test (äöüÄÖÜß €)
+# What this shows:
+#   - create a PDF with the pdf4tcl 0.9.4.11 API
+#   - set the defaults explicitly (-orient, -paper, -unit)
+#   - write text on a page
+#   - Encoding test (aeoeue AEOEUE ss, euro sign)
 #
 # Features:
-#   - A4-Seite im Hochformat
-#   - Titel und mehrere Textzeilen
-#   - UTF-8 Encoding-Test
+#   - A4 portrait
+#   - a title and several lines of text
+#   - a UTF-8 encoding test
 #
-# Encoding-Test: äöüÄÖÜß€
+# Encoding test: äöüÄÖÜß€
 # ============================================================================
 
 # --- Setup ---
 set script_dir [file dirname [file normalize [info script]]]
 
-# Load Helper Library
+# Load helper library
 
 # Require pdf4tcl 0.9.4.11+
 if {[catch {set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl} err]} {
     puts stderr "❌ ERROR: pdf4tcl 0.9.4.11+ required!"
     puts stderr "   Your version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl]"
     puts stderr "   Update: See SPEC.lock for installation"
     exit 1
@@ -62,10 +62,10 @@ set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name
 proc demo_main {} {
     global output_file demo_num
     
-    puts "Starting Demo $demo_num: Einfache Seite"
+    puts "Starting Demo $demo_num: A simple page"
     puts "  pdf4tcl version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl]"
     puts "  Output: $output_file"
     
@@ -92,7 +92,7 @@ package require pdf4tcl]"
         -orient [dict get $ctx orient] \
         -unit p]
     
-    # -orient true:  Y=0 ist OBEN, Y wächst nach UNTEN (STYLE-GUIDELINES Regel #1)
+    # -orient true: Y=0 is at the TOP, Y grows DOWNWARDS
     # -unit p:       Alle Koordinaten in Points (1/72 inch) (STYLE-GUIDELINES Regel #2)
     
     puts "  PDF object created"
@@ -115,22 +115,22 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 24 Helvetica-Bold
-    $pdf text "Demo 01: Einfache Seite" -x $sx -y $sy
+    $pdf text "Demo 01: A simple page" -x $sx -y $sy
     
     # --- Beschreibung ---
     set y [expr {$sy + 40}]  ;# 40pt unter Titel
     
     $pdf setFont 12 Helvetica
-    $pdf text "Dies ist eine einfache PDF-Seite." -x $sx -y $y
+    $pdf text "This is a simple PDF page." -x $sx -y $y
     
     set y [expr {$y + 20}]  ;# 20pt Abstand
-    $pdf text "Erstellt mit pdf4tcl 0.9.4.11" -x $sx -y $y
+    $pdf text "Made with pdf4tcl 0.9.4.11" -x $sx -y $y
     
     set y [expr {$y + 20}]
-    $pdf text "Papierformat: A4 (595×842 pt)" -x $sx -y $y
+    $pdf text "Paper: A4 (595 x 842 pt)" -x $sx -y $y
     
     set y [expr {$y + 20}]
-    $pdf text "Orientation: Y=0 oben, Y wächst nach unten" -x $sx -y $y
+    $pdf text "Orientation: Y=0 at the top, Y grows downwards" -x $sx -y $y
     
     # --- Encoding-Test (STYLE-GUIDELINES Regel #3: PFLICHT!) ---
     set y [expr {$y + 40}]  ;# Extra Abstand vor Encoding-Test
@@ -140,7 +140,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 25}]
     $pdf setFont 12 Helvetica
-    $pdf text "Umlaute: äöüÄÖÜß" -x $sx -y $y
+    $pdf text "Umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df" -x $sx -y $y
     
     set y [expr {$y + 20}]
     $pdf text "Sonderzeichen: € £ ¥ © ®" -x $sx -y $y
@@ -169,7 +169,7 @@ package require pdf4tcl]"
     $pdf text "• PDF-Erstellung mit expliziten Defaults" -x $text_x -y $text_y
     
     set text_y [expr {$text_y + 15}]
-    $pdf text "• PageContext für Koordinaten" -x $text_x -y $text_y
+    $pdf text "\u2022 PageContext for coordinates" -x $text_x -y $text_y
     
     set text_y [expr {$text_y + 15}]
     $pdf text "• UTF-8 Encoding-Support" -x $text_x -y $text_y
@@ -229,7 +229,7 @@ puts "  xdg-open $result"
 puts "  # oder"
 puts "  evince $result"
 puts ""
-puts "Mit Debug-Grid:"
+puts "With the debug grid:"
 puts "  PDF4TCL_DEBUG=1 tclsh [info script]"
 
 exit 0

@@ -14,14 +14,14 @@ tclsh tutorial-02-full-report.tcl [outdir]
 Measured output:
 
 ```
-Verzeichnis: 1 Seite(n)
-Inhalt:      3 Seite(n)
-ungetaggt:   0
-  Ueberblick           2
-  Umsatz               3
-    Nach Monat           3
-  Regionen             4
-  Anhang               4
+  Contents:  1 page(s)
+  Body:      3 page(s)
+  untagged:  0
+  Overview             2
+  Revenue              3
+    By month             3
+  Regions              4
+  Appendix             4
 ```
 
 and, read back out of the file: the headings really are on pages 2, 3, 3, 4
@@ -39,7 +39,7 @@ proc newPage {} {
     $pdf startPage
     incr pageNo
     ::pdf4tcllib::drawing::watermark $pdf $ctx "ENTWURF"
-    ::pdf4tcllib::page::header $pdf $ctx "Quartalsbericht 2026"
+    ::pdf4tcllib::page::header $pdf $ctx "Quarterly report 2026"
     ::pdf4tcllib::page::footer $pdf $ctx "vertraulich" $pageNo
     return [expr {[dict get $ctx top] + 34}]
 }
@@ -61,7 +61,7 @@ way round it would hide the content.
 set content {
     set ::pageNo 0
     set y [newPage]
-    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Ueberblick"
+    ::pdf4tcllib::toc::heading $pdf $ctx y 1 "Overview"
     ...
 }
 set result [::pdf4tcllib::toc::document $pdf a4 $content -title "Inhalt"]
@@ -98,8 +98,8 @@ watermark and running head.
 
 ```tcl
 set y [::pdf4tcllib::chart::bar $pdf $x $y $w 170 $umsatz \
-        -title "Umsatz je Monat (kEUR)" -values 1 -format %.0f \
-        -alt "Balkendiagramm: Umsatz je Monat, Januar bis Juni,\
+        -title "Revenue per month (kEUR)" -values 1 -format %.0f \
+        -alt "Bar chart: revenue per month, January to June,\
               zwischen 98 und 178 tausend Euro"]
 
 set y [::pdf4tcllib::table::draw $pdf $x [expr {$y + 16}] $cols $rows ...]

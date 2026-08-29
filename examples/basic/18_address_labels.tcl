@@ -7,18 +7,18 @@
 #   Manual:  pdf4tcl.man @ 2023-09-18
 #   API:     0.9 (pdf4tcl::pdf4tcl create)
 #
-# WINDOWS USERS: 🪟
-#   Für korrekte Umlaute (äöüÄÖÜß€) verwenden Sie:
+# WINDOWS USERS:
+#   For correct umlauts (aeoeueAEOEUEss, euro sign) use:
 #     tclsh examples/main.tcl 18_address_labels.tcl
 #
-#   NICHT direkt (→ falsche Zeichen im PDF):
+#   NOT directly -- that gives wrong characters in the PDF:
 #     tclsh 18_address_labels.tcl
 #
-# ⚠️ TCL-OKTAL-PROBLEM:
+# TCL OCTAL PITFALL:
 #   RICHTIG: set demo_num 18  (ohne führende 0)
 #   FALSCH:  set demo_num 018 (Oktal-Fehler!)
 # ============================================================================
-# Lernziele:
+# What this shows:
 #   - Standard-Etikettenformate umsetzen
 #   - Zweckform-kompatible Etiketten
 #   - Absender und Empfänger-Layout
@@ -30,23 +30,23 @@
 #   - Absender-Zeile (klein)
 #   - Empfänger-Adresse (groß)
 #
-# Encoding-Test: äöüÄÖÜß€
+# Encoding test: äöüÄÖÜß€
 # ============================================================================
 
 # --- Setup ---
 set script_dir [file dirname [file normalize [info script]]]
 
-# Load Helper Library
+# Load helper library
 
 # Require pdf4tcl 0.9.4.11+
 if {[catch {set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl} err]} {
     puts stderr "❌ ERROR: pdf4tcl 0.9.4.11+ required!"
     puts stderr "   Your version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl]"
     puts stderr "   Update: See SPEC.lock for installation"
     exit 1
@@ -140,7 +140,7 @@ proc demo_main {} {
     puts "Starting Demo $demo_num: Adress-Etiketten"
     puts "  pdf4tcl version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl]"
     puts "  Output: $output_file"
     
@@ -181,6 +181,8 @@ package require pdf4tcl]"
     # Get safe area from context
     set sx [dict get $ctx SX]
     set sy [dict get $ctx SY]
+    set sw [dict get $ctx SW]
+    set sh [dict get $ctx SH]
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
@@ -219,8 +221,21 @@ package require pdf4tcl]"
     set start_x $sx
     set start_y [expr {$sy + 50}]
     
-    set cols 3
-    set rows 8
+    # Die Spaltenzahl wird gerechnet, nicht gesetzt.
+    #
+    # Vorher stand hier fest 3, und drei Etiketten zu 70 mm plus zwei
+    # Zwischenraeume ergeben 609 Punkt -- eine A4-Seite ist 595 breit.
+    # Die dritte Spalte lag also zur Haelfte neben dem Blatt. Auffallen
+    # konnte das niemandem: pdftotext sieht nur den Text, und der stand
+    # weiter innen.
+    set cols [expr {int(($sw + $spacing) / ($label_w + $spacing))}]
+    if {$cols < 1} { set cols 1 }
+    # Dasselbe fuer die Zeilen: acht Reihen zu 36 mm plus Zwischenraum
+    # sind 873 Punkt, und unter dem Titel bleiben keine 700 uebrig -- die
+    # letzten Reihen lagen unter dem Blattrand.
+    set frei [expr {$sh - ($start_y - $sy)}]
+    set rows [expr {int(($frei + $spacing) / ($label_h + $spacing))}]
+    if {$rows < 1} { set rows 1 }
     
     set addr_idx 0
     

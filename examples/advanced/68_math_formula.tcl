@@ -19,7 +19,7 @@ set libDir [file normalize [file join $scriptDir ../.. lib]]
 ::tcl::tm::path add $libDir
 
 package require pdf4tcl
-package require pdf4tcllib 0.2
+package require pdf4tcllib 0.6
 
 # CID-Mode noetig fuer Greek + Math-Symbole
 pdf4tcllib::fonts::init -cid 1
@@ -138,7 +138,11 @@ incr y 14
 $pdf text "  cdot,times,le,ge,infty,sqrt,nabla,partial,forall,exists,..." \
     -x 110 -y $y
 
-set outFile [file join [pwd] math_formula_demo.pdf]
+# Wie die uebrigen nummerierten Demos: nach pdf/, damit der
+# Stapellauf und die Geometriepruefung die Datei finden.
+set outDir [file join $scriptDir pdf]
+file mkdir $outDir
+set outFile [file join $outDir demo_68_math_formula.pdf]
 $pdf write -file $outFile
 $pdf destroy
 

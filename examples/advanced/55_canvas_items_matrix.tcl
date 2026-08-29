@@ -19,7 +19,7 @@
 package require Tk
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
-package require pdf4tcllib 0.1
+package require pdf4tcllib 0.6
 package require pdf4tcl
 
 set hasTko [expr {![catch {package require tko}]}]
@@ -1110,7 +1110,7 @@ proc exportPDF {} {
     $pdf destroy
 
     .btns.exp configure \
-        -text "Geschrieben: [file tail $outPDF]" \
+        -text "Written: [file tail $outPDF]" \
         -bg "#006600" -state disabled
     puts "Written: $outPDF"
 }

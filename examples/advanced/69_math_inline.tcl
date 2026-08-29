@@ -19,7 +19,7 @@ set libDir [file normalize [file join $scriptDir ../.. lib]]
 ::tcl::tm::path add $libDir
 
 package require pdf4tcl
-package require pdf4tcllib 0.2
+package require pdf4tcllib 0.6
 
 # --- Fonts initialisieren mit CID-Mode (volles Unicode) ---
 # CID-Mode bettet die kompletten TTF-Glyphen ein, kein 256-Char-Limit.
@@ -163,7 +163,11 @@ out $pdf "Full LaTeX (fractions, roots, integrals) needs an external" 100 $y
 incr y 14
 out $pdf "engine like KaTeX-CLI -> SVG, embedded via image." 100 $y
 
-set outFile [file join [pwd] math_inline_demo.pdf]
+# Wie die uebrigen nummerierten Demos: nach pdf/, damit der
+# Stapellauf und die Geometriepruefung die Datei finden.
+set outDir [file join $scriptDir pdf]
+file mkdir $outDir
+set outFile [file join $outDir demo_69_math_inline.pdf]
 $pdf write -file $outFile
 $pdf destroy
 
