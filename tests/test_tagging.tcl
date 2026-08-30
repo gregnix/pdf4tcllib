@@ -18,6 +18,13 @@
 package require tcltest
 namespace import ::tcltest::*
 
+# Damit die Datei auch EINZELN laeuft. Ohne diese Zeile findet sie
+# pdf4tcllib nur ueber ein installiertes Paket -- und die Constraints
+# unten fragen genau danach. Fehlt es, ueberspringt tcltest still
+# ALLES und meldet trotzdem Erfolg: Rueckgabewert 0, Failed 0. Der
+# Runner setzt den Pfad selbst, deshalb fiel es nie auf.
+tcl::tm::path add [file join [file dirname [file normalize [info script]]] .. lib]
+
 testConstraint pdf    [expr {![catch {package require pdf4tcl}]}]
 testConstraint lib    [expr {![catch {package require pdf4tcllib}]}]
 testConstraint chart  [expr {![catch {package require pdf4tclchart}]}]
@@ -513,5 +520,59 @@ test wrap-6.7 {eine unbekannte Option meldet sich} -constraints {pdf lib} \
     catch {::pdf4tcllib::text::fitSize "Text" 100 12 $f -quatsch 1} e
     string match "*unknown option -quatsch*" $e
 } -result 1
+
+
+test tag-9.1 {safeText laesst kein Loch, wenn niemand ausgezeichnet hat} \
+        -constraints {pdf lib} -body {
+    # safeText ist eine oeffentliche Zeichenprozedur und liess bis 0.6.3
+    # einen ungetaggten Zeichenbefehl stehen. Dieselbe Klasse wie die
+    # Formularbeschriftungen, der Text-Widget-Export und die Pfeile.
+    # Gefunden hat es eine Demo, die sich selbst prueft.
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1]
+    $pdf tagged 1
+    $pdf startPage
+    $pdf setFont 10 [::pdf4tcllib::fonts::fontSans]
+    ::pdf4tcllib::unicode::safeText $pdf "allein" -x 40 -y 60
+    set n [$pdf getUntaggedCount]
+    $pdf destroy
+    set n
+} -result 0
+
+test tag-9.2 {und schachtelt nicht, wenn schon eines offen ist} \
+        -constraints {pdf lib} -body {
+    # Sonst staende ein Span in einem P, sobald ein Aufrufer --
+    # table::draw, forms:: oder math::_pdfBackend -- schon ausgezeichnet
+    # hat. Dafuer gibt es tag::depth.
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1]
+    $pdf tagged 1
+    $pdf startPage
+    $pdf setFont 10 [::pdf4tcllib::fonts::fontSans]
+    ::pdf4tcllib::tag::begin $pdf P
+    set tiefeDrin [::pdf4tcllib::tag::depth $pdf]
+    ::pdf4tcllib::unicode::safeText $pdf "im P" -x 40 -y 80
+    set tiefeDanach [::pdf4tcllib::tag::depth $pdf]
+    ::pdf4tcllib::tag::end $pdf
+    set n [$pdf getUntaggedCount]
+    $pdf destroy
+    list $n $tiefeDrin $tiefeDanach
+} -result {0 1 1}
+
+test tag-9.3 {tag::depth zaehlt richtig und vergisst das Dokument} \
+        -constraints {pdf lib} -body {
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1]
+    $pdf tagged 1
+    $pdf startPage
+    set a [::pdf4tcllib::tag::depth $pdf]
+    ::pdf4tcllib::tag::begin $pdf Sect
+    ::pdf4tcllib::tag::begin $pdf P
+    set b [::pdf4tcllib::tag::depth $pdf]
+    ::pdf4tcllib::tag::end $pdf
+    ::pdf4tcllib::tag::end $pdf
+    set c [::pdf4tcllib::tag::depth $pdf]
+    ::pdf4tcllib::tag::forget $pdf
+    set d [::pdf4tcllib::tag::depth $pdf]
+    $pdf destroy
+    list $a $b $c $d
+} -result {0 2 0 0}
 
 cleanupTests

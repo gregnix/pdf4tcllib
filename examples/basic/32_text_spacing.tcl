@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 32: Text-Spacing (Character & Word Spacing)
+# Demo 32: Letter and word spacing (Character & Word Spacing)
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,14 +15,14 @@
 #     tclsh 32_text_spacing.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 32  (ohne führende 0)
-#   FALSCH:  set demo_num 032 (Oktal-Fehler!)
+#   RIGHT: set demo_num 32  (no leading zero)
+#   WRONG: set demo_num 032 (octal!)
 # ============================================================================
 # What this shows:
 #   - Character-Spacing verstehen
 #   - Word-Spacing verstehen
 #   - Manuelles Spacing mit getStringWidth
-#   - Verschiedene Abstände visualisieren
+#   - spacing values side by side
 #
 # Features:
 #   - Character-Spacing: eng, normal, weit, sehr weit
@@ -55,7 +55,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 32
 set demo_name "text_spacing"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -88,7 +88,7 @@ proc draw_word_spaced_text {pdf text x y word_spacing} {
         $pdf text $word -x $current_x -y $y
         set word_width [$pdf getStringWidth $word]
         
-        # Nach jedem Wort außer dem letzten: Wort-Spacing
+        # word spacing after every word but the last
         if {$i < $word_count - 1} {
             set current_x [expr {$current_x + $word_width + $word_spacing}]
         }
@@ -149,12 +149,12 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 32: Text-Spacing" -x $sx -y $sy
+    $pdf text "Demo 32: Letter and word spacing" -x $sx -y $sy
     
     # --- Encoding-Test ---
     set y [expr {$sy + 30}]
     $pdf setFont 10 Helvetica
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # ========================================================================
     # Section 1: Character Spacing
@@ -162,7 +162,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 50}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "1. Character-Spacing (Abstand zwischen Buchstaben)" -x $sx -y $y
+    $pdf text "1. Letter spacing" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
@@ -176,19 +176,19 @@ package require pdf4tcl]"
     
     # Eng (-1pt) - Manuell umsetzen ist schwierig, zeigen wir nur normal/weit
     set y [expr {$y + 25}]
-    $pdf text "Weit (2pt):" -x $sx -y $y
+    $pdf text "Wide (2pt):" -x $sx -y $y
     set y [expr {$y + 20}]
     draw_char_spaced_text $pdf $sample_text [expr {$sx + 20}] $y 2
     
     # Sehr weit (5pt)
     set y [expr {$y + 25}]
-    $pdf text "Sehr weit (5pt):" -x $sx -y $y
+    $pdf text "Very wide (5pt):" -x $sx -y $y
     set y [expr {$y + 20}]
     draw_char_spaced_text $pdf $sample_text [expr {$sx + 20}] $y 5
     
     # Extra weit (10pt)
     set y [expr {$y + 25}]
-    $pdf text "Extra weit (10pt):" -x $sx -y $y
+    $pdf text "Extra wide (10pt):" -x $sx -y $y
     set y [expr {$y + 20}]
     draw_char_spaced_text $pdf $sample_text [expr {$sx + 20}] $y 10
     
@@ -198,13 +198,13 @@ package require pdf4tcl]"
     
     set y [expr {$y + 50}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "2. Word-Spacing (Abstand zwischen Wörtern)" -x $sx -y $y
+    $pdf text "2. Word spacing" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
     
     # Normal (Standard Leerzeichen)
-    $pdf text "Normal (Standard):" -x $sx -y $y
+    $pdf text "Normal (default):" -x $sx -y $y
     set y [expr {$y + 20}]
     $pdf text $sample_text -x [expr {$sx + 20}] -y $y
     
@@ -240,9 +240,9 @@ package require pdf4tcl]"
     set notes {
         "* pdf4tcl hat KEINE native Character/Word-Spacing API"
         "* Manuell mit getCharWidth/getStringWidth implementiert"
-        "* Character-Spacing: Zeichen für Zeichen platzieren"
-        "* Word-Spacing: Wörter separat platzieren"
-        "* Für professionelles Layout: Vorsicht mit zu viel Spacing!"
+        "* letter spacing: place one character at a time"
+        "* word spacing: place each word separately"
+        "* a little goes a long way -- too much is hard to read"
     }
     
     foreach note $notes {

@@ -10,10 +10,11 @@
 # The content script therefore runs TWICE and must not have side effects.
 # ===========================================================================
 
+set scriptDir [file dirname [file normalize [info script]]]
+tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
 package require pdf4tcllib
 package require pdf4tcltoc
 
-set scriptDir [file dirname [file normalize [info script]]]
 set outdir [expr {$argc > 0 ? [lindex $argv 0] : [file join $scriptDir pdf]}]
 file mkdir $outdir
 set outPDF [file join $outdir "demo_40_toc.pdf"]

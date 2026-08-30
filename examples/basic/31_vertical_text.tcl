@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 31: Vertikaler Text
+# Demo 31: Vertical text
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,8 +15,8 @@
 #     tclsh 31_vertical_text.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 31  (ohne führende 0)
-#   FALSCH:  set demo_num 031 (Oktal-Fehler!)
+#   RIGHT: set demo_num 31  (no leading zero)
+#   WRONG: set demo_num 031 (octal!)
 # ============================================================================
 # What this shows:
 #   - Vertikalen Text erstellen
@@ -56,7 +56,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 31
 set demo_name "vertical_text"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -71,7 +71,7 @@ proc draw_vertical_text_down {pdf text x y font_size spacing} {
         # Zeichen zeichnen
         $pdf text $char -x $x -y $current_y
         
-        # Nächste Position
+        # next position
         set current_y [expr {$current_y + $font_size + $spacing}]
     }
     return $current_y
@@ -87,7 +87,7 @@ proc draw_vertical_text_up {pdf text x y font_size spacing} {
         # Zeichen zeichnen
         $pdf text $char -x $x -y $current_y
         
-        # Nächste Position (nach oben!)
+        # next position, upwards
         set current_y [expr {$current_y - ($font_size + $spacing)}]
     }
     return $current_y
@@ -147,12 +147,12 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 31: Vertikaler Text" -x $sx -y $sy
+    $pdf text "Demo 31: Vertical text" -x $sx -y $sy
     
     # --- Encoding-Test ---
     set y [expr {$sy + 30}]
     $pdf setFont 10 Helvetica
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # ========================================================================
     # Column 1: Vertikaler Text (Top-Down)
@@ -216,7 +216,7 @@ package require pdf4tcl]"
     
     # Label
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "3. Rotiert (90°)" -x [expr {$col3_x - 50}] -y [expr {$sy + 65}]
+    $pdf text "3. Rotated 90 degrees" -x [expr {$col3_x - 50}] -y [expr {$sy + 65}]
     
     # Rotierter Text
     $pdf setFont 14 Helvetica
@@ -236,7 +236,7 @@ package require pdf4tcl]"
     
     # Label
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "4. Rotiert (270°)" -x [expr {$col4_x - 60}] -y [expr {$start_y2 + 15}]
+    $pdf text "4. Rotated 270 degrees" -x [expr {$col4_x - 60}] -y [expr {$start_y2 + 15}]
     
     # Rotierter Text
     $pdf setFont 14 Helvetica
@@ -254,7 +254,7 @@ package require pdf4tcl]"
     set box_y [expr {$sy + 320}]
     
     $pdf setFont 11 Helvetica-Bold
-    $pdf text "Unterschiede:" -x $sx -y $box_y
+    $pdf text "What differs:" -x $sx -y $box_y
     
     set box_y [expr {$box_y + 20}]
     $pdf setFont 9 Helvetica
@@ -358,7 +358,7 @@ puts "  evince $result"
 puts ""
 puts "TIPP: Vergleichen Sie die 4 verschiedenen Methoden:"
 puts "      1. Top-Down (Zeichen unter Zeichen)"
-puts "      2. Bottom-Up (Zeichen über Zeichen)"
+puts "      2. bottom-up, character above character"
 puts "      3+4. Rotierter Text (-angle 90/270)"
 
 exit 0

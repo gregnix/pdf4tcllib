@@ -46,7 +46,7 @@ if {[catch {package require tablelist_tile} err]} {
 }
 
 # pdf4tcllib::tablelist ist in pdf4tcllib-0.1.tm integriert
-# (kein separates source nötig)
+# (no separate source needed)
 
 set outdir [expr {$argc > 0 ? [lindex $argv 0] : [file join $scriptDir pdf]}]
 file mkdir $outdir
@@ -60,7 +60,7 @@ proc formatPrice {val} {
     return [format "%.2f EUR" $val]
 }
 
-# tablelist -formatcommand übergibt nur den Zellwert (1 Argument)
+# tablelist -formatcommand passes only the cell value, one argument
 proc formatPriceCmd {val} {
     return [formatPrice $val]
 }
@@ -106,6 +106,9 @@ pack $tbl1 -fill both -expand 1 -padx 4 -pady 4
 
 # Daten einfuegen
 set kunden {
+    # Die Beispieldaten bleiben deutsch: Firmennamen und Staedte mit
+    # Umlauten laufen hier durch tablelist, -formatcommand und die
+    # PDF-Ausgabe. Das ist Teil dessen, was die Demo prueft.
     {1001 "Müller GmbH"       "Berlin"    "Premium"  125000.50 "Aktiv"}
     {1002 "Schmidt & Co"      "Hamburg"   "Standard"  48500.00 "Aktiv"}
     {1003 "Weber Handel"      "München"   "Premium"   92300.75 "Aktiv"}

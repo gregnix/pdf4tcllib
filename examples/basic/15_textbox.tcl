@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 15: Textbox mit automatischem Wrapping
+# Demo 15: Text box with automatic wrapping
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,8 +15,8 @@
 #     tclsh 15_textbox.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 15  (ohne führende 0)
-#   FALSCH:  set demo_num 015 (Oktal-Fehler!)
+#   RIGHT: set demo_num 15  (no leading zero)
+#   WRONG: set demo_num 015 (octal!)
 # ============================================================================
 # What this shows:
 #   - Text in Box mit fester Breite umbrechen
@@ -26,7 +26,7 @@
 #
 # Features:
 #   - Automatisches Wrapping bei fester Breite
-#   - Mehrere Beispiele mit verschiedenen Größen
+#   - several examples at different sizes
 #   - Overflow-Erkennung
 #   - Line-Height Kontrolle
 #
@@ -56,7 +56,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 15
 set demo_name "textbox"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -66,7 +66,7 @@ set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name
 # ============================================================================
 
 proc draw_textbox_example {pdf x y width height title text font_size} {
-    # Titel über der Box
+    # the caption above the box
     $pdf setFont 11 Helvetica-Bold
     $pdf text $title -x $x -y $y
     
@@ -89,8 +89,8 @@ proc draw_textbox_example {pdf x y width height title text font_size} {
     
     $pdf drawTextBox $text_x $text_y $text_width $height $text
 
-    # WICHTIG: -newyvar gibt mit orient=true bottom-origin zurück -- nicht verwenden!
-    # Stattdessen: box_y + height ist zuverlässig (top-origin, deterministisch)
+    # NOTE: with orient=true, -newyvar returns a bottom-origin value -- do not use it
+    # box_y + height is reliable instead: top-origin and deterministic
     set info_y [expr {$box_y + $height + 4}]
     $pdf setFont 8 Helvetica
     $pdf setFillColor 0.5 0.5 0.5
@@ -156,16 +156,16 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 15: Textbox mit automatischem Wrapping" -x $sx -y $sy
+    $pdf text "Demo 15: Text box with automatic wrapping" -x $sx -y $sy
     
     # --- Intro ---
     set y [expr {$sy + 35}]
     $pdf setFont 10 Helvetica
-    $pdf text "drawTextBox bricht Text automatisch in mehrere Zeilen um." -x $sx -y $y
+    $pdf text "drawTextBox wraps text into as many lines as it needs." -x $sx -y $y
     
     # --- Encoding-Test ---
     set y [expr {$y + 20}]
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # ========================================================================
     # Beispiel-Text
@@ -175,7 +175,7 @@ package require pdf4tcl]"
     
     set sample_long "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."
     
-    set sample_german "Dies ist ein längerer deutscher Text mit Umlauten (äöüÄÖÜß) und Sonderzeichen wie dem Euro-Symbol (€). Der Text sollte automatisch umgebrochen werden, wenn er zu lang für die Box ist. Das ist sehr praktisch für Beschreibungen, Kommentare oder längere Texte."
+    set sample_german "A longer paragraph with umlauts (\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df) and symbols such as the euro sign (\u20ac). It wraps by itself once it no longer fits the box -- useful for descriptions, comments and longer passages."
     
     # ========================================================================
     # Beispiel 1: Schmale Box
@@ -183,7 +183,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 40}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "1. Schmale Box (Kurzer Text)" -x $sx -y $y
+    $pdf text "1. Narrow box, short text" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
@@ -196,7 +196,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 10}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "2. Breite Box (Längerer Text)" -x $sx -y $y
+    $pdf text "2. Wide box, longer text" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
@@ -209,7 +209,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 10}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "3. Zwei Spalten (Deutscher Text)" -x $sx -y $y
+    $pdf text "3. Two columns" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
@@ -227,11 +227,11 @@ package require pdf4tcl]"
     set y [expr {max($y1, $y2) + 10}]
     
     # ========================================================================
-    # Code-Beispiel
+    # Example code
     # ========================================================================
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "Code-Beispiel: drawTextBox verwenden" -x $sx -y $y
+    $pdf text "Example code: drawTextBox verwenden" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 9 Courier
@@ -241,7 +241,7 @@ package require pdf4tcl]"
         "set x 100"
         "set y 200"
         "set width 300   ;# Maximale Breite"
-        "set height 150  ;# Maximale Höhe"
+        "set height 150  ;# maximum height"
         ""
         "set text \"Langer Text der automatisch umgebrochen wird...\""
         ""
@@ -251,7 +251,7 @@ package require pdf4tcl]"
         "# Optional: Ausrichtung"
         "\$pdf drawTextBox \$x \$y \$width \$height \$text -align justify"
         ""
-        "# Mögliche Ausrichtungen: left, right, center, justify"
+        "# alignments: left, right, center, justify"
     }
     
     foreach line $code_lines {
@@ -273,11 +273,11 @@ package require pdf4tcl]"
     set hints {
         "* drawTextBox bricht Text automatisch bei Leerzeichen um"
         "* Wenn Text zu lang: wird abgeschnitten (kein Overflow-Handling)"
-        "* Höhe sollte großzügig gewählt werden"
+        "* be generous with the height"
         "* Line-Height ist automatisch (ca. 1.2x Font-Size)"
         "* Umlaute und Sonderzeichen (Latin-1) funktionieren"
-        "* justify-Alignment verteilt Text gleichmäßig"
-        "* Für komplexes Layout: Helper pdf4tcllib::text::writeParagraph nutzen"
+        "* justify spreads the words evenly"
+        "* for more layout, use pdf4tcllib::text::writeParagraph"
     }
     
     foreach hint $hints {
@@ -301,7 +301,7 @@ package require pdf4tcl]"
         "set next_y \[pdf4tcllib::text::writeParagraph \$pdf \\"
         "    \$text \$x \$y \$width \$font_size \$align\]"
         ""
-        "# Returns: Nächste Y-Position (für weitere Paragraphen)"
+        "# returns: the next Y position, for the paragraph after it"
     }
     
     foreach line $code_lines2 {

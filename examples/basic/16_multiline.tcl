@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 16: Multiline Text & Line-Height
+# Demo 16: Multi-line text and leading
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,8 +15,8 @@
 #     tclsh 16_multiline.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 16  (ohne führende 0)
-#   FALSCH:  set demo_num 016 (Oktal-Fehler!)
+#   RIGHT: set demo_num 16  (no leading zero)
+#   WRONG: set demo_num 016 (octal!)
 # ============================================================================
 # What this shows:
 #   - Mehrzeiligen Text platzieren
@@ -27,8 +27,8 @@
 # Features:
 #   - Vergleich: Line-Height 1.0, 1.2, 1.5, 2.0
 #   - Praktische Beispiele
-#   - Helper-Funktion für line-height
-#   - Empfehlungen für Lesbarkeit
+#   - a helper procedure for leading
+#   - what to use for readability
 #
 # Encoding test: äöüÄÖÜß€
 # ============================================================================
@@ -56,7 +56,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 16
 set demo_name "multiline"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -74,11 +74,11 @@ proc draw_multiline_block {pdf x y font_size line_height_factor title lines} {
     
     # Info
     $pdf setFont 8 Helvetica
-    $pdf text "Line-Height: ${line_height_factor}x (${font_size}pt Font)" -x $x -y $y
+    $pdf text "Leading: ${line_height_factor}x (${font_size}pt type)" -x $x -y $y
     
     set y [expr {$y + 18}]
     
-    # Box für Text
+    # the text box
     set box_w 220
     set line_spacing [expr {$font_size * $line_height_factor}]
     set box_h [expr {([llength $lines] * $line_spacing) + 20}]
@@ -179,16 +179,16 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 16: Multiline Text & Line-Height" -x $sx -y $sy
+    $pdf text "Demo 16: Multi-line text and leading" -x $sx -y $sy
     
     # --- Intro ---
     set y [expr {$sy + 35}]
     $pdf setFont 10 Helvetica
-    $pdf text "Line-Height (Zeilenabstand) beeinflusst die Lesbarkeit erheblich." -x $sx -y $y
+    $pdf text "Leading -- the distance between baselines -- decides how readable a block is." -x $sx -y $y
     
     # --- Encoding-Test ---
     set y [expr {$y + 20}]
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # ========================================================================
     # Beispieltext
@@ -203,12 +203,12 @@ package require pdf4tcl]"
     }
     
     # ========================================================================
-    # Vergleich: verschiedene Line-Heights
+    # Leading compared
     # ========================================================================
     
     set y [expr {$y + 40}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "Vergleich: verschiedene Line-Heights" -x $sx -y $y
+    $pdf text "Leading compared" -x $sx -y $y
     
     set y [expr {$y + 30}]
     
@@ -245,23 +245,23 @@ package require pdf4tcl]"
         "4. Line-Height 2.0 (sehr luftig)" $sample_lines]
     
     # ========================================================================
-    # Empfehlungen
+    # What to use
     # ========================================================================
     
     set y [expr {max($y1, $y2) + 30}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "Empfehlungen" -x $sx -y $y
+    $pdf text "What to use" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
     set recommendations {
         {"Anwendung" "Line-Height" "Verwendung"}
-        {"Fließtext" "1.2 - 1.5" "Standard, gute Lesbarkeit"}
+        {"running text" "1.2 - 1.5" "the usual, reads well"}
         {"Überschriften" "1.0 - 1.2" "Kompakt, platzsparend"}
-        {"Lange Texte" "1.4 - 1.6" "Ermüdungsarm"}
-        {"Präsentationen" "1.5 - 2.0" "Gut lesbar aus Distanz"}
-        {"Eng/Platzsparend" "1.0" "Nur wenn nötig"}
+        {"long passages" "1.4 - 1.6" "less tiring"}
+        {"slides" "1.5 - 2.0" "readable from a distance"}
+        {"tight" "1.0" "only when space demands it"}
     }
     
     set col_widths {120 90 180}
@@ -272,19 +272,19 @@ package require pdf4tcl]"
         -font_size 9
     
     # ========================================================================
-    # Code-Beispiel
+    # Example code
     # ========================================================================
     
     set y [expr {$y + [expr {[llength $recommendations] * 20}] + 30}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "Code-Beispiel" -x $sx -y $y
+    $pdf text "Example code" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 9 Courier
     
     set code_lines {
-        "# Helper-Funktion für Line-Height"
+        "# a helper for leading"
         "set font_size 12"
         "set line_height \[pdf4tcllib::page::lineheight \$font_size\]"
         "# => 14.4 pt (12 * 1.2)"
@@ -296,7 +296,7 @@ package require pdf4tcl]"
         "\$pdf setFont \$font_size Helvetica"
         "foreach line \$lines \{"
         "    \$pdf text \$line -x 50 -y \$y"
-        "    set y \[expr \{\$y + \$line_height\}\]  ;# Nächste Zeile"
+        "    set y \[expr \{\$y + \$line_height\}\]  ;# next line"
         "\}"
     }
     
@@ -317,7 +317,7 @@ package require pdf4tcl]"
     set hints {
         "Hinweis: Line-Height = Font-Size * Faktor"
         "         Standard-Faktor: 1.2 (120%)"
-        "         Für längere Texte: 1.4-1.5 empfohlen"
+        "         for longer passages, 1.4 to 1.5"
     }
     
     foreach hint $hints {
@@ -382,7 +382,7 @@ puts "  xdg-open $result"
 puts "  # oder"
 puts "  evince $result"
 puts ""
-puts "TIPP: Vergleichen Sie die 4 Textblöcke!"
+puts "Compare the four blocks of text."
 puts "      Line-Height 1.2 ist der Standard-Wert."
 
 exit 0

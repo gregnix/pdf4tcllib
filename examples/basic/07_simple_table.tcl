@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 07: Einfache Tabelle
+# Demo 07: A simple table
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -24,7 +24,7 @@
 #   - 3x4 Tabelle (3 Spalten, 4 Zeilen inkl. Header)
 #   - Header mit grauem Hintergrund
 #   - Raster mit Linien
-#   - Encoding-Test in Tabelle (äöüÄÖÜß €)
+#   - an encoding test inside a table
 #
 # Encoding test: äöüÄÖÜß€
 # ============================================================================
@@ -63,7 +63,7 @@ set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name
 proc demo_main {} {
     global output_file demo_num
     
-    puts "Starting Demo $demo_num: Einfache Tabelle"
+    puts "Starting Demo $demo_num: A simple table"
     puts "  pdf4tcl version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
 package require pdf4tcllib 0.6
@@ -91,7 +91,7 @@ package require pdf4tcl]"
         -orient [dict get $ctx orient] \
         -unit p]
     
-    # -orient true:  Y=0 ist OBEN, Y wächst nach UNTEN
+    # -orient true: Y=0 is at the TOP, Y grows DOWNWARDS
     # -unit p:       Alle Koordinaten in Points (1/72 inch)
     
     puts "  PDF object created"
@@ -114,13 +114,13 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 07: Einfache Tabelle" -x $sx -y $sy
+    $pdf text "Demo 07: A simple table" -x $sx -y $sy
     
     # --- Tabelle 3x4 (3 Spalten, 4 Zeilen) ---
     set y [expr {$sy + 50}]
     
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "Tabelle mit Encoding-Test:" -x $sx -y $y
+    $pdf text "Table with an encoding test:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     
@@ -133,16 +133,16 @@ package require pdf4tcl]"
     set rows 4  ;# inkl. Header
     
     # Header
-    set headers {"Spalte 1" "Spalte 2" "Spalte 3"}
+    set headers {"Column 1" "Column 2" "Column 3"}
     
-    # Data (3 Datenzeilen)
+    # data (three rows)
     set data {
-        {"Zeile 1" "äöü" "100€"}
-        {"Zeile 2" "ÄÖÜ" "200€"}
-        {"Zeile 3" "ß" "300€"}
+        {"Row 1" "\u00e4\u00f6\u00fc" "100\u20ac"}
+        {"Row 2" "\u00c4\u00d6\u00dc" "200\u20ac"}
+        {"Row 3" "\u00df" "300\u20ac"}
     }
     
-    # --- Zeichne Rahmen (Raster) ---
+    # --- the grid ---
     $pdf setLineWidth 0.5
     $pdf setStrokeColor 0.0 0.0 0.0
     
@@ -195,7 +195,7 @@ package require pdf4tcl]"
     
     $pdf setFont 12 Helvetica-Bold
     $pdf setFillColor 0.0 0.0 0.0
-    $pdf text "Tabelle mit farbigen Zellen:" -x $sx -y $y
+    $pdf text "Table with coloured cells:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     
@@ -221,7 +221,7 @@ package require pdf4tcl]"
         $pdf line $line_x $table2_y $line_x [expr {$table2_y + $rows2 * $row_height2}]
     }
     
-    # Farbige Zellen (Hellrot, Hellgrün, Hellblau, Hellgelb)
+    # coloured cells: light red, green, blue, yellow
     set colors {
         {1.0 0.9 0.9}
         {0.9 1.0 0.9}
@@ -241,7 +241,7 @@ package require pdf4tcl]"
     $pdf setFillColor 0.0 0.0 0.0
     $pdf setFont 10 Helvetica-Bold
     
-    set headers2 {"Rot" "Grün" "Blau" "Gelb"}
+    set headers2 {"Red" "Green" "Blue" "Yellow"}
     for {set col 0} {$col < $cols2} {incr col} {
         set text [lindex $headers2 $col]
         set text_x [expr {$table2_x + $col * $col_width2 + 5}]
@@ -249,10 +249,10 @@ package require pdf4tcl]"
         $pdf text $text -x $text_x -y $text_y
     }
     
-    # Datenzeilen
+    # data rows
     set data2 {
         {"A" "B" "C" "D"}
-        {"äöü" "ÄÖÜ" "ß" "€"}
+        {"\u00e4\u00f6\u00fc" "\u00c4\u00d6\u00dc" "\u00df" "\u20ac"}
     }
     
     $pdf setFont 10 Helvetica
@@ -271,7 +271,7 @@ package require pdf4tcl]"
     
     $pdf setFont 11 Helvetica
     $pdf setFillColor 0.0 0.0 0.0
-    $pdf text "Encoding-Test: äöüÄÖÜß € (in Tabellen sichtbar)" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac (visible inside a table)" -x $sx -y $y
     
     # --- Debug-Grid (nur wenn PDF4TCL_DEBUG=1) ---
     pdf4tcllib::page::grid $pdf 50

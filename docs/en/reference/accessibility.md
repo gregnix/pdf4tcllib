@@ -1,9 +1,9 @@
 # Accessible documents with pdf4tcllib
 
 What the building blocks mark up on their own, what stays your job, and how
-to check. Applies to pdf4tcllib 0.6.3 with pdf4tcl 0.9.4.60.
+to check. Applies to pdf4tcllib 0.6.4 with pdf4tcl 0.9.4.61.
 
-Runnable companion: [`examples/basic/39_accessible.tcl`](../examples/basic/39_accessible.tcl).
+Runnable companion: [`examples/basic/39_accessible.tcl`](../../../examples/basic/39_accessible.tcl).
 
 ---
 

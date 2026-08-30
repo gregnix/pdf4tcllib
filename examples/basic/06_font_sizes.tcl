@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 06: Verschiedene Schriftgrößen
+# Demo 06: Type sizes and families
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,16 +15,16 @@
 #     tclsh 06_font_sizes.tcl
 # ============================================================================
 # What this shows:
-#   - Verschiedene Schriftgrößen verwenden
+#   - different type sizes verwenden
 #   - Font-Styles anwenden (Bold, Oblique)
 #   - Schriftarten kombinieren
-#   - Encoding bei verschiedenen Größen testen
+#   - encoding at different sizes
 #
 # Features:
-#   - Größen von 6pt bis 48pt
+#   - sizes from 6pt to 48pt
 #   - Helvetica-Familie (Normal, Bold, Oblique, BoldOblique)
 #   - Times und Courier Beispiele
-#   - Encoding-Test in verschiedenen Größen
+#   - an encoding test at several sizes
 #
 # Encoding test: äöüÄÖÜß€
 # ============================================================================
@@ -63,7 +63,7 @@ set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name
 proc demo_main {} {
     global output_file demo_num
     
-    puts "Starting Demo $demo_num: Verschiedene Schriftgrößen"
+    puts "Starting Demo $demo_num: Type sizes and families"
     puts "  pdf4tcl version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
 package require pdf4tcllib 0.6
@@ -91,7 +91,7 @@ package require pdf4tcl]"
         -orient [dict get $ctx orient] \
         -unit p]
     
-    # -orient true:  Y=0 ist OBEN, Y wächst nach UNTEN
+    # -orient true: Y=0 is at the TOP, Y grows DOWNWARDS
     # -unit p:       Alle Koordinaten in Points (1/72 inch)
     
     puts "  PDF object created"
@@ -114,22 +114,22 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 06: Verschiedene Schriftgrößen" -x $sx -y $sy
+    $pdf text "Demo 06: Type sizes and families" -x $sx -y $sy
     
-    # --- Verschiedene Schriftgrößen ---
+    # --- type sizes ---
     set y [expr {$sy + 40}]
     
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "1. Schriftgrößen von klein bis groß:" -x $sx -y $y
+    $pdf text "1. Type sizes, small to large:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
-    # Verschiedene Größen mit Umlauten testen
+    # sizes, with umlauts to check the encoding
     set sizes {6 8 10 12 14 16 18 24 36 48}
     
     foreach size $sizes {
         $pdf setFont $size Helvetica
-        $pdf text "Schriftgröße ${size}pt - äöüÄÖÜß" -x $sx -y $y
+        $pdf text "Size ${size}pt - \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df" -x $sx -y $y
         set y [expr {$y + $size + 5}]
     }
     
@@ -137,7 +137,7 @@ package require pdf4tcl]"
     set y [expr {$y + 20}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "2. Helvetica-Familie (alle Styles):" -x $sx -y $y
+    $pdf text "2. The Helvetica family:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
@@ -164,40 +164,40 @@ package require pdf4tcl]"
     set y [expr {$y + 35}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "3. Times-Familie:" -x $sx -y $y
+    $pdf text "3. The Times family:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
     # Times-Roman
     $pdf setFont 12 Times-Roman
-    $pdf text "Times-Roman - Serif-Schrift mit äöüÄÖÜß" -x $sx -y $y
+    $pdf text "Times-Roman - a serif face with \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df" -x $sx -y $y
     
     set y [expr {$y + 20}]
     # Times-Bold
     $pdf setFont 12 Times-Bold
-    $pdf text "Times-Bold - Fette Serif-Schrift mit €£¥" -x $sx -y $y
+    $pdf text "Times-Bold - bold serif with \u20ac\u00a3\u00a5" -x $sx -y $y
     
     set y [expr {$y + 20}]
-    # Times-Italic (Bei Times heißt es "Italic"!)
+    # Times-Italic -- Times calls it "Italic", not "Oblique"
     $pdf setFont 12 Times-Italic
-    $pdf text "Times-Italic - Kursive Serif-Schrift" -x $sx -y $y
+    $pdf text "Times-Italic - italic serif" -x $sx -y $y
     
     set y [expr {$y + 20}]
     # Times-BoldItalic
     $pdf setFont 12 Times-BoldItalic
-    $pdf text "Times-BoldItalic - Fett und kursiv" -x $sx -y $y
+    $pdf text "Times-BoldItalic - bold and italic" -x $sx -y $y
     
     # --- Courier-Familie ---
     set y [expr {$y + 35}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "4. Courier-Familie (Monospace):" -x $sx -y $y
+    $pdf text "4. The Courier family (monospace):" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
     # Courier
     $pdf setFont 12 Courier
-    $pdf text "Courier Normal - Monospace für Code: if (x > 0) {}" -x $sx -y $y
+    $pdf text "Courier Normal - monospace for code: if (x > 0) {}" -x $sx -y $y
     
     set y [expr {$y + 20}]
     # Courier-Bold
@@ -207,13 +207,13 @@ package require pdf4tcl]"
     set y [expr {$y + 20}]
     # Courier-Oblique (NICHT Italic!)
     $pdf setFont 12 Courier-Oblique
-    $pdf text "Courier Oblique - Schräge Monospace: // Kommentar" -x $sx -y $y
+    $pdf text "Courier Oblique - slanted monospace: // comment" -x $sx -y $y
     
-    # --- Schriftgrößen-Vergleich ---
+    # --- sizes compared ---
     set y [expr {$y + 40}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "5. Größen-Vergleich (zentriert):" -x $sx -y $y
+    $pdf text "5. Sizes compared, centred:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     set center_x [expr {[dict get $ctx PW] / 2}]
@@ -227,24 +227,24 @@ package require pdf4tcl]"
     
     set y [expr {$y + 35}]
     $pdf setFont 24 Helvetica-Bold
-    $pdf text "Groß (24pt)" -x $center_x -y $y -align center
+    $pdf text "Large (24pt)" -x $center_x -y $y -align center
     
     set y [expr {$y + 50}]
     $pdf setFont 36 Helvetica-Bold
-    $pdf text "Sehr Groß (36pt)" -x $center_x -y $y -align center
+    $pdf text "Very large (36pt)" -x $center_x -y $y -align center
     
     # --- PFLICHT: Encoding-Test ---
     set y [expr {$y + 70}]
     
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "Encoding-Test in verschiedenen Größen:" -x $sx -y $y
+    $pdf text "Encoding test at several sizes:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
     set test_sizes {8 10 12 14 18}
     foreach size $test_sizes {
         $pdf setFont $size Helvetica
-        $pdf text "${size}pt: äöüÄÖÜß €£¥ ©®™" -x $sx -y $y
+        $pdf text "${size}pt: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac\u00a3\u00a5 \u00a9\u00ae\u2122" -x $sx -y $y
         set y [expr {$y + $size + 8}]
     }
     

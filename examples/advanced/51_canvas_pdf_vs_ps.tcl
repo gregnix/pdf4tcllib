@@ -201,14 +201,20 @@ $pdf startPage
 pdf4tcllib::page::header $pdf $ctx "Demo 51 -- PDF-only features"
 pdf4tcllib::page::footer $pdf $ctx "Page 2: impossible with PostScript export" 2
 
+# Das Dokument ist -orient true: y waechst nach UNTEN. Die Zeilen liefen
+# hier mit "y - 16" nach OBEN und damit ueber den Blattrand hinaus --
+# gemessen lag "Other PDF-only features:" zwei Punkt oberhalb der Seite,
+# der eingebettete Canvas 179 Punkt darueber. Ein Vorzeichenfehler wie in
+# Demo 11, und pdftotext sah ihn nicht, weil der Text formal noch auf der
+# Seite begann.
 set x  [dict get $ctx left]
-set y  [expr {[dict get $ctx top] - 10}]
+set y  [expr {[dict get $ctx top] + 10}]
 set tw [dict get $ctx text_w]
 
 $pdf setFont 13 Helvetica-Bold
 $pdf text "This is page 2 -- not possible with PostScript export" -x $x -y $y
 
-set y [expr {$y - 20}]
+set y [expr {$y + 20}]
 $pdf setFont 10 Helvetica
 foreach {line} {
     "PostScript export always produces a single page."
@@ -226,12 +232,12 @@ foreach {line} {
     "PostScript export is useful for quick single-page output"
     "when you do not need any of the above."
 } {
-    set y [expr {$y - 16}]
+    set y [expr {$y + 16}]
     $pdf text $line -x $x -y $y
 }
 
 # Small canvas mixed into the PDF page
-set y [expr {$y - 25}]
+set y [expr {$y + 25}]
 canvasToPdf $pdf $x $y 380 70 {
     .tmp create rectangle 2 2 378 68 -fill "#eef4ff" -outline "#3366aa" -width 1
     .tmp create text 190 22 \

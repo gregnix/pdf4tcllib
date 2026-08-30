@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 13: PDF-Metadaten
+# Demo 13: PDF metadata
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,8 +15,8 @@
 #     tclsh 13_metadata.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 13  (ohne führende 0)
-#   FALSCH:  set demo_num 013 (Oktal-Fehler!)
+#   RIGHT: set demo_num 13  (no leading zero)
+#   WRONG: set demo_num 013 (octal!)
 # ============================================================================
 # What this shows:
 #   - PDF-Metadaten setzen mit setInfo
@@ -26,7 +26,7 @@
 # Features:
 #   - Titel, Autor, Subject, Keywords setzen
 #   - Creator-Info
-#   - Anleitung für PDF-Reader
+#   - where to look in a PDF reader
 #
 # Encoding test: äöüÄÖÜß€
 # ============================================================================
@@ -54,7 +54,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 13
 set demo_name "metadata"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -127,16 +127,16 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 13: PDF-Metadaten" -x $sx -y $sy
+    $pdf text "Demo 13: PDF metadata" -x $sx -y $sy
     
     # --- Intro ---
     set y [expr {$sy + 35}]
     $pdf setFont 10 Helvetica
-    $pdf text "PDF-Metadaten sind unsichtbare Informationen über das Dokument." -x $sx -y $y
+    $pdf text "Metadata is information about the document that is not printed." -x $sx -y $y
     
     # --- Encoding-Test ---
     set y [expr {$y + 20}]
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # ========================================================================
     # Section 1: Gesetzte Metadaten
@@ -144,7 +144,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 40}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "1. Gesetzte Metadaten" -x $sx -y $y
+    $pdf text "1. The metadata set here" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 10 Helvetica
@@ -169,14 +169,14 @@ package require pdf4tcl]"
     
     set y [expr {$y + 30}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "2. Wo finde ich die Metadaten?" -x $sx -y $y
+    $pdf text "2. Where to find it" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 10 Helvetica
-    $pdf text "Die Metadaten sind im PDF-Dokument gespeichert und können" -x $sx -y $y
+    $pdf text "The metadata is stored in the document and can be" -x $sx -y $y
     
     set y [expr {$y + 15}]
-    $pdf text "in jedem PDF-Reader angezeigt werden:" -x $sx -y $y
+    $pdf text "shown by any PDF reader:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     
@@ -201,7 +201,7 @@ package require pdf4tcl]"
     set text_y [expr {$box_y + 20}]
     
     $pdf setFont 11 Helvetica-Bold
-    $pdf text "PDF-Reader Menüs:" -x $text_x -y $text_y
+    $pdf text "Reader menus:" -x $text_x -y $text_y
     
     set text_y [expr {$text_y + 25}]
     $pdf setFont 10 Helvetica
@@ -220,12 +220,12 @@ package require pdf4tcl]"
     }
     
     # ========================================================================
-    # Section 3: Code-Beispiel
+    # Section 3: Example code
     # ========================================================================
     
     set y [expr {$box_y + $box_h + 30}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "3. Code-Beispiel" -x $sx -y $y
+    $pdf text "3. Example code" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 9 Courier
@@ -263,10 +263,10 @@ package require pdf4tcl]"
     $pdf setFont 10 Helvetica
     
     set hints {
-        "* Metadaten werden verwendet für Suche und Organisation"
+        "* metadata is what search and filing rely on"
         "* Professionelle Dokumente sollten immer Metadaten haben"
         "* Keywords helfen beim Auffinden des Dokuments"
-        "* Metadaten können in Dateimanagern angezeigt werden"
+        "* file managers can show it too"
         "* Standard-Felder: Title, Author, Subject, Keywords, Creator, Producer"
     }
     

@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 36: Seiten-Templates
+# Demo 36: Page templates
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,17 +15,17 @@
 #     tclsh 36_templates.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 36  (ohne führende 0)
-#   FALSCH:  set demo_num 036 (Oktal-Fehler!)
+#   RIGHT: set demo_num 36  (no leading zero)
+#   WRONG: set demo_num 036 (octal!)
 # ============================================================================
 # What this shows:
-#   - Wiederverwendbare Seiten-Templates erstellen
+#   - build reusable page templates
 #   - Template-Funktionen definieren
 #   - Verschiedene Layouts organisieren
 #   - Professionelle Dokument-Struktur
 #
 # Features:
-#   - Template 1: Titel-Seite (zentriert, groß)
+#   - template 1: title page, centred, large
 #   - Template 2: Inhalts-Seite (Header, Footer, Body)
 #   - Template 3: Anhang-Seite (klein, kompakt)
 #   - Wiederverwendbare Funktionen
@@ -56,7 +56,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 36
 set demo_name "templates"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -72,7 +72,7 @@ proc template_title {pdf ctx title subtitle author} {
     set center_x [expr {$pw / 2.0}]
     set center_y [expr {$ph / 2.0}]
     
-    # Titel (groß, zentriert)
+    # title, large, centred
     $pdf setFont 32 Helvetica-Bold
     $pdf text $title \
         -x $center_x \
@@ -146,7 +146,7 @@ proc template_content {pdf ctx title body page_num total_pages} {
             set body_y [expr {$body_y + 15}]
         }
         
-        # Prüfe ob noch Platz
+        # is there room left?
         if {$body_y > [expr {$ph - 80}]} {
             break
         }
@@ -164,7 +164,7 @@ proc template_content {pdf ctx title body page_num total_pages} {
     
     # Seitenzahl
     $pdf setFont 9 Helvetica
-    $pdf text "Seite $page_num von $total_pages" \
+    $pdf text "Page $page_num of $total_pages" \
         -x [expr {$sx + $sw}] \
         -y $footer_y \
         -align right
@@ -185,7 +185,7 @@ proc template_appendix {pdf ctx content page_num} {
     
     # Titel (kleiner)
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "Anhang - Seite $page_num" -x $sx -y $sy
+    $pdf text "Appendix - page $page_num" -x $sx -y $sy
     
     # Inhalt (kompakter)
     set y [expr {$sy + 25}]
@@ -254,8 +254,8 @@ package require pdf4tcl]"
     $pdf startPage
     
     template_title $pdf $ctx \
-        "Demo 36: Seiten-Templates" \
-        "Wiederverwendbare Layouts für PDFs" \
+        "Demo 36: Page templates" \
+        "Reusable layouts for PDFs" \
         "pdf4tcl Demo Suite"
     
     pdf4tcllib::page::orientationLegend $pdf $ctx
@@ -268,7 +268,7 @@ package require pdf4tcl]"
     
     set body1 "Dies ist eine Inhalts-Seite mit dem Standard-Template.
 
-Das Template enthält:
+The template holds:
 - Header mit Titel
 - Body mit Textinhalt
 - Footer mit Seitenzahl und Datum
@@ -280,19 +280,19 @@ Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
 Duis aute irure dolor in reprehenderit in voluptate velit esse
 cillum dolore eu fugiat nulla pariatur.
 
-Encoding-Test: äöüÄÖÜß €"
+Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac"
     
     puts "  Creating page 2 (Content template #1)..."
     
     $pdf startPage
-    template_content $pdf $ctx "Kapitel 1: Einführung" $body1 2 4
+    template_content $pdf $ctx "Chapter 1: Introduction" $body1 2 4
     pdf4tcllib::page::orientationLegend $pdf $ctx
     $pdf endPage
     
     set body2 "Dies ist eine weitere Inhalts-Seite.
 
-Das gleiche Template kann für beliebig viele Seiten verwendet werden.
-Jede Seite erhält automatisch:
+The same template serves any number of pages.
+Every page automatically gets:
 - Den korrekten Header
 - Die richtige Seitennummer
 - Das aktuelle Datum
@@ -305,7 +305,7 @@ Vorteile von Templates:
 - Einfache Wartung
 - Professionelles Aussehen
 
-Encoding-Test: äöüÄÖÜß €"
+Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac"
     
     puts "  Creating page 3 (Content template #2)..."
     
@@ -315,28 +315,28 @@ Encoding-Test: äöüÄÖÜß €"
     $pdf endPage
     
     # ========================================================================
-    # Seite 4: Anhang-Template
+    # page 4: the appendix template
     # ========================================================================
     
-    set appendix "Technische Details:
+    set appendix "Technical details:
 
-Template-Funktionen:
-- template_title: Titel-Seite (zentriert, groß)
-- template_content: Standard-Inhaltsseite
-- template_appendix: Kompakte Anhang-Seite
+The template procedures:
+- template_title: title page, centred, large
+- template_content: an ordinary content page
+- template_appendix: a compact appendix page
 
-Verwendung:
-template_content \$pdf \$ctx \"Titel\" \"Body\" \$page \$total
+Use:
+template_content \$pdf \$ctx \"Title\" \"Body\" \$page \$total
 
-Parameter:
-- pdf: PDF-Objekt
-- ctx: Page Context
-- title: Seiten-Titel
-- body: Textinhalt
-- page_num: Aktuelle Seitenzahl
-- total_pages: Gesamtseitenzahl
+Arguments:
+- pdf: the PDF object
+- ctx: the page context
+- title: the page title
+- body: the text
+- page_num: the current page number
+- total_pages: how many pages in all
 
-Encoding-Test: äöüÄÖÜß €"
+Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac"
     
     puts "  Creating page 4 (Appendix template)..."
     

@@ -26,14 +26,14 @@ $pdf setFont 12 Helvetica
 set rows {
     {"Alice Example" "alice@example.com" "+49 123 4567"}
     {"Bob Sample"    "bob@example.com"   "+49 555 000"}
-    {"Carol Demo"    "carol@demo.org"    "+49 987 654"}
-    {"Dave Test"     "dave@test.io"      "+49 321 765"}
-    {"Eve Person"    "eve@host.net"      "+49 111 222"}
-    {"Frank Unit"    "frank@unit.dev"    "+49 444 555"}
-    {"Grace Case"    "grace@case.com"    "+49 222 333"}
-    {"Heidi Grid"    "heidi@grid.net"    "+49 888 777"}
-    {"Ivan Row"      "ivan@row.net"      "+49 666 555"}
-    {"Judy Col"      "judy@col.dev"      "+49 101 202"}
+    {"Carol Demo"    "carol@demo.example"    "+49 987 654"}
+    {"Dave Test"     "dave@test.example"      "+49 321 765"}
+    {"Eve Person"    "eve@host.example"      "+49 111 222"}
+    {"Frank Unit"    "frank@unit.example"    "+49 444 555"}
+    {"Grace Case"    "grace@case.example"    "+49 222 333"}
+    {"Heidi Grid"    "heidi@grid.example"    "+49 888 777"}
+    {"Ivan Row"      "ivan@row.example"      "+49 666 555"}
+    {"Judy Col"      "judy@col.example"      "+49 101 202"}
 }
 
 # Layout: 2 columns x 5 rows of cards

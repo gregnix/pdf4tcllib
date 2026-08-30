@@ -15,14 +15,20 @@
 
 package require pdf4tcllib 0.2
 
-package provide pdf4tcltext 0.2
+package provide pdf4tcltext 0.3
 
 # ============================================================
 # pdf4tcllib::textwidget -- Tk Text-Widget -> PDF
 # Built on `$t dump -all` -- reads the complete tag structure.
 # ============================================================
 
-namespace eval ::pdf4tcllib::textwidget {}
+namespace eval ::pdf4tcllib::textwidget {
+    # OHNE Exportmuster importiert "namespace import" nichts -- und zwar
+    # ohne Fehler. Der Alias ::pdf4tcltext::render am Dateiende entstand
+    # deshalb bis 0.2 gar nicht; wer der Doku folgte, bekam "invalid
+    # command name". Gefunden von einer App, die das Modul benutzt.
+    namespace export render
+}
 
 # Rejects an option the caller made up. Without this, `array set opts $args`
 # accepts every key: a typo, a renamed option or an option this version does
@@ -63,7 +69,7 @@ proc ::pdf4tcllib::textwidget::render {pdf tw x y args} {
     set defaultStyle [dict create \
         font $opts(-fontfamily) fontsize $opts(-fontsize) \
         fg {0 0 0} bg {} underline 0 overstrike 0 elide 0 \
-        lmargin1 0 lmargin2 0 spacing1 0 spacing3 0 justify left]
+        lmargin1 0 lmargin2 0 spacing1 0 spacing3 0 justify left offset 0]
 
     foreach {key val idx} $dumpData {
         switch -- $key {
@@ -119,7 +125,8 @@ proc ::pdf4tcllib::textwidget::_readAllTagConfigs {tw} {
     foreach tag [$tw tag names] {
         set cfg {}
         foreach opt {-font -foreground -background -underline -overstrike
-                     -elide -lmargin1 -lmargin2 -spacing1 -spacing3 -justify} {
+                     -elide -lmargin1 -lmargin2 -spacing1 -spacing3 -justify
+                     -offset} {
             set val ""
             catch { set val [$tw tag cget $tag $opt] }
             if {$val ne ""} { dict set cfg $opt $val }
@@ -160,7 +167,11 @@ proc ::pdf4tcllib::textwidget::_resolveStyle {tagCfg tagStack tagPriority \
                 dict set style $key [dict get $cfg $opt]
             }
         }
-        foreach {opt key} {-lmargin1 lmargin1 -spacing1 spacing1 -spacing3 spacing3} {
+        # -offset ist wie -lmargin1 eine Pixelangabe des Widgets und
+        # wird mit demselben Faktor in Punkt umgerechnet. Negativ heisst
+        # tiefgestellt, positiv hochgestellt -- so wie bei Tk.
+        foreach {opt key} {-lmargin1 lmargin1 -spacing1 spacing1 \
+                           -spacing3 spacing3 -offset offset} {
             if {[dict exists $cfg $opt] && [dict get $cfg $opt] ne ""} {
                 set v [dict get $cfg $opt]
                 if {[string is integer $v]} { dict set style $key [expr {$v*0.75}] }
@@ -201,8 +212,112 @@ proc ::pdf4tcllib::textwidget::_flushLine {pdf lineBuffer x maxW curY \
         else         {return [expr {$curY-$lineH*0.5}]}
     }
 
+    # Umbruch. Bis 0.2 bekam _flushLine maxW als Parameter und las ihn
+    # NIE: eine Zeile des Widgets wurde eine PDF-Zeile, wie lang sie auch
+    # war. Gemessen mit -maxwidth 200 und einem Absatz von 200 Zeichen:
+    # EINE Zeile von 987 pt auf einem Blatt von 595 pt -- der Text lief
+    # rechts hinaus, ohne Meldung, und keins der Pruefwerkzeuge sah es
+    # (geometry-check schaut nicht auf Text, layout-check liest ueber
+    # pdftotext, und pdftotext laesst weg, was neben dem Blatt liegt).
+    foreach zeile [_splitToLines $pdf $lineBuffer $maxW $lmargin] {
+        set curY [_drawLine $pdf $zeile $x $lmargin $lineH $curY $orient \
+                $maxW]
+    }
+    return $curY
+}
+
+# Einen Zeilenpuffer auf die verfuegbare Breite aufteilen.
+#
+# Gemessen wird je Abschnitt mit DESSEN Schrift, denn ein Wort in fett
+# ist breiter als dasselbe Wort mager -- eine Rechnung mit einer
+# einzigen Schrift braeche an der falschen Stelle.
+#
+# Ein Wort, das allein schon breiter ist als der Platz, wird trotzdem
+# gesetzt: abschneiden waere stiller Verlust, und eine Endlosschleife
+# waere schlimmer als eine zu breite Zeile.
+proc ::pdf4tcllib::textwidget::_splitToLines {pdf lineBuffer maxW lmargin} {
+    if {$maxW <= 0 || [llength $lineBuffer] == 0} {
+        return [list $lineBuffer]
+    }
+    set zeilen {}
+    set aktuell {}
+    set breite $lmargin
+    foreach seg $lineBuffer {
+        lassign $seg text style
+        catch {$pdf setFont [dict get $style fontsize] [dict get $style font]}
+        set puffer ""
+        # Wort samt dem Leerraum dahinter -- so bleibt der Abstand am
+        # Wort haengen und geht beim Umbruch mit ihm verloren.
+        foreach wort [regexp -all -inline {\S+\s*|\s+} $text] {
+            set ww 0
+            catch {set ww [$pdf getStringWidth $wort]}
+            if {$breite + $ww > $maxW && ($breite > $lmargin || $puffer ne "")} {
+                if {$puffer ne ""} {
+                    lappend aktuell [list [string trimright $puffer] $style]
+                }
+                lappend zeilen $aktuell
+                set aktuell {}
+                set puffer ""
+                set breite $lmargin
+                set wort [string trimleft $wort]
+                if {$wort eq ""} continue
+                set ww 0
+                catch {set ww [$pdf getStringWidth $wort]}
+            }
+            append puffer $wort
+            set breite [expr {$breite + $ww}]
+        }
+        if {$puffer ne ""} { lappend aktuell [list $puffer $style] }
+    }
+    if {[llength $aktuell]} { lappend zeilen $aktuell }
+    if {![llength $zeilen]} { set zeilen [list $lineBuffer] }
+    return $zeilen
+}
+
+# Eine fertige Zeile zeichnen. Der Rumpf stand bis 0.2 in _flushLine;
+# herausgeloest, damit _flushLine ihn mehrfach rufen kann.
+# Wie weit die Zeile nach rechts rueckt, damit sie zentriert oder
+# rechtsbuendig steht. 0 fuer linksbuendig -- und fuer alles andere,
+# solange keine Breite bekannt ist.
+#
+# Bis 0.2 war -justify "not implemented": center und right wirkten im
+# Widget und verschwanden im PDF, ohne ein Wort. Eine Anwendung bot die
+# Auswahl in ihrer Werkzeugleiste an und musste sie beschriften mit
+# "nur Ansicht" -- das war der Anlass.
+#
+# Die Ausrichtung der ERSTEN Abschnitts der Zeile gilt fuer die ganze
+# Zeile. Tk kennt -justify nur je Zeile, nicht je Zeichen; eine Zeile,
+# deren Abschnitte verschieden ausgerichtet sein wollen, hat auf dem
+# Bildschirm dasselbe Problem und loest es genauso.
+proc ::pdf4tcllib::textwidget::_justifyOffset {pdf lineBuffer lmargin maxW} {
+    if {$maxW <= 0 || ![llength $lineBuffer]} { return 0 }
+    set just left
+    catch {set just [dict get [lindex $lineBuffer 0 1] justify]}
+    if {$just eq "left" || $just eq ""} { return 0 }
+
+    set breite 0
+    foreach seg $lineBuffer {
+        lassign $seg text style
+        catch {$pdf setFont [dict get $style fontsize] [dict get $style font]}
+        set w 0
+        catch {set w [$pdf getStringWidth $text]}
+        set breite [expr {$breite + $w}]
+    }
+    set platz [expr {$maxW - $lmargin}]
+    set rest [expr {$platz - $breite}]
+    # Eine Zeile, die ohnehin nicht passt, wird nicht auch noch nach
+    # links geschoben.
+    if {$rest <= 0} { return 0 }
+    if {$just eq "center"} { return [expr {$rest / 2.0}] }
+    if {$just eq "right"}  { return $rest }
+    return 0
+}
+
+proc ::pdf4tcllib::textwidget::_drawLine {pdf lineBuffer x lmargin lineH \
+                                          curY orient {maxW 0}} {
     set baseline [expr {$orient ? $curY+$lineH-3 : $curY-3}]
-    set cx [expr {$x + $lmargin}]
+    set cx [expr {$x + $lmargin + [_justifyOffset $pdf $lineBuffer $lmargin \
+            $maxW]}]
 
     # Backgrounds
     #
@@ -235,7 +350,8 @@ proc ::pdf4tcllib::textwidget::_flushLine {pdf lineBuffer x maxW curY \
     # Abschnitte darin sind Span, weil sie sich nur in der Auszeichnung
     # unterscheiden, nicht in der Rolle.
     ::pdf4tcllib::tag::begin $pdf P
-    set cx [expr {$x + $lmargin}]
+    set cx [expr {$x + $lmargin + [_justifyOffset $pdf $lineBuffer $lmargin \
+            $maxW]}]
     foreach seg $lineBuffer {
         lassign $seg text style
         set fs [dict get $style fontsize]; set fn [dict get $style font]
@@ -244,19 +360,29 @@ proc ::pdf4tcllib::textwidget::_flushLine {pdf lineBuffer x maxW curY \
         $pdf setFont $fs $fn; $pdf setFillColor {*}$fg
         catch {set text [::pdf4tcllib::unicode::sanitize $text]}
         set w 0; catch {set w [$pdf getStringWidth $text]}
+        # Hoch- und Tiefstellung. Bis hierher war -offset "not
+        # implemented": ein Fussnotenzeichen stand auf der Grundlinie
+        # wie jeder andere Buchstabe. Der Wert verschiebt die
+        # Grundlinie dieses Abschnitts, nicht der Zeile -- die
+        # Zeilenhoehe bleibt, wie Tk es auch haelt. Wer kleiner setzen
+        # will, gibt dem Tag zusaetzlich eine kleinere -font; das
+        # Modul erfindet keine Schriftgroesse dazu.
+        set off 0
+        catch {set off [dict get $style offset]}
+        set bl [expr {$orient ? $baseline-$off : $baseline+$off}]
         ::pdf4tcllib::tag::begin $pdf Span
-        $pdf text $text -x $cx -y $baseline
+        $pdf text $text -x $cx -y $bl
         ::pdf4tcllib::tag::end $pdf
         # Die Striche gehoeren zur Auszeichnung, nicht zum Text.
         ::pdf4tcllib::tag::artifact $pdf -type Layout
         if {$ul} {
             $pdf setStrokeColor {*}$fg; $pdf setLineWidth 0.5
-            set uly [expr {$orient ? $baseline+1.5 : $baseline-1.5}]
+            set uly [expr {$orient ? $bl+1.5 : $bl-1.5}]
             $pdf line $cx $uly [expr {$cx+$w}] $uly
         }
         if {$os} {
             $pdf setStrokeColor {*}$fg; $pdf setLineWidth 0.5
-            set osy [expr {$orient ? $baseline-$fs*0.35 : $baseline+$fs*0.35}]
+            set osy [expr {$orient ? $bl-$fs*0.35 : $bl+$fs*0.35}]
             $pdf line $cx $osy [expr {$cx+$w}] $osy
         }
         ::pdf4tcllib::tag::artifactEnd $pdf
@@ -295,7 +421,42 @@ proc ::pdf4tcllib::textwidget::_parseFont {fontSpec defFamily defSize} {
     return [list $family [expr {abs($size)}] $bold $italic]
 }
 
+# Eine Schrift, die der Aufrufer unter DIESEM Familiennamen geladen hat,
+# zaehlt vor der Standardweiche.
+#
+# Bis 0.2 kannte _tclFontToPdf nur die 14 Standardschriften. Wer
+# fonts::init laufen liess und im Widget "DejaVu Sans" auszeichnete,
+# bekam im PDF Helvetica -- also gerade die Schrift ohne Glyphen jenseits
+# Latin-1, und ohne ein Wort dazu. Dieselbe Ueberlegung wie in
+# pdf4tcl::FindFontByFamily: erst nach einer Schrift dieses Namens
+# suchen, dann raten.
+#
+# Rueckgabe ist der PDF-Fontname oder der leere String.
+proc ::pdf4tcllib::textwidget::_loadedFontFor {family bold italic} {
+    if {$family eq ""} { return "" }
+    set alle {}
+    catch {set alle [::pdf4tcl::getFonts]}
+    if {![llength $alle]} { return "" }
+    # Von der genauesten Schreibweise zur allgemeinsten. -Oblique neben
+    # -Italic, weil beide Schreibweisen im Umlauf sind.
+    set kandidaten {}
+    if {$bold && $italic} {
+        lappend kandidaten "$family-BoldItalic" "$family-BoldOblique"
+    } elseif {$bold} {
+        lappend kandidaten "$family-Bold"
+    } elseif {$italic} {
+        lappend kandidaten "$family-Italic" "$family-Oblique"
+    }
+    lappend kandidaten $family
+    foreach k $kandidaten {
+        if {$k in $alle} { return $k }
+    }
+    return ""
+}
+
 proc ::pdf4tcllib::textwidget::_tclFontToPdf {family bold italic} {
+    set geladen [_loadedFontFor $family $bold $italic]
+    if {$geladen ne ""} { return $geladen }
     set isCourier [expr {
         [string match -nocase "courier*"    $family] ||
         [string match -nocase "*mono*"      $family] ||

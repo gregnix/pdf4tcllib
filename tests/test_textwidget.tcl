@@ -8,6 +8,13 @@
 package require tcltest
 namespace import ::tcltest::*
 
+# Damit die Datei auch EINZELN laeuft. Ohne diese Zeile findet sie
+# pdf4tcllib nur ueber ein installiertes Paket -- und die Constraints
+# unten fragen genau danach. Fehlt es, ueberspringt tcltest still
+# ALLES und meldet trotzdem Erfolg: Rueckgabewert 0, Failed 0. Der
+# Runner setzt den Pfad selbst, deshalb fiel es nie auf.
+tcl::tm::path add [file join [file dirname [file normalize [info script]]] .. lib]
+
 testConstraint text [expr {![catch {package require pdf4tcltext}]}]
 testConstraint pdf  [expr {![catch {package require pdf4tcl}]}]
 testConstraint tk   [expr {![catch {package require Tk}] && ![catch {
@@ -245,6 +252,236 @@ test tw-render-7 "das erzeugte PDF ist lesbar" -constraints {text pdf tk} -body 
     set size [file size $out]
     file delete $out
     expr {$size > 500}
+} -result 1
+
+# ============================================================
+# Die drei Punkte, die pdfcompose gefunden hat -- seit 0.3 behoben
+#
+# Gefunden nicht von dieser Suite, sondern von einer App, die das Modul
+# benutzt. Sie musste alle drei umgehen und hat sie aufgeschrieben; hier
+# stehen sie als Messung. Bis 0.2 standen an dieser Stelle drei Tests,
+# die den DEFEKT festhielten; sie sind mit der Reparatur rot geworden,
+# und das war ihre Aufgabe.
+# ============================================================
+
+test tw-limit-1 "-maxwidth bricht um" -constraints {text pdf tk} -body {
+    # Bis 0.2 bekam _flushLine maxW als Parameter und las ihn nie: eine
+    # Zeile des Widgets wurde eine PDF-Zeile, wie lang sie auch war.
+    # Gemessen damals: -maxwidth 200, ein Absatz von 200 Zeichen -> EINE
+    # Zeile von 987 pt auf einem Blatt von 595 pt.
+    set t [text .__lim1 -width 80 -height 6 -font {Helvetica 11}]
+    $t insert end "Ein sehr langer Absatz, der in einer schmalen Spalte\
+            umbrechen muesste, weil er deutlich mehr Text enthaelt als in\
+            200 Punkt Breite passt, und der deshalb auf mehrere PDF-Zeilen\
+            verteilt werden sollte."
+    update idletasks
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::textwidget::render $pdf $t 40 40 -maxwidth 200 -fontsize 11
+    $pdf endPage
+    set strom [$pdf get]
+    $pdf setFont 11 Helvetica
+    set breiteste 0
+    foreach {all txt} [regexp -all -inline {\(([^)]*)\) Tj} $strom] {
+        set w [$pdf getStringWidth $txt]
+        if {$w > $breiteste} { set breiteste $w }
+    }
+    set zeilen [llength [regexp -all -inline {1 0 0 1 [0-9.-]+ [0-9.-]+ Tm} \
+            $strom]]
+    $pdf destroy; destroy $t
+    # mehrere Zeilen, keine breiter als der Platz
+    list [expr {$zeilen > 1}] [expr {$breiteste <= 200}]
+} -result {1 1}
+
+test tw-limit-1a "ein Wort breiter als der Platz wird trotzdem gesetzt" \
+        -constraints {text pdf tk} -body {
+    # Abschneiden waere stiller Verlust, eine Endlosschleife waere
+    # schlimmer als eine zu breite Zeile.
+    set t [text .__lim1a -width 40 -height 3 -font {Helvetica 11}]
+    $t insert end "Donaudampfschiffahrtsgesellschaftskapitaenspatent"
+    update idletasks
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::textwidget::render $pdf $t 40 40 -maxwidth 30 -fontsize 11
+    $pdf endPage
+    set strom [$pdf get]
+    $pdf destroy; destroy $t
+    regexp {Donaudampf} $strom
+} -result 1
+
+test tw-limit-1b "der Umbruch misst je Abschnitt mit dessen Schrift" \
+        -constraints {text pdf tk} -body {
+    # Ein Wort in fett ist breiter als dasselbe Wort mager. Eine Rechnung
+    # mit einer einzigen Schrift braeche an der falschen Stelle.
+    set t [text .__lim1b -width 60 -height 4 -font {Helvetica 11}]
+    $t tag configure gross -font {Helvetica 22 bold}
+    $t insert end "klein klein " {} "GROSS GROSS GROSS" gross
+    update idletasks
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::textwidget::render $pdf $t 40 40 -maxwidth 150 -fontsize 11
+    $pdf endPage
+    set strom [$pdf get]
+    # Keine gezeichnete Zeichenkette darf in ihrer eigenen Schrift
+    # breiter als 150 pt sein.
+    set zuBreit 0
+    foreach {all fn fs txt} [regexp -all -inline \
+            {/(\S+) ([0-9.]+) Tf[^(]*\(([^)]*)\) Tj} $strom] {
+        $pdf setFont $fs [string map {{#20} { }} $fn]
+        if {[$pdf getStringWidth $txt] > 150.5} { incr zuBreit }
+    }
+    $pdf destroy; destroy $t
+    set zuBreit
+} -result 0
+
+test tw-limit-2 "pdf4tcltext::render gibt es" -constraints {text} -body {
+    # Der Alias am Dateiende macht "namespace import
+    # ::pdf4tcllib::textwidget::render". Bis 0.2 fehlte im
+    # Quellnamensraum das "namespace export" -- ohne Exportmuster
+    # importiert Tcl nichts, und zwar ohne Fehler. Der Alias entstand
+    # einfach nicht.
+    list [expr {[info commands ::pdf4tcltext::render] ne ""}] \
+         [expr {[info commands ::pdf4tcllib::textwidget::render] ne ""}] \
+         [namespace eval ::pdf4tcllib::textwidget {namespace export}]
+} -result {1 1 render}
+
+test tw-limit-3 "eine unter dem Familiennamen geladene Schrift wird benutzt" \
+        -constraints {text pdf tk} -body {
+    # Bis 0.2 kannte _tclFontToPdf nur die 14 Standardschriften. Wer eine
+    # TTF unter dem Tk-Familiennamen lud und im Widget so auszeichnete,
+    # bekam Helvetica -- gerade die Schrift ohne Glyphen jenseits
+    # Latin-1, und ohne ein Wort dazu.
+    set ttf /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+    if {![file exists $ttf]} { return {1 1} }
+    catch {::pdf4tcl::loadBaseTrueTypeFont __twTtf $ttf}
+    catch {::pdf4tcl::createFontSpecCID __twTtf {Pruef Sans}}
+    set t [text .__lim3 -width 60 -height 4]
+    $t tag configure dv -font {{Pruef Sans} 11}
+    $t insert end "Text in einer geladenen Schrift\n" dv
+    update idletasks
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::textwidget::render $pdf $t 40 40 -maxwidth 400 -fontsize 11
+    $pdf endPage
+    set strom [$pdf get]
+    $pdf destroy; destroy $t
+    list [expr {[regexp {/Pruef#20Sans} $strom] ? 1 : 0}] \
+         [expr {[regexp {/Helvetica} $strom] ? 0 : 1}]
+} -result {1 1}
+
+test tw-limit-3a "unbekannte Familien fallen weiter auf die 14 zurueck" \
+        -constraints {text} -body {
+    # Der Rueckfall muss bleiben. Sonst waere nicht unterscheidbar, ob
+    # eine Familie ERKANNT wurde oder nur nichts gefunden wurde.
+    list [::pdf4tcllib::textwidget::_tclFontToPdf GibtEsNichtXYZ 0 0] \
+         [::pdf4tcllib::textwidget::_tclFontToPdf Times 0 0] \
+         [::pdf4tcllib::textwidget::_tclFontToPdf Helvetica 1 0]
+} -result {Helvetica Times-Roman Helvetica-Bold}
+
+test tw-just-1 "justify center und right kommen ins PDF" \
+        -constraints {text pdf tk} -body {
+    # Bis 0.2 war -justify "not implemented": center und right wirkten
+    # im Widget und verschwanden im PDF, ohne ein Wort. Eine Anwendung
+    # bot die Auswahl in ihrer Leiste an und musste sie mit "nur
+    # Ansicht" beschriften -- das war der Anlass.
+    set t [text .__just -width 60 -height 5 -font {Helvetica 11}]
+    $t tag configure mitte  -justify center
+    $t tag configure rechts -justify right
+    $t insert end "links\n" {} "mitte\n" mitte "rechts\n" rechts
+    update idletasks
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::textwidget::render $pdf $t 40 40 -maxwidth 300 -fontsize 11
+    $pdf endPage
+    set strom [$pdf get]
+    $pdf setFont 11 Helvetica
+    array set pos {}
+    foreach {all xx yy txt} [regexp -all -inline \
+            {1 0 0 1 ([0-9.-]+) ([0-9.-]+) Tm[^(]*\(([^)]*)\) Tj} $strom] {
+        set pos($txt) [list $xx [expr {$xx + [$pdf getStringWidth $txt]}]]
+    }
+    $pdf destroy; destroy $t
+    # Rahmen ist x=40 bis 340.
+    lassign $pos(links)  l0 l1
+    lassign $pos(mitte)  m0 m1
+    lassign $pos(rechts) r0 r1
+    list [expr {abs($l0 - 40) < 0.01}] \
+         [expr {abs(($m0 + $m1) / 2.0 - 190.0) < 0.5}] \
+         [expr {abs($r1 - 340) < 0.5}]
+} -result {1 1 1}
+
+test tw-just-2 "eine zu breite Zeile wird nicht verschoben" \
+        -constraints {text pdf tk} -body {
+    # Sonst ruecke die Zeile nach LINKS aus dem Rahmen heraus -- eine
+    # Ausrichtung, die den Text weiter wegtraegt, ist keine.
+    set t [text .__just2 -width 60 -height 3 -font {Helvetica 11}]
+    $t tag configure rechts -justify right
+    $t insert end "Ein einzelnes sehr langes Wort passt hier nicht\n" rechts
+    update idletasks
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::textwidget::render $pdf $t 40 40 -maxwidth 40 -fontsize 11
+    $pdf endPage
+    set strom [$pdf get]
+    $pdf destroy; destroy $t
+    set links {}
+    foreach {all xx} [regexp -all -inline \
+            {1 0 0 1 ([0-9.-]+) [0-9.-]+ Tm} $strom] { lappend links $xx }
+    # keine Zeile links von 40
+    set davor 0
+    foreach v $links { if {$v < 39.99} { incr davor } }
+    list [expr {[llength $links] > 0}] $davor
+} -result {1 0}
+
+test tw-off-1 "-offset hebt und senkt die Grundlinie" \
+        -constraints {text pdf tk} -body {
+    # Bis hierher "not implemented": ein Fussnotenzeichen stand auf der
+    # Grundlinie wie jeder andere Buchstabe. Der Wert ist eine
+    # Pixelangabe des Widgets und wird mit demselben Faktor wie
+    # -lmargin1 in Punkt umgerechnet: 5 px -> 3,75 pt.
+    set t [text .__off -width 60 -height 4 -font {Helvetica 11}]
+    $t tag configure hoch -offset 5  -font {Helvetica 7}
+    $t tag configure tief -offset -4 -font {Helvetica 7}
+    $t insert end "x" {} "H" hoch " " {} "T" tief "\n"
+    update idletasks
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::textwidget::render $pdf $t 40 40 -maxwidth 300 -fontsize 11
+    $pdf endPage
+    set strom [$pdf get]
+    $pdf destroy; destroy $t
+    array set y {}
+    foreach {all xx yy txt} [regexp -all -inline \
+            {1 0 0 1 ([0-9.-]+) ([0-9.-]+) Tm[^(]*\(([^)]*)\) Tj} $strom] {
+        set y($txt) $yy
+    }
+    # PDF-y waechst nach oben: hochgestellt liegt hoeher als die
+    # Grundlinie, tiefgestellt tiefer.
+    list [expr {abs($y(H) - $y(x) - 3.75) < 0.01}] \
+         [expr {abs($y(T) - $y(x) + 3.00) < 0.01}]
+} -result {1 1}
+
+test tw-off-2 "ohne -offset bleibt alles auf einer Grundlinie" \
+        -constraints {text pdf tk} -body {
+    # Die Gegenprobe zur Gegenprobe: ohne das Tag darf sich nichts
+    # verschieben. Sonst misst tw-off-1 nur, dass ueberhaupt etwas
+    # anders ist.
+    set t [text .__off2 -width 60 -height 4 -font {Helvetica 11}]
+    $t tag configure klein -font {Helvetica 7}
+    $t insert end "x" {} "H" klein " " {} "T" klein "\n"
+    update idletasks
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::textwidget::render $pdf $t 40 40 -maxwidth 300 -fontsize 11
+    $pdf endPage
+    set strom [$pdf get]
+    $pdf destroy; destroy $t
+    set ys {}
+    foreach {all xx yy txt} [regexp -all -inline \
+            {1 0 0 1 ([0-9.-]+) ([0-9.-]+) Tm[^(]*\(([^)]*)\) Tj} $strom] {
+        lappend ys $yy
+    }
+    llength [lsort -unique $ys]
 } -result 1
 
 cleanupTests

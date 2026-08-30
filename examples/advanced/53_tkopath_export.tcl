@@ -176,9 +176,9 @@ foreach {cx col} {70 "#cc0000" 160 "#0055aa" 115 "#006600"} {
         -stroke $col -strokewidth 0.5
 }
 
-# window item -- wird im PDF still übersprungen
+# a window item -- silently skipped in the PDF
 .p2 create text 10 310 \
-    -text "window item -- im PDF still übersprungen (kein Crash seit 0.9.4.24)" \
+    -text "window item -- silently skipped in the PDF (no crash since 0.9.4.24)" \
     -fontfamily Helvetica -fontsize 9 -fontweight bold -textanchor start
 .p2 create rect 10 325 200 370 \
     -fill "#b3d1f0" -stroke "#0055aa" -strokewidth 2

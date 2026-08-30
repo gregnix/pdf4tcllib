@@ -15,8 +15,8 @@
 #     tclsh 18_address_labels.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 18  (ohne führende 0)
-#   FALSCH:  set demo_num 018 (Oktal-Fehler!)
+#   RIGHT: set demo_num 18  (no leading zero)
+#   WRONG: set demo_num 018 (octal!)
 # ============================================================================
 # What this shows:
 #   - Standard-Etikettenformate umsetzen
@@ -56,7 +56,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 18
 set demo_name "address_labels"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -200,14 +200,14 @@ package require pdf4tcl]"
     set sender {"Musterfirma GmbH" "Hauptstr. 1" "12345 Musterstadt"}
     
     set addresses {
-        {{"Max Mustermann"} {"Musterstraße 123"} {"12345 Berlin"}}
-        {{"Erika Musterfrau"} {"Beispielweg 45"} {"67890 Hamburg"}}
-        {{"Dr. Hans Schmidt"} {"Testgasse 7"} {"54321 München"}}
-        {{"Anna Müller"} {"Demostraße 99"} {"98765 Köln"}}
-        {{"Thomas Weber"} {"Hauptallee 3"} {"11111 Frankfurt"}}
-        {{"Lisa Fischer"} {"Nebenweg 22"} {"22222 Stuttgart"}}
-        {{"Michael Klein"} {"Seitenstraße 8"} {"33333 Düsseldorf"}}
-        {{"Sandra Groß"} {"Querweg 15"} {"44444 Dortmund"}}
+        {{"Max Mustermann"} {"Musterstraße 123"} {"12345 Musterhausen"}}
+        {{"Erika Musterfrau"} {"Beispielweg 45"} {"67890 Beispielstadt"}}
+        {{"Dr. Hans Schmidt"} {"Testgasse 7"} {"54321 Testheim"}}
+        {{"Anna Müller"} {"Demostraße 99"} {"98765 Demoburg"}}
+        {{"Thomas Weber"} {"Hauptallee 3"} {"11111 Probeort"}}
+        {{"Lisa Fischer"} {"Nebenweg 22"} {"22222 Musterdorf"}}
+        {{"Michael Klein"} {"Seitenstraße 8"} {"33333 Beispielheim"}}
+        {{"Sandra Groß"} {"Querweg 15"} {"44444 Versandstadt"}}
     }
     
     # ========================================================================

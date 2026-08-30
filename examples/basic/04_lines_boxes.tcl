@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 04: Linien und Rahmen
+# Demo 04: Lines and boxes
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -17,14 +17,14 @@
 # What this shows:
 #   - Linien zeichnen (horizontal, vertikal, diagonal)
 #   - Rechtecke zeichnen
-#   - Gefüllte Formen erstellen
-#   - Linienstärken variieren
+#   - filled shapes
+#   - different line widths
 #
 # Features:
 #   - Verschiedene Linienarten
-#   - Rahmen mit und ohne Füllung
-#   - Unterschiedliche Linienstärken
-#   - Farbige Füllungen
+#   - boxes with and without a fill
+#   - line widths side by side
+#   - coloured fills
 #
 # Encoding test: äöüÄÖÜß€
 # ============================================================================
@@ -91,7 +91,7 @@ package require pdf4tcl]"
         -orient [dict get $ctx orient] \
         -unit p]
     
-    # -orient true:  Y=0 ist OBEN, Y wächst nach UNTEN
+    # -orient true: Y=0 is at the TOP, Y grows DOWNWARDS
     # -unit p:       Alle Koordinaten in Points (1/72 inch)
     
     puts "  PDF object created"
@@ -114,37 +114,37 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 04: Linien und Rahmen" -x $sx -y $sy
+    $pdf text "Demo 04: Lines and boxes" -x $sx -y $sy
     
     # --- Einfache Linien ---
     set y [expr {$sy + 40}]
     
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "1. Einfache Linien:" -x $sx -y $y
+    $pdf text "1. Plain lines:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 10 Helvetica
-    $pdf text "Horizontale Linie (1pt Stärke):" -x $sx -y $y
+    $pdf text "Horizontal line (1pt):" -x $sx -y $y
     
     set y [expr {$y + 15}]
     $pdf setLineWidth 1
     $pdf line $sx $y [expr {$sx + 200}] $y
     
     set y [expr {$y + 30}]
-    $pdf text "Vertikale Linie:" -x $sx -y $y
+    $pdf text "Vertical line:" -x $sx -y $y
     set line_x [expr {$sx + 100}]
     $pdf line $line_x [expr {$y + 10}] $line_x [expr {$y + 60}]
     
     set y [expr {$y + 80}]
-    $pdf text "Diagonale Linie:" -x $sx -y $y
+    $pdf text "Diagonal line:" -x $sx -y $y
     set y [expr {$y + 10}]
     $pdf line $sx $y [expr {$sx + 80}] [expr {$y + 40}]
     
-    # --- Verschiedene Linienstärken ---
+    # --- line widths ---
     set y [expr {$y + 70}]
     
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "2. Verschiedene Linienstärken:" -x $sx -y $y
+    $pdf text "2. Line widths:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 10 Helvetica
@@ -161,32 +161,32 @@ package require pdf4tcl]"
     set y [expr {$y + 30}]
     
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "3. Rechtecke:" -x $sx -y $y
+    $pdf text "3. Rectangles:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 10 Helvetica
     
     # Rechteck nur Rahmen
-    $pdf text "Nur Rahmen (1pt):" -x $sx -y $y
+    $pdf text "Outline only (1pt):" -x $sx -y $y
     set box_y [expr {$y + 15}]
     $pdf setLineWidth 1
     $pdf rectangle $sx $box_y 100 50
     
-    # Rechteck gefüllt (hellgrau)
-    $pdf text "Gefüllt (hellgrau):" -x [expr {$sx + 120}] -y $y
+    # filled rectangle, light grey
+    $pdf text "Filled (light grey):" -x [expr {$sx + 120}] -y $y
     $pdf setFillColor 0.9 0.9 0.9  ;# Hellgrau
     $pdf rectangle [expr {$sx + 120}] $box_y 100 50 -filled 1
-    $pdf setFillColor 0.0 0.0 0.0  ;# Zurück zu Schwarz
+    $pdf setFillColor 0.0 0.0 0.0  ;# back to black
     
-    # Rechteck mit Rahmen und Füllung
-    $pdf text "Rahmen + Füllung:" -x [expr {$sx + 240}] -y $y
+    # rectangle with an outline and a fill
+    $pdf text "Outline and fill:" -x [expr {$sx + 240}] -y $y
     $pdf setFillColor 0.8 0.9 1.0  ;# Hellblau
     $pdf rectangle [expr {$sx + 240}] $box_y 100 50 -filled 1
     $pdf setFillColor 0.0 0.0 0.0
     $pdf setLineWidth 2
     $pdf setStrokeColor 0.0 0.0 1.0  ;# Blauer Rahmen
     $pdf rectangle [expr {$sx + 240}] $box_y 100 50
-    $pdf setStrokeColor 0.0 0.0 0.0  ;# Zurück zu Schwarz
+    $pdf setStrokeColor 0.0 0.0 0.0  ;# back to black
     
     set y [expr {$box_y + 80}]
     
@@ -201,21 +201,21 @@ package require pdf4tcl]"
     $pdf rectangle $sx $y 60 40 -filled 1
     $pdf setFillColor 1.0 0.0 0.0  ;# Rot
     $pdf setFont 10 Helvetica-Bold
-    $pdf text "Rot" -x [expr {$sx + 15}] -y [expr {$y + 17}]
+    $pdf text "Red" -x [expr {$sx + 15}] -y [expr {$y + 17}]
     
-    # Grüne Box
-    $pdf setFillColor 0.8 1.0 0.8  ;# Hellgrün
+    # green box
+    $pdf setFillColor 0.8 1.0 0.8  ;# light green
     $pdf rectangle [expr {$sx + 80}] $y 60 40 -filled 1
-    $pdf setFillColor 0.0 0.7 0.0  ;# Grün
-    $pdf text "Grün" -x [expr {$sx + 90}] -y [expr {$y + 17}]
+    $pdf setFillColor 0.0 0.7 0.0  ;# green
+    $pdf text "Green" -x [expr {$sx + 90}] -y [expr {$y + 17}]
     
     # Blaue Box
     $pdf setFillColor 0.8 0.8 1.0  ;# Hellblau
     $pdf rectangle [expr {$sx + 160}] $y 60 40 -filled 1
     $pdf setFillColor 0.0 0.0 1.0  ;# Blau
-    $pdf text "Blau" -x [expr {$sx + 168}] -y [expr {$y + 17}]
+    $pdf text "Blue" -x [expr {$sx + 168}] -y [expr {$y + 17}]
     
-    $pdf setFillColor 0.0 0.0 0.0  ;# Zurück zu Schwarz
+    $pdf setFillColor 0.0 0.0 0.0  ;# back to black
     
     # --- PFLICHT: Encoding-Test ---
     set y [expr {$y + 70}]
@@ -225,7 +225,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 25}]
     $pdf setFont 11 Helvetica
-    $pdf text "Deutsche Umlaute: äöüÄÖÜß" -x $sx -y $y
+    $pdf text "German umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df" -x $sx -y $y
     
     set y [expr {$y + 20}]
     $pdf text "Sonderzeichen: €£¥©®™" -x $sx -y $y
@@ -238,7 +238,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 25}]
     
-    # Äußerer Rahmen (dick, blau)
+    # outer frame, thick, blue
     #
     # Der Kasten stand fest am aufgelaufenen y und ragte damit unter den
     # Blattrand -- gemessen von y=-31 bis 49. Passt er nicht mehr, wird
@@ -267,9 +267,9 @@ package require pdf4tcl]"
     
     $pdf setFont 10 Helvetica
     $pdf text "Diese Box kombiniert Rahmen, Hintergrund und Text." -x [expr {$box_x + 15}] -y [expr {$box_y + 40}]
-    $pdf text "Umlaute funktionieren auch: äöüÄÖÜß €" -x [expr {$box_x + 15}] -y [expr {$box_y + 55}]
+    $pdf text "Umlauts work too: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x [expr {$box_x + 15}] -y [expr {$box_y + 55}]
     
-    # Farben zurücksetzen
+    # reset the colours
     $pdf setFillColor 0.0 0.0 0.0
     $pdf setStrokeColor 0.0 0.0 0.0
     $pdf setLineWidth 1

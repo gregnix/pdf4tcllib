@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 02: Mehrere Seiten mit Navigation
+# Demo 02: Several pages mit Navigation
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -17,13 +17,13 @@
 # What this shows:
 #   - Mehrere Seiten in einem PDF erstellen
 #   - Seitenzahlen auf jeder Seite
-#   - Inhaltsverzeichnis erstellen
+#   - a table of contents erstellen
 #   - Verschiedene Layouts pro Seite
 #
 # Features:
 #   - 5 Seiten mit unterschiedlichem Inhalt
-#   - Automatische Seitenzählung
-#   - Inhaltsverzeichnis auf Seite 1
+#   - automatic page numbering
+#   - a table of contents auf Seite 1
 #   - Encoding-Test auf mehreren Seiten
 #
 # Encoding test: äöüÄÖÜß€
@@ -91,7 +91,7 @@ package require pdf4tcl]"
         -orient [dict get $ctx orient] \
         -unit p]
     
-    # -orient true:  Y=0 ist OBEN, Y wächst nach UNTEN
+    # -orient true: Y=0 is at the TOP, Y grows DOWNWARDS
     # -unit p:       Alle Koordinaten in Points (1/72 inch)
     
     puts "  PDF object created"
@@ -113,32 +113,32 @@ package require pdf4tcl]"
     puts "  Creating Page 1/5: Title & Table of Contents"
     $pdf startPage
     
-    # --- Großer Titel ---
+    # --- the big title ---
     $pdf setFont 24 Helvetica-Bold
-    $pdf text "Demo 02: Mehrere Seiten" -x $sx -y $sy
+    $pdf text "Demo 02: Several pages" -x $sx -y $sy
     
     # --- Untertitel ---
     set y [expr {$sy + 40}]
     $pdf setFont 14 Helvetica
-    $pdf text "Dokument mit Navigation und Seitenzahlen" -x $sx -y $y
+    $pdf text "A document with navigation and page numbers" -x $sx -y $y
     
     # --- Inhaltsverzeichnis ---
     set y [expr {$y + 60}]
     $pdf setFont 16 Helvetica-Bold
-    $pdf text "Inhaltsverzeichnis:" -x $sx -y $y
+    $pdf text "Contents:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
     
-    $pdf text "Seite 1: Titelseite und Inhaltsverzeichnis" -x $sx -y $y
+    $pdf text "Page 1: title page and contents" -x $sx -y $y
     set y [expr {$y + 20}]
-    $pdf text "Seite 2: Textseite mit Encoding-Test" -x $sx -y $y
+    $pdf text "Page 2: text with an encoding test" -x $sx -y $y
     set y [expr {$y + 20}]
-    $pdf text "Seite 3: Aufzählungen und Listen" -x $sx -y $y
+    $pdf text "Page 3: bullets and lists" -x $sx -y $y
     set y [expr {$y + 20}]
-    $pdf text "Seite 4: Verschiedene Schriftgrößen" -x $sx -y $y
+    $pdf text "Page 4: different type sizes" -x $sx -y $y
     set y [expr {$y + 20}]
-    $pdf text "Seite 5: Zusammenfassung" -x $sx -y $y
+    $pdf text "Page 5: summary" -x $sx -y $y
     
     # --- Info-Box ---
     set y [expr {$y + 60}]
@@ -158,17 +158,17 @@ package require pdf4tcl]"
     set text_y [expr {$box_y + 25}]
     
     $pdf setFont 11 Helvetica-Bold
-    $pdf text "Dieses Dokument demonstriert:" -x $text_x -y $text_y
+    $pdf text "What this document shows:" -x $text_x -y $text_y
     
     set text_y [expr {$text_y + 20}]
     $pdf setFont 10 Helvetica
-    $pdf text "• Mehrere Seiten in einem PDF" -x $text_x -y $text_y
+    $pdf text "\u2022 several pages in one PDF" -x $text_x -y $text_y
     
     set text_y [expr {$text_y + 18}]
-    $pdf text "• Seitenzahlen auf jeder Seite" -x $text_x -y $text_y
+    $pdf text "\u2022 a page number on every page" -x $text_x -y $text_y
     
     set text_y [expr {$text_y + 18}]
-    $pdf text "• UTF-8 Encoding (äöüÄÖÜß€)" -x $text_x -y $text_y
+    $pdf text "• UTF-8 encoding (\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df\u20ac)" -x $text_x -y $text_y
     
     # --- Seitenzahl ---
     pdf4tcllib::page::number $pdf $ctx 1 $total_pages
@@ -187,12 +187,12 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Seite 2: Textinhalt" -x $sx -y $sy
+    $pdf text "Page 2: text" -x $sx -y $sy
     
     # --- Text ---
     set y [expr {$sy + 40}]
     $pdf setFont 12 Helvetica
-    $pdf text "Dies ist Seite 2 des Dokuments." -x $sx -y $y
+    $pdf text "This is page 2 of the document." -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf text "Hier demonstrieren wir verschiedene Textformatierungen" -x $sx -y $y
@@ -202,25 +202,25 @@ package require pdf4tcl]"
     # --- PFLICHT: Encoding-Test ---
     set y [expr {$y + 40}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "UTF-8 Encoding-Test:" -x $sx -y $y
+    $pdf text "UTF-8 Encoding test:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
-    $pdf text "Deutsche Umlaute: äöüÄÖÜß" -x $sx -y $y
+    $pdf text "German umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df" -x $sx -y $y
     
     set y [expr {$y + 25}]
-    $pdf text "Sonderzeichen: €£¥©®™" -x $sx -y $y
+    $pdf text "Symbols: \u20ac\u00a3\u00a5\u00a9\u00ae\u2122" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf text "Akzente: àèìòù ÀÈÌÒÙ" -x $sx -y $y
     
     set y [expr {$y + 25}]
-    $pdf text "Französisch: Ça va? Très bien!" -x $sx -y $y
+    $pdf text "French: \u00c7a va? Tr\u00e8s bien!" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf text "Spanisch: ¿Cómo estás? ¡Bien!" -x $sx -y $y
     
-    # --- Zusätzlicher Text ---
+    # --- more text ---
     set y [expr {$y + 50}]
     $pdf setFont 10 Helvetica-Oblique
     $pdf text "Alle Zeichen werden korrekt im PDF dargestellt," -x $sx -y $y
@@ -236,7 +236,7 @@ package require pdf4tcl]"
     $pdf endPage
     
     # ========================================================================
-    # PAGE 3: Aufzählungen
+    # PAGE 3: bullets
     # ========================================================================
     
     puts "  Creating Page 3/5: Lists"
@@ -244,7 +244,7 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Seite 3: Aufzählungen" -x $sx -y $sy
+    $pdf text "Page 3: bullets" -x $sx -y $sy
     
     # --- Liste 1 ---
     set y [expr {$sy + 50}]
@@ -257,9 +257,9 @@ package require pdf4tcl]"
     set items {
         "Erster Punkt - Grundlagen"
         "Zweiter Punkt - Fortgeschritten"
-        "Dritter Punkt mit Umlauten: äöüÄÖÜß"
+        "Third item with umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df"
         "Vierter Punkt mit Sonderzeichen: €©®"
-        "Fünfter Punkt - Abschluss"
+        "Fifth item -- the end"
     }
     
     foreach item $items {
@@ -277,9 +277,9 @@ package require pdf4tcl]"
     
     set numbered_items {
         "Installation vorbereiten"
-        "Abhängigkeiten prüfen"
+        "Check dependencies"
         "Konfiguration anpassen"
-        "Tests durchführen"
+        "Run the tests"
         "Dokumentation lesen"
     }
     
@@ -299,7 +299,7 @@ package require pdf4tcl]"
     $pdf endPage
     
     # ========================================================================
-    # PAGE 4: Verschiedene Schriftgrößen
+    # PAGE 4: type sizes
     # ========================================================================
     
     puts "  Creating Page 4/5: Font Sizes"
@@ -307,23 +307,23 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Seite 4: Verschiedene Schriftgrößen" -x $sx -y $sy
+    $pdf text "Page 4: different type sizes" -x $sx -y $sy
     
-    # --- Verschiedene Größen demonstrieren ---
+    # --- sizes side by side ---
     set y [expr {$sy + 50}]
     
     set font_sizes {8 10 12 14 16 18 20 24 28 32}
     
     foreach size $font_sizes {
         $pdf setFont $size Helvetica
-        $pdf text "Schriftgröße ${size}pt: Dies ist ein Beispieltext" -x $sx -y $y
+        $pdf text "Size ${size}pt: this is a sample line" -x $sx -y $y
         set y [expr {$y + $size + 8}]
     }
     
-    # --- Zusätzliche Info ---
+    # --- more information ---
     set y [expr {$y + 20}]
     $pdf setFont 10 Helvetica-Oblique
-    $pdf text "Standard-Schriftgrößen reichen von 8pt bis 72pt." -x $sx -y $y
+    $pdf text "Common type sizes run from 8pt to 72pt." -x $sx -y $y
     
     # --- Seitenzahl ---
     pdf4tcllib::page::number $pdf $ctx 4 $total_pages
@@ -354,12 +354,12 @@ package require pdf4tcl]"
     
     set summary_items {
         "\[X\] Erstellung mehrerer Seiten"
-        "\[X\] Automatische Seitenzählung"
+        "\[X\] automatic page numbering"
         "\[X\] Inhaltsverzeichnis"
-        "\[X\] UTF-8 Encoding (äöüÄÖÜß€)"
+        "\[X\] UTF-8 encoding (\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df\u20ac)"
         "\[X\] Verschiedene Layouts"
-        "\[X\] Listen und Aufzählungen"
-        "\[X\] Verschiedene Schriftgrößen"
+        "\[X\] lists and bullets"
+        "\[X\] different type sizes"
     }
     
     foreach item $summary_items {
@@ -370,7 +370,7 @@ package require pdf4tcl]"
     # --- Schluss-Box ---
     set y [expr {$y + 40}]
     
-    # Großer Rahmen mit Hintergrund
+    # a large framed box with a background
     set box_x $sx
     set box_y $y
     set box_w $sw

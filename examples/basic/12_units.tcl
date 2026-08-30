@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 12: Einheiten-Umrechnung
+# Demo 12: Converting units
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,19 +15,19 @@
 #     tclsh 12_units.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 12  (ohne führende 0)
-#   FALSCH:  set demo_num 012 (Oktal-Fehler!)
+#   RIGHT: set demo_num 12  (no leading zero)
+#   WRONG: set demo_num 012 (octal!)
 # ============================================================================
 # What this shows:
 #   - Einheiten-Umrechnung verstehen (mm, cm, inch -> points)
-#   - Helper-Funktionen für Umrechnung nutzen
+#   - use the helper procedures for conversion
 #   - DIN-Formate kennenlernen (A4, A5, A6)
 #   - Standard-Formate (Letter, Legal)
 #
 # Features:
 #   - Umrechnungstabelle mit Formeln
 #   - DIN-Formate Übersicht
-#   - Code-Beispiele für Helper-Funktionen
+#   - example code for the helper procedures
 #   - Praktische Referenz
 #
 # Encoding test: äöüÄÖÜß€
@@ -56,7 +56,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 12
 set demo_name "units"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -116,16 +116,16 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 12: Einheiten-Umrechnung" -x $sx -y $sy
+    $pdf text "Demo 12: Converting units" -x $sx -y $sy
     
     # --- Intro ---
     set y [expr {$sy + 35}]
     $pdf setFont 10 Helvetica
-    $pdf text "PDF verwendet Points (pt) als Basis-Einheit. 1 Point = 1/72 Inch" -x $sx -y $y
+    $pdf text "PDF measures in points. One point is 1/72 inch." -x $sx -y $y
     
     # --- Encoding-Test ---
     set y [expr {$y + 20}]
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # ========================================================================
     # Section 1: Umrechnungs-Formeln
@@ -133,7 +133,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 40}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "1. Umrechnungs-Formeln" -x $sx -y $y
+    $pdf text "1. Conversion formulas" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 10 Courier
@@ -155,7 +155,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 20}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "2. Umrechnungs-Tabelle" -x $sx -y $y
+    $pdf text "2. Conversion table" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
@@ -185,7 +185,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + [expr {[llength $table_data] * 22}] + 30}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "3. Standard-Papierformate" -x $sx -y $y
+    $pdf text "3. Common paper sizes" -x $sx -y $y
     
     set y [expr {$y + 25}]
     
@@ -209,12 +209,12 @@ package require pdf4tcl]"
         -font_size 10
     
     # ========================================================================
-    # Section 4: Code-Beispiele
+    # Section 4: Example codee
     # ========================================================================
     
     set y [expr {$y + [expr {[llength $format_data] * 22}] + 30}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "4. Helper-Funktionen (Code-Beispiele)" -x $sx -y $y
+    $pdf text "4. Helper-Funktionen (Example codee)" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 9 Courier

@@ -17,12 +17,12 @@
 # What this shows:
 #   - Header auf jeder Seite
 #   - Footer mit Seitenzahl
-#   - Konsistente Kopf- und Fußzeilen
+#   - consistent headers and footers
 #   - Mehrere Seiten verwalten
 #
 # Features:
 #   - 3 Seiten mit Header/Footer
-#   - Automatische Seitenzählung
+#   - automatic page numbering
 #   - Datum im Footer
 #   - Trennlinien
 #
@@ -72,7 +72,7 @@ proc add_custom_header {pdf ctx page_num title} {
     
     # Seitenzahl rechts
     $pdf setFont 10 Helvetica
-    $pdf text "Seite $page_num" -x [expr {$pw - $margin}] -y [expr {$margin - 10}] -align right
+    $pdf text "Page $page_num" -x [expr {$pw - $margin}] -y [expr {$margin - 10}] -align right
     
     # Linie unter Header
     $pdf setLineWidth 0.5
@@ -87,7 +87,7 @@ proc add_custom_footer {pdf ctx page_num total_pages} {
     
     set footer_y [expr {$ph - $margin + 15}]
     
-    # Linie über Footer
+    # rule above the footer
     $pdf setLineWidth 0.5
     $pdf line $margin [expr {$footer_y - 15}] [expr {$pw - $margin}] [expr {$footer_y - 15}]
     
@@ -99,14 +99,14 @@ proc add_custom_footer {pdf ctx page_num total_pages} {
     $pdf text "pdf4tcl Demo Suite" -x $margin -y $footer_y
     
     # Mitte: Seitenzahl
-    set page_text "Seite $page_num von $total_pages"
+    set page_text "Page $page_num von $total_pages"
     $pdf text $page_text -x [expr {$pw / 2}] -y $footer_y -align center
     
     # Rechts: Datum
     set date_text [clock format [clock seconds] -format "%Y-%m-%d"]
     $pdf text $date_text -x [expr {$pw - $margin}] -y $footer_y -align right
     
-    # Farbe zurücksetzen
+    # reset the colour
     $pdf setFillColor 0.0 0.0 0.0
 }
 
@@ -145,7 +145,7 @@ package require pdf4tcl]"
         -orient [dict get $ctx orient] \
         -unit p]
     
-    # -orient true:  Y=0 ist OBEN, Y wächst nach UNTEN
+    # -orient true: Y=0 is at the TOP, Y grows DOWNWARDS
     # -unit p:       Alle Koordinaten in Points (1/72 inch)
     
     puts "  PDF object created"
@@ -174,14 +174,14 @@ package require pdf4tcl]"
     set y [expr {$sy + 40}]
     
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Seite 1" -x $sx -y $y
+    $pdf text "Page 1" -x $sx -y $y
     
     set y [expr {$y + 35}]
     $pdf setFont 12 Helvetica
-    $pdf text "Dies ist die erste Seite des Dokuments." -x $sx -y $y
+    $pdf text "This is the first page of the document." -x $sx -y $y
     
     set y [expr {$y + 25}]
-    $pdf text "Jede Seite hat einen Header und Footer:" -x $sx -y $y
+    $pdf text "Every page has a header and a footer:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 11 Helvetica
@@ -190,7 +190,7 @@ package require pdf4tcl]"
         "* Header: Titel links, Seitenzahl rechts"
         "* Trennlinie unter Header"
         "* Footer: Demo-Info links, Seitenzahl mittig, Datum rechts"
-        "* Trennlinie über Footer"
+        "* a rule above the footer"
     }
     
     foreach feature $features {
@@ -201,14 +201,14 @@ package require pdf4tcl]"
     # Encoding-Test auf Seite 1
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "Encoding-Test:" -x $sx -y $y
+    $pdf text "Encoding test:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 11 Helvetica
-    $pdf text "Deutsche Umlaute: äöüÄÖÜß" -x $sx -y $y
+    $pdf text "German umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df" -x $sx -y $y
     
     set y [expr {$y + 20}]
-    $pdf text "Sonderzeichen: €£¥©®™" -x $sx -y $y
+    $pdf text "Symbols: \u20ac\u00a3\u00a5\u00a9\u00ae\u2122" -x $sx -y $y
     
     pdf4tcllib::page::orientationLegend $pdf $ctx
     
@@ -225,15 +225,15 @@ package require pdf4tcl]"
     set y [expr {$sy + 40}]
     
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Seite 2" -x $sx -y $y
+    $pdf text "Page 2" -x $sx -y $y
     
     set y [expr {$y + 35}]
     $pdf setFont 12 Helvetica
-    $pdf text "Dies ist die zweite Seite." -x $sx -y $y
+    $pdf text "This is the second page." -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "Header und Footer werden automatisch hinzugefügt:" -x $sx -y $y
+    $pdf text "Header and footer are added automatically:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 11 Helvetica
@@ -252,7 +252,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "Vorteile:" -x $sx -y $y
+    $pdf text "Why:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 11 Helvetica
@@ -284,11 +284,11 @@ package require pdf4tcl]"
     set y [expr {$sy + 40}]
     
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Seite 3" -x $sx -y $y
+    $pdf text "Page 3" -x $sx -y $y
     
     set y [expr {$y + 35}]
     $pdf setFont 12 Helvetica
-    $pdf text "Dies ist die letzte Seite." -x $sx -y $y
+    $pdf text "This is the last page." -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 14 Helvetica-Bold
@@ -298,16 +298,16 @@ package require pdf4tcl]"
     $pdf setFont 11 Helvetica
     
     set summary {
-        "Demo 09 zeigt Header und Footer über mehrere Seiten."
+        "Demo 09 shows a header and footer across several pages."
         ""
         "Implementierung:"
-        "- Helper-Funktionen für Header/Footer"
+        "- helper procedures for header and footer"
         "- Konsistente Formatierung"
-        "- Automatische Seitenzählung"
+        "- automatic page numbering"
         "- Dynamisches Datum"
         ""
-        "Diese Technik kann für alle mehrseitigen Dokumente"
-        "verwendet werden (Berichte, Handbücher, etc.)."
+        "The same approach works for any multi-page document"
+        "-- reports, manuals and so on."
     }
     
     foreach line $summary {

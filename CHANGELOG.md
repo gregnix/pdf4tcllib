@@ -5,7 +5,258 @@ and module headers.
 
 ---
 
-## Unreleased -- features
+## pdf4tcllib 0.6.4
+
+### Added -- test_consistency.tcl, procedures that must agree
+
+Five pairs answer the same question by different routes:
+
+| | |
+|---|---|
+| `text::width` | `$pdf getStringWidth` |
+| `measure::block` | the real drawing run |
+| `table::fitRows` | where `table::draw` really breaks |
+| `table::widths` | the width `draw` really needs |
+| `text::wrap` | `drawTextBox` |
+
+All five agree today. That is not self-evident, it is the state this file
+holds: change one route and not the other, and it turns red here rather
+than on paper.
+
+The same shape as `consistency.test` in pdf4tcl, and for the same reason:
+U+00AD was handled three different ways in one library on one day, each
+correct on its own and each with passing tests. What nobody tested was
+that they agree with each other.
+
+**Counter-checked one pair at a time** -- `text::width` ignoring the pdf
+object, `fitRows` miscounting the header, `measure::block` reporting 5 pt
+short, `wrap` no longer breaking at a hyphen, `widths` reporting too
+little. Each turns its own test red, `wrap` turns two.
+
+Two of those counter-checks did **not** bite at first: the patch missed
+the code and the run stayed green. A counter-check that does not bite is
+itself unchecked -- it reports quiet where there is none. Which
+intervention fells which test is therefore written into the file header.
+
+### Fixed -- unicode::safeText left a hole in the structure tree
+
+Measured: one call, `getUntaggedCount` 1. `safeText` is a public drawing
+procedure and drew an untagged operation -- the same class as the form
+labels, the text widget export and the arrows, all closed earlier in this
+session.
+
+**Found by a demo that checks itself** (`70_session.tcl`), not by the
+suite.
+
+It tags only when nothing else is open, because otherwise a `Span` would
+nest inside a `P` as soon as a caller -- `table::draw`, `forms::` or
+`math::_pdfBackend` -- had already tagged. `tag::depth` was added for
+that question: how deep is this document currently in open elements. A
+building block that draws by itself cannot otherwise know whether its
+caller has tagged it, and has to choose between a hole and a nested
+element.
+
+### Added -- 70_session.tcl, a demo that checks its own claims
+
+Seven pages on what this session changed, each stating the measurement
+that found it. Every claim that can be checked is checked while the file
+is produced; the run fails when one stops being true. It found the
+`safeText` hole on its first run, in its own output.
+
+### Added -- labels::render -clip, so nothing leaves the label
+
+    pdf4tcllib::labels::render $pdf 3474 $records {x y w h rec} {
+        $pdf text $rec -x [expr {$x + 4}] -y [expr {$y + 14}]
+    } -clip 1
+
+A name wider than the label ran onto the one beside it. Measured on the
+rendered page, format 3474 (198.4 pt wide) with 60 characters at 11pt:
+ink out to **363.6 pt** without, to **198.0 pt** with -- at the edge. On
+screen this is invisible; on a sheet of labels it costs the batch.
+
+`fitSize`, `wrap` and `ellipsize` are the better answer, because they
+keep the text readable instead of cutting it mid-word. But they only help
+whoever remembers them.
+
+The path is opened with `gsave` and closed with `grestore` around each
+label, so it applies to that one label. **The default is off**: a clip
+nobody asked for would be a silent change of behaviour for every existing
+call.
+
+    pdf4tcllabels   0.1.1 -> 0.2
+
+### Added -- tablelist::report, for what the export cannot carry over
+
+    pdf4tcllib::tablelist::render $pdf .tbl 50 70 -maxwidth 480
+    pdf4tcllib::tablelist::report
+    # -> images 1 windows 1 wrapped 1 cells {0,0 1,0 1,2}
+
+The point of this exporter is that what is on the screen goes into the
+PDF. Three things it cannot do, and they used to disappear without a
+word: a cell image, an embedded window, and a wrapped column --
+`table::draw` does not wrap, so a cell the widget shows over three lines
+becomes one, shortened with `...`. Measured with an 82-character text in
+a wrapped column: the widget shows all of it, the PDF ends after 41
+characters.
+
+The report covers the **last** run rather than accumulating, or it would
+sum over several tables and no one would know which is meant. A one-line
+warning also goes to `::pdf4tcl::warnings`.
+
+A wrapped column alone is not a loss -- a short value fits on one line
+there too. Only a value longer than the column counts, estimated from the
+character count, since the exact width is not known until `table::draw`
+runs.
+
+    pdf4tcltable   0.3.1 -> 0.3.2
+
+### Fixed -- geometry-check now follows transformations, and found two defects
+
+The check read path coordinates raw. Every canvas export therefore
+reported findings, and all six in `examples/advanced` were written off as
+false alarms because the drawing is placed with a `cm`. Six of those at
+every run is worse than no check: one gets used to them.
+
+It now keeps the current transformation matrix, following `q`, `Q` and
+`cm`, and transforms each point before comparing. Four of the six really
+were false alarms. The other two were defects nobody had looked at:
+
+- **`55_canvas_items_matrix`** -- the table was 560 pt wide starting at
+  x=42.5, so it ended at 602.5 on a 595 pt page. `pdftotext` saw nothing:
+  the text stopped at 597.4, it was the rules that ran off.
+- **`51_canvas_pdf_vs_ps`** -- page 2 stepped `y` the wrong way under
+  `-orient true`, so the text ran off the top edge. Measured: the heading
+  2 pt above the sheet, the embedded canvas 179 pt above it. Same shape
+  as the sign error in demo 11 this morning.
+
+**Reading tokens, not lines.** `demo_50` contains
+`q 0.1 0 0 0.1 0 0 cm` -- two operators on one line. The line-based
+parser missed both, dropped the 0.1 scale, and reported 93 findings that
+were none. That one nearly went down as "canvas export, known false
+alarm" as well.
+
+`make geometry` now requires both directories to be clean; the `-` in
+front of the advanced run is gone.
+
+### Fixed -- missing characters were replaced in silence
+
+    pdf4tcllib::unicode::resetSubst
+    ... draw ...
+    pdf4tcllib::unicode::substReport     ;# count 3 chars {U+03B1 U+03B2 U+2211}
+
+`sanitize` replaces a character the font does not have with `?`. That
+happened silently: neither the return value nor a counter said anything.
+Measured on `math::renderLatex`, `\alpha \sum` without
+`fonts::init -cid 1` produced six question marks in the content stream --
+and the only sign was a stderr line nobody reads in a batch run.
+
+This is the same shape as the other findings of this session -- an empty
+page from a font name with a space, `-formatted` doing nothing, five
+demos off the sheet: something goes wrong and nothing says so. It sits at
+the point every piece of text passes through, which is why it went
+first.
+
+`substCount`, `substReport` and `resetSubst` work like `getSubstCount` in
+pdf4tcl: cumulative, queryable, resettable. The report names up to twelve
+distinct code points, because a number alone does not tell you which font
+to load. A one-time warning goes to stderr as well.
+
+**Not counted** are substitutions that are intended and lose nothing: the
+emoji transliteration and the box-drawing characters in base mode.
+Counted is where a character disappears. Latin-1 passes through, so
+German text raises no false alarm.
+
+`math::_pdfBackend` now draws through `safeText` rather than `$pdf text`.
+A formula is mostly characters a standard font does not have; that was
+the one place where the silence was guaranteed.
+
+    pdf4tcllib     0.6.3 -> 0.6.4
+
+### Fixed -- measure::fits said yes for a block that fitted nowhere
+
+`measure::block` now reports `overflow` and `sheet`; `fits` reads the
+first and answers no.
+
+The page count rises only when a block breaks pages BY ITSELF. A block
+that does not -- `text::writeParagraph`, for one -- runs off the bottom
+instead, and `pages` stays 1. Measured: a paragraph repeated thirty
+times on A4 gives height 1207 against a sheet of 841.89, seventy-one
+lines of text, the last at y = -7.3, below the sheet. The measurement
+and the real run agreed with each other, and both were wrong -- which is
+why no consistency pair could find it, and why kon-7.1 to 7.3 stated it
+as plain fact instead.
+
+Neither checker sees it either: geometry-check does not look at text,
+layout-check reads through pdftotext, and pdftotext drops what lies
+beside the sheet (359 of 360 words).
+
+kon-7.2 asserted the old answer and has been turned round; kon-7.4 is
+the counter-check that a block which does fit still fits, and kon-7.5
+reads overflow and sheet directly.
+
+    pdf4tcllib     0.6.4 (unveroeffentlicht, keine Nummer dazu)
+
+### Fixed -- pdf4tcltext: three points an application had to work around
+
+A small app (pdfcompose) used the module through its public API, hit all
+three and wrote them down. None of them was found by the test suite --
+it checks what someone thought of beforehand, and all three sat in the
+gap between an option that exists and an option that does something.
+
+**`-maxwidth` did not break lines.** It was read into the option array,
+handed to `_flushLine` as a parameter and never looked at: one line of
+the widget became one line in the PDF, however long. Measured with
+`-maxwidth 200` and a 200-character paragraph: ONE line, 987 pt wide, on
+a sheet 595 pt across. The text left the page without a word said -- and
+neither checker saw it, because `geometry-check` does not look at text
+and `layout-check` reads through pdftotext, which drops what lies beside
+the sheet. Now `_splitToLines` breaks at word boundaries, measuring each
+segment in ITS OWN font, because a word in bold is wider than the same
+word in regular. A single word wider than the space is still drawn:
+cutting would be silent loss, and a loop would be worse than one wide
+line. The drawing half of `_flushLine` moved into `_drawLine`.
+
+**`pdf4tcltext::render` did not exist.** The alias at the end of the
+file does `namespace import ::pdf4tcllib::textwidget::render`, but the
+source namespace had no `namespace export`. Without an export pattern
+Tcl imports nothing, and does so without an error -- the alias simply
+did not come into being, while the reference documented it.
+
+**A font loaded under the family name was ignored.** `_tclFontToPdf`
+knew the 14 standard fonts only. A TrueType face registered as
+`DejaVu Sans` came out as Helvetica -- the one font without glyphs
+beyond Latin-1. `_loadedFontFor` now asks `pdf4tcl::getFonts` first,
+from the most specific spelling to the least (`-BoldItalic`,
+`-BoldOblique`, `-Bold`, `-Italic`, `-Oblique`, plain), and only then
+falls through to the switch. The same reasoning as
+`pdf4tcl::FindFontByFamily`. Unknown families still land on Helvetica,
+and that fallback is tested on its own: without it, "recognised" and
+"nothing found" would be indistinguishable.
+
+**`-justify center` and `right` are applied.** They worked on screen and
+vanished in the PDF, without a word said -- an application offered the
+choice in its toolbar and had to label it "view only". The justification
+of the first segment governs the whole line, as it does on screen: Tk
+knows `-justify` per line, not per character. A line wider than the
+available space is NOT shifted, because an alignment that carries the
+text further out of the frame is no alignment (tw-just-2).
+
+**`-offset` raises and lowers the baseline.** Superscript and subscript
+were "not implemented": a footnote marker sat on the baseline like any
+other character. The value shifts the baseline of that SEGMENT, not of
+the line, and the line height is unchanged -- Tk holds it the same way.
+No size is invented: a caller who wants smaller type gives the tag a
+smaller -font as well, as on screen. tw-off-2 is the counter-check to
+the counter-check: without the tag nothing may shift at all, otherwise
+tw-off-1 would only prove that something is different.
+
+Counter-check, each part separately: wrapping out -> tw-limit-1 and 1b
+red; export out -> tw-limit-2 red; font lookup out -> tw-limit-3 red;
+justify out -> tw-just-1 red; offset out -> tw-off-1 red.
+
+    pdf4tcltext    0.2 -> 0.3
+
+## pdf4tcllib 0.6.3
 
 ### Fixed -- form labels ignored the loaded font
 
@@ -501,8 +752,38 @@ The demos were part German, part English. Translated so far, across all
 note, the octal pitfall, "Lernziele"), and the messages they print --
 "Geschrieben:", "Mit Debug-Grid:" and their kin.
 
-**Not yet translated: the text that goes INTO the PDFs**, apart from
-demo 01. That is deliberate. English strings are a different width, and
+**The text that goes INTO the PDFs** is translated demo by demo, each one
+run and checked afterwards rather than in one sweep, because English
+strings are a different width. **The demos are done.** In `examples/basic` all but three, in
+`examples/advanced` all but the sample data noted below. Every other demo
+carries exactly one German line: the comment `# Encoding test: äöüÄÖÜß€`,
+which describes what the file exercises.
+
+In `examples/advanced` the German that is left is **sample data that
+exercises the encoding**: German company names and towns going through
+tablelist, `-formatcommand` and the PDF in `56_tablelist_pdf`, and
+through a CSV file in `42_batch`. Both now say so at the point where the
+data is defined -- with "Main Street" and "Springfield" that chain would
+no longer be tested.
+
+The three left in German are the ones where the language is arguably the
+subject: `20_invoice`, `18_address_labels` and `19_business_card` -- a
+DIN 5008 business letter, address labels and a business card, all with
+German addresses. The first says so at the top; the other two are left
+for the author to decide.
+
+**`20_invoice` stays in German, and says so at the top.** It lays out a
+business letter to DIN 5008: sender line above the address field, the
+window position, folding marks, 19% VAT, IBAN and BIC, the commercial
+register entry. Those are German conventions and the language is part of
+them; a letter that follows the standard but is written in English would
+be neither one thing nor the other. Same reasoning as the encoding
+tests, whose umlauts also stay. Umlauts stay
+where they are the point of the line -- `05_lists` and `07_simple_table`
+carry encoding tests, and those keep their characters, written as `\u`
+escapes so the file itself is plain ASCII.
+
+The rest is still German inside the PDF. That is deliberate. English strings are a different width, and
 we have just spent a session finding drawings that ran off the page --
 translating visible text without re-running the geometry and layout
 checks would put some of it back. So that part goes demo by demo, each

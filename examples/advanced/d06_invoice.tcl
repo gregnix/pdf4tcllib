@@ -49,7 +49,7 @@ pdf4tcllib::unicode::safeText $pdf "TechWidget GmbH" -x $x -y $y
 set rx [dict get $ctx right]
 $pdf setFont 9 $fontSans
 $pdf setFillColor 0.4 0.4 0.4
-foreach {i line} {0 "Musterstr. 42, 12345 Musterstadt" 1 "Tel: +49 123 456789" 2 "info@techwidget.de" 3 "USt-IdNr: DE123456789"} {
+foreach {i line} {0 "Musterstr. 42, 12345 Musterstadt" 1 "Tel: +49 123 456789" 2 "info@techwidget.example" 3 "USt-IdNr: DE123456789"} {
     pdf4tcllib::unicode::safeText $pdf $line -x $rx -y [expr {$y + $i * 13}] -align right
 }
 
@@ -203,7 +203,7 @@ pdf4tcllib::unicode::safeText $pdf \
     -x $x -y $y
 set y [expr {$y + 12}]
 pdf4tcllib::unicode::safeText $pdf \
-    "Bei Fragen wenden Sie sich an buchhaltung@techwidget.de oder +49 123 456789." \
+    "Bei Fragen wenden Sie sich an buchhaltung@techwidget.example oder +49 123 456789." \
     -x $x -y $y
 
 $pdf setFillColor 0 0 0

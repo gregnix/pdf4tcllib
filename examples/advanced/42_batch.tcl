@@ -15,13 +15,13 @@
 #     tclsh 42_batch.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 42  (ohne führende 0)
-#   FALSCH:  set demo_num 042 (Oktal-Fehler!)
+#   RIGHT: set demo_num 42  (no leading zero)
+#   WRONG: set demo_num 042 (octal!)
 # ============================================================================
 # What this shows:
 #   - Batch-Generierung (viele PDFs automatisch)
 #   - CSV-Daten einlesen
-#   - Template für Etiketten
+#   - a label template
 #   - Performance-Messung
 #   - Fortschrittsanzeige
 #   - Fehlerbehandlung
@@ -31,7 +31,7 @@
 #   - Template: Name, Adresse, PLZ/Ort
 #   - Fortschrittsanzeige: 10%, 20%, ..., 100%
 #   - Zeitmessung: Gesamtzeit + Durchschnitt
-#   - Fehlerbehandlung (fehlerhafte Zeilen überspringen)
+#   - error handling: skip malformed lines
 #   - Summary-Datei mit Statistiken
 #
 # Encoding test: äöüÄÖÜß€
@@ -62,7 +62,7 @@ set batch_dir [file join $output_dir batch]
 file mkdir $output_dir
 file mkdir $batch_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 42
 set demo_name "batch"
 set csv_file [file join $output_dir "demo_${demo_num}_data.csv"]
@@ -76,6 +76,10 @@ proc generate_test_data {csv_file count} {
     puts "  Generating test data: $csv_file"
     
     set fp [open $csv_file w]
+    # Die Beispieldaten bleiben deutsch: Strassennamen und Staedte mit
+    # Umlauten laufen hier durch CSV-Datei, Einlesen und PDF-Ausgabe.
+    # Das ist Teil dessen, was die Demo zeigt -- mit "Main Street" und
+    # "Springfield" waere die Kette nicht mehr geprueft.
     puts $fp "Name,Straße,PLZ,Ort"
     
     set streets {Hauptstraße Bahnhofstraße Schul straße Kirchweg Gartenweg Waldstraße Bergstraße}
@@ -128,7 +132,7 @@ proc generate_label {name street plz city output_file} {
     $pdf setFont 14 Helvetica-Bold
     $pdf text $name -x $x -y $y
     
-    # Straße
+    # street
     set y [expr {$y + 22}]
     $pdf setFont 11 Helvetica
     $pdf text $street -x $x -y $y
@@ -241,12 +245,12 @@ proc generate_summary {summary_file stats batch_dir} {
     
     # Title
     $pdf setFont 20 Helvetica-Bold
-    $pdf text "Demo 42: Batch-Generierung - Summary" -x $sx -y $sy
+    $pdf text "Demo 42: Batch generation -- summary" -x $sx -y $sy
     
     # Stats
     set y [expr {$sy + 50}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "Statistiken:" -x $sx -y $y
+    $pdf text "Figures:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
@@ -280,12 +284,12 @@ proc generate_summary {summary_file stats batch_dir} {
     set info_lines {
         "Die Batch-Generierung hat folgendes geleistet:"
         ""
-        "1. CSV-Datei mit 100 Datensätzen generiert"
+        "1. a CSV file with 100 records is generated"
         "2. 100 Etiketten-PDFs erstellt (90×60mm)"
-        "3. Jedes PDF enthält: Name, Straße, PLZ/Ort"
-        "4. Fortschrittsanzeige während der Generierung"
+        "3. every PDF holds: name, street, postcode and town"
+        "4. progress is shown while generating"
         "5. Performance-Messung"
-        "6. Fehlerbehandlung (fehlerhafte Zeilen überspringen)"
+        "6. malformed lines are skipped"
         ""
         "Alle PDFs befinden sich im Verzeichnis:"
         "  output/batch/"
@@ -306,7 +310,7 @@ proc generate_summary {summary_file stats batch_dir} {
     # Code Example
     set y [expr {$y + 20}]
     $pdf setFont 11 Helvetica-Bold
-    $pdf text "Verwendetes Template:" -x $sx -y $y
+    $pdf text "Template used:" -x $sx -y $y
     
     set y [expr {$y + 18}]
     $pdf setFont 8 Courier
@@ -339,7 +343,7 @@ proc generate_summary {summary_file stats batch_dir} {
     # Encoding Test
     set y [expr {$y + 20}]
     $pdf setFont 10 Helvetica
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # Legend
     pdf4tcllib::page::orientationLegend $pdf $ctx

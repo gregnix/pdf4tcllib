@@ -15,18 +15,30 @@
 #     tclsh 20_invoice.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 20  (ohne führende 0)
-#   FALSCH:  set demo_num 020 (Oktal-Fehler!)
+#   RIGHT: set demo_num 20  (no leading zero)
+#   WRONG: set demo_num 020 (octal!)
 # ============================================================================
+# STAYS IN GERMAN, on purpose.
+#
+# This demo lays out a business letter to DIN 5008: sender line above the
+# address field, the position a window envelope expects, folding marks,
+# 19% VAT, IBAN and BIC, the commercial register entry. Those are German
+# conventions, and the language is part of them. A letter that follows
+# the standard but is written in English would be neither one thing nor
+# the other.
+#
+# Here the language is the subject, not the wrapping -- as with the
+# encoding tests, whose umlauts also stay.
+#
 # What this shows:
-#   - Komplexes Geschäftsdokument erstellen
-#   - DIN 5008 Standard einhalten
-#   - Tabellen mit Berechnungen
-#   - Professionelles Layout
+#   - a complete business document
+#   - following DIN 5008
+#   - a table with calculated totals
+#   - a layout that looks finished
 #
 # Features:
 #   - Firmen-Header mit Logo-Platzhalter
-#   - Absender-Zeile (DIN 5008)
+#   - the sender line above the address (DIN 5008)
 #   - Empfänger-Adresse (Fenster-Position)
 #   - Rechnungs-Details (Nr, Datum, Kunde)
 #   - Positionen-Tabelle mit Summen
@@ -59,7 +71,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 20
 set demo_name "invoice"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -158,7 +170,7 @@ package require pdf4tcl]"
     $pdf grestore
     
     # ========================================================================
-    # Absender-Zeile (DIN 5008)
+    # sender line, DIN 5008
     # ========================================================================
     
     set y [expr {$sy + 70}]
@@ -169,7 +181,7 @@ package require pdf4tcl]"
     $pdf setFillColor 0 0 0
     
     # ========================================================================
-    # Empfänger-Adresse (Fenster-Position DIN 5008)
+    # recipient address, at the window position of DIN 5008
     # ========================================================================
     
     # DIN 5008: 25mm von oben, 20mm von links (innerhalb Safe Area)
@@ -371,10 +383,10 @@ package require pdf4tcl]"
     $pdf text "Tel: +49 123 456789" -x $footer_col3 -y $fy
     
     set fy [expr {$fy + 9}]
-    $pdf text "Email: info@musterfirma.de" -x $footer_col3 -y $fy
+    $pdf text "Email: info@musterfirma.example" -x $footer_col3 -y $fy
     
     set fy [expr {$fy + 9}]
-    $pdf text "Web: www.musterfirma.de" -x $footer_col3 -y $fy
+    $pdf text "Web: www.musterfirma.example" -x $footer_col3 -y $fy
     
     $pdf setFillColor 0 0 0
     

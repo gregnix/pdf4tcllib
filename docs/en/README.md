@@ -41,6 +41,14 @@ Xvfb :99 -screen 0 1280x1024x24 & export DISPLAY=:99
 | [`howto-charts.md`](howtos/howto-charts.md) | Numbers on a page: bars, lines, shares, and a shared scale |
 | [`howto-toc.md`](howtos/howto-toc.md) | A contents page whose numbers are right |
 
+**Not covered by a howto:** `pdf4tclcanvas`, `pdf4tcltext` and
+`pdf4tcltreeview`. All three need Tk and a display, which the howtos here
+deliberately do not. They have a reference page each, and a runnable,
+self-checking example under `examples/advanced/`:
+`71_canvas_place.tcl`, `72_textwidget_tags.tcl`, `67_treeview.tcl`.
+`pdf4tclforms` has `howto-accessible-form`, which uses it through the
+`::pdf4tcllib::form` namespace rather than by that name.
+
 ## Reference
 
 The module documentation. These describe the API; the howtos above show it
@@ -63,7 +71,7 @@ in use.
 
 ## Requirements
 
-pdf4tcllib 0.6.3 with pdf4tcl 0.9.4.60. Older pdf4tcl keeps working, but
+pdf4tcllib 0.6.4 with pdf4tcl 0.9.4.61. Older pdf4tcl keeps working, but
 `getUntaggedCount` and the structure checks arrived in 0.9.4.43, and the
 scripts here report on them.
 

@@ -180,6 +180,34 @@ permanently.
 
 ---
 
+## Nothing leaves the label (0.2)
+
+```tcl
+pdf4tcllib::labels::render $pdf 3474 $records {x y w h rec} {
+    $pdf text $rec -x [expr {$x + 4}] -y [expr {$y + 14}]
+} -clip 1
+```
+
+A name wider than the label used to run onto the one beside it. Measured
+on the rendered page, format 3474 (198.4 pt wide), 60 characters at 11pt:
+
+    without -clip   ink out to 363.6 pt
+    with -clip 1    ink out to 198.0 pt, at the edge
+
+On screen this is invisible. On a sheet of labels it costs the batch.
+
+`fitSize`, `wrap` and `ellipsize` below are the better answer, because
+they keep the text readable instead of cutting it off mid-word. But they
+only help whoever remembers them; `-clip 1` is the guarantee that it
+cannot happen anyway.
+
+The clipping path is opened with `gsave` and closed with `grestore`
+around each label, so it applies to that label only. **The default is
+off**: a clip nobody asked for would be a silent change of behaviour for
+every existing call.
+
+---
+
 ## Fitting text into a label
 
 Three helpers, all needing a `pdf` object because they measure with

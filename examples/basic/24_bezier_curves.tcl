@@ -1,5 +1,5 @@
 #!/usr/bin/env tclsh
-# Demo 24: Bezier Curves (pdf4tcl 0.9.4.11, orient true, ohne moveTo/curve-Abhängigkeit)
+# Demo 24: Bezier curves (pdf4tcl 0.9.4.11, orient true, without moveTo/curve)
 
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]

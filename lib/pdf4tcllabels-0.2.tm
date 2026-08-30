@@ -182,7 +182,7 @@ namespace eval ::pdf4tcllib::labels {
     # Returns the number of sheets written.
     proc render {pdf name records argSpec script args} {
         set opts [dict create -start 0 -frame 0 -tag Sect \
-                -offsetx 0.0 -offsety 0.0 -only {}]
+                -offsetx 0.0 -offsety 0.0 -only {} -clip 0]
         foreach {k v} $args {
             if {![dict exists $opts $k]} {
                 return -code error "unknown option \"$k\";\
@@ -257,7 +257,23 @@ namespace eval ::pdf4tcllib::labels {
             # One label is one unit of content. Without this every line of
             # every label lands in the page as a loose run of text.
             ::pdf4tcllib::tag::begin $pdf [dict get $opts -tag]
+            if {[dict get $opts -clip]} {
+                # Nichts darf das Etikett verlassen.
+                #
+                # Ein Name, der breiter ist als das Etikett, lief bisher
+                # auf das Nachbaretikett -- gemessen mit einem 60 Zeichen
+                # langen Namen bei 11pt auf Format 3474: 138 Punkt ueber
+                # den Rand hinaus, lautlos. Auf dem Bildschirm faellt das
+                # nicht auf, auf dem Bogen kostet es die Charge.
+                #
+                # fitSize, wrap und ellipsize gibt es, aber sie helfen nur
+                # dem, der daran denkt. -clip 1 ist die Zusicherung, dass
+                # es auch sonst nicht passieren kann.
+                $pdf gsave
+                $pdf clip $x $y $w $h
+            }
             uplevel 1 $script
+            if {[dict get $opts -clip]} { $pdf grestore }
             ::pdf4tcllib::tag::end $pdf
 
             if {[llength $only]} { continue }
@@ -388,4 +404,4 @@ namespace eval ::pdf4tcllib::labels {
     }
 }
 
-package provide pdf4tcllabels 0.1.1
+package provide pdf4tcllabels 0.2

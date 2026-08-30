@@ -2,8 +2,14 @@
 package require tcltest
 namespace import ::tcltest::*
 
-# TTF fonts only available when DejaVu is installed
-testConstraint ttfAvailable [pdf4tcllib::fonts::hasTtf]
+# Damit die Datei auch EINZELN laeuft. Ohne diese Zeile findet sie
+# pdf4tcllib nur ueber ein installiertes Paket -- und die Constraints
+# unten fragen genau danach. Fehlt es, ueberspringt tcltest still
+# ALLES und meldet trotzdem Erfolg: Rueckgabewert 0, Failed 0. Der
+# Runner setzt den Pfad selbst, deshalb fiel es nie auf.
+tcl::tm::path add [file join [file dirname [file normalize [info script]]] .. lib]
+package require pdf4tcllib
+
 
 # ============================================================
 # Defaults (vor init)
@@ -74,19 +80,25 @@ test fonts-subset-basic "Subset enthaelt Latin-1 Basisbereich" -body {
     list $has_A $has_z $has_0
 } -result {1 1 1}
 
-test fonts-subset-euro "Subset enthaelt Euro-Zeichen (U+20AC)" -constraints {ttfAvailable} -body {
+test fonts-subset-euro "Subset enthaelt Euro-Zeichen (U+20AC)" -body {
+    # DEZIMAL, nicht 0x20AC: "in" vergleicht als ZEICHENKETTE. Links das
+    # Literal "0x20AC", rechts der Eintrag "8364" -- gleiche Zahl,
+    # verschiedene Zeichenketten, Ergebnis 0. Gemessen auf 8.6.14 und
+    # 9.0.4 gleich. Der Test stand bis hierher unter einem Constraint,
+    # das vor fonts::init ausgewertet wurde und deshalb immer 0 war --
+    # er lief nie und haette rot sein muessen.
     set sub [pdf4tcllib::fonts::_buildSubset]
-    expr {0x20AC in $sub}
+    expr {8364 in $sub}
 } -result 1
 
-test fonts-subset-arrow "Subset enthaelt Pfeil rechts (U+2192)" -constraints {ttfAvailable} -body {
+test fonts-subset-arrow "Subset enthaelt Pfeil rechts (U+2192)" -body {
     set sub [pdf4tcllib::fonts::_buildSubset]
-    expr {0x2192 in $sub}
+    expr {8594 in $sub}   ;# 0x2192, dezimal -- siehe fonts-subset-euro
 } -result 1
 
-test fonts-subset-checkmark "Subset enthaelt Haekchen (U+2713)" -constraints {ttfAvailable} -body {
+test fonts-subset-checkmark "Subset enthaelt Haekchen (U+2713)" -body {
     set sub [pdf4tcllib::fonts::_buildSubset]
-    expr {0x2713 in $sub}
+    expr {10003 in $sub}  ;# 0x2713, dezimal -- siehe fonts-subset-euro
 } -result 1
 
 # ============================================================

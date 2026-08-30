@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 39: PDF-Kompression Vergleich
+# Demo 39: Compression compared
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,20 +15,20 @@
 #     tclsh 39_compression.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 39  (ohne führende 0)
-#   FALSCH:  set demo_num 039 (Oktal-Fehler!)
+#   RIGHT: set demo_num 39  (no leading zero)
+#   WRONG: set demo_num 039 (octal!)
 # ============================================================================
 # What this shows:
 #   - PDF-Kompression verstehen
-#   - Dateigrößen-Unterschied sehen
+#   - see the difference in file size
 #   - Performance-Impact kennen
 #   - -compress Option nutzen
 #
 # Features:
 #   - Generiert 2 PDFs (unkomprimiert vs. komprimiert)
-#   - Vergleicht Dateigrößen
+#   - compares file sizes
 #   - Zeigt Einsparung in %
-#   - Erklärt wann Kompression sinnvoll ist
+#   - says when compression is worth it
 #
 # Encoding test: äöüÄÖÜß€
 # ============================================================================
@@ -56,7 +56,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 39
 set demo_name "compression"
 set output_file_a [file join $output_dir "demo_[format %02d $demo_num]a_${demo_name}_uncompressed.pdf"]
@@ -74,12 +74,12 @@ proc generate_content {pdf ctx} {
     
     # Titel
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 39: PDF-Kompression" -x $sx -y $sy
+    $pdf text "Demo 39: PDF compression" -x $sx -y $sy
     
     # Encoding-Test
     set y [expr {$sy + 30}]
     $pdf setFont 10 Helvetica
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # Viel Text (damit Kompression sichtbar wird)
     set y [expr {$y + 30}]
@@ -93,10 +93,10 @@ reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."
     
     # 20× wiederholen (macht Unterschied sichtbar)
     for {set i 0} {$i < 20} {incr i} {
-        $pdf text "Zeile [expr {$i+1}]: $lorem" -x $sx -y $y
+        $pdf text "Line [expr {$i+1}]: $lorem" -x $sx -y $y
         set y [expr {$y + 15}]
         
-        # Neue Seite wenn nötig
+        # a new page when needed
         if {$y > 750} {
             $pdf endPage
             $pdf startPage
@@ -199,24 +199,24 @@ package require pdf4tcl]"
     
     # Titel
     $pdf setFont 20 Helvetica-Bold
-    $pdf text "Demo 39: PDF-Kompression Vergleich" -x $sx -y $sy
+    $pdf text "Demo 39: Compression compared" -x $sx -y $sy
     
     # Ergebnisse
     set y [expr {$sy + 50}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "Ergebnisse:" -x $sx -y $y
+    $pdf text "Results:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
     
-    $pdf text "Unkomprimiert (-compress 0):" -x $sx -y $y
+    $pdf text "Uncompressed (-compress 0):" -x $sx -y $y
     set y [expr {$y + 20}]
-    $pdf text "  Dateigröße: [format %.2f [expr {$size1 / 1024.0}]] KB" -x [expr {$sx + 20}] -y $y
+    $pdf text "  File size: [format %.2f [expr {$size1 / 1024.0}]] KB" -x [expr {$sx + 20}] -y $y
     
     set y [expr {$y + 30}]
-    $pdf text "Komprimiert (-compress 1):" -x $sx -y $y
+    $pdf text "Compressed (-compress 1):" -x $sx -y $y
     set y [expr {$y + 20}]
-    $pdf text "  Dateigröße: [format %.2f [expr {$size2 / 1024.0}]] KB" -x [expr {$sx + 20}] -y $y
+    $pdf text "  File size: [format %.2f [expr {$size2 / 1024.0}]] KB" -x [expr {$sx + 20}] -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 14 Helvetica-Bold
@@ -224,7 +224,7 @@ package require pdf4tcl]"
     $pdf text "Einsparung: [format %.1f $savings]%" -x $sx -y $y
     $pdf setFillColor 0 0 0
     
-    # Erklärung
+    # the explanation
     set y [expr {$y + 50}]
     $pdf setFont 12 Helvetica-Bold
     $pdf text "Wann Kompression verwenden?" -x $sx -y $y
@@ -234,8 +234,8 @@ package require pdf4tcl]"
     
     set tips {
         "+ Immer bei Produktions-PDFs (Standard: -compress 1)"
-        "+ Bei viel Text (hohe Kompression möglich)"
-        "+ Bei großen Dokumenten"
+        "+ with a lot of text, where it compresses well"
+        "+ with large documents"
         ""
         "- Beim Debuggen (-compress 0 → lesbare PDF-Struktur)"
         "- Bei sehr kleinen PDFs (Overhead)"
@@ -262,7 +262,7 @@ package require pdf4tcl]"
     $pdf setFont 9 Courier
     
     set code_lines {
-        "# Unkomprimiert (für Debug)"
+        "# uncompressed, for debugging"
         "set pdf \[pdf4tcl::pdf4tcl create %AUTO% -compress 0\]"
         ""
         "# Komprimiert (Standard, empfohlen)"
@@ -280,7 +280,7 @@ package require pdf4tcl]"
     # Encoding-Test
     set y [expr {$y + 20}]
     $pdf setFont 10 Helvetica
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # Orientation Legend
     pdf4tcllib::page::orientationLegend $pdf $ctx

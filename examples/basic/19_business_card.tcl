@@ -15,8 +15,8 @@
 #     tclsh 19_business_card.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 19  (ohne führende 0)
-#   FALSCH:  set demo_num 019 (Oktal-Fehler!)
+#   RIGHT: set demo_num 19  (no leading zero)
+#   WRONG: set demo_num 019 (octal!)
 # ============================================================================
 # What this shows:
 #   - Visitenkarten-Layout erstellen
@@ -56,7 +56,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 19
 set demo_name "business_card"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -149,8 +149,8 @@ proc draw_business_card {pdf x y} {
     
     set contact_lines {
         "Tel:   +49 123 456789"
-        "Email: max@musterfirma.de"
-        "Web:   www.musterfirma.de"
+        "Email: max@musterfirma.example"
+        "Web:   www.musterfirma.example"
     }
     
     foreach line $contact_lines {

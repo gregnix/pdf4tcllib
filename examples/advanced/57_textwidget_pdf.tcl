@@ -1,6 +1,6 @@
 #!/usr/bin/env wish
 # ===========================================================================
-# Demo 57: Text-Widget -> PDF Export
+# Demo 57: Text widget -> PDF export
 #
 # Zeigt pdf4tcllib::textwidget::render mit:
 #   - Überschriften (h1, h2)
@@ -33,14 +33,14 @@ set outPDF [file join $outdir "demo_57_textwidget_pdf.pdf"]
 # ===========================================================================
 # GUI
 # ===========================================================================
-wm title . "Demo 57: Text-Widget -> PDF"
+wm title . "Demo 57: Text widget -> PDF"
 wm geometry . "900x650+30+30"
 
 ttk::notebook .nb
 pack .nb -fill both -expand 1 -padx 4 -pady 4
 
 # ---------------------------------------------------------------------------
-# Tab 1: Formatierungsübersicht
+# tab 1: an overview of the formatting
 # ---------------------------------------------------------------------------
 set f1 [ttk::frame .nb.f1]
 .nb add $f1 -text "Formatierung"
@@ -86,52 +86,52 @@ $t tag configure indent     -lmargin1 30 -lmargin2 30
 $t tag configure elided     -elide 1
 
 # Inhalt
-$t insert end "Demo 57: Text-Widget Formatierung\n" h1
+$t insert end "Demo 57: Text widget formatting\n" h1
 
-$t insert end "Grundlegende Stile\n" h2
-$t insert end "Normaler Text. "
-$t insert end "Fetter Text. " bold
-$t insert end "Kursiver Text. " italic
-$t insert end "Fett-Kursiv. " bolditalic
+$t insert end "Basic styles\n" h2
+$t insert end "Normal text. "
+$t insert end "Bold text. " bold
+$t insert end "Italic text. " italic
+$t insert end "Bold italic. " bolditalic
 $t insert end "\n"
 
-$t insert end "Farben\n" h2
-$t insert end "Rot " red
-$t insert end "Grün " green
-$t insert end "Blau " blue
+$t insert end "Colours\n" h2
+$t insert end "Red " red
+$t insert end "Green " green
+$t insert end "Blue " blue
 $t insert end "Orange\n" orange
 
-$t insert end "Hintergrundfarbe\n" h2
-$t insert end "Dieser Text hat einen "
-$t insert end "gelben Hintergrund" highlight
-$t insert end " als Hervorhebung.\n"
+$t insert end "Background colour\n" h2
+$t insert end "This text has a "
+$t insert end "yellow background" highlight
+$t insert end " to highlight it.\n"
 
-$t insert end "Textdekoration\n" h2
-$t insert end "Unterstrichen (Link-Stil)" underline
+$t insert end "Decoration\n" h2
+$t insert end "Underlined, link style" underline
 $t insert end " — "
-$t insert end "Durchgestrichen (veraltet)" strikeout
+$t insert end "Struck through, obsolete" strikeout
 $t insert end "\n"
 
 $t insert end "Code / Monospace\n" h2
 $t insert end "proc hello \{name\} \{\n    puts \"Hello \$name\"\n\}" codebg
 $t insert end "\n"
 
-$t insert end "Einzug\n" h2
-$t insert end "Normaler Text am linken Rand.\n"
-$t insert end "Eingerückter Text mit -lmargin1 30.\n" indent
-$t insert end "Wieder normaler Text.\n"
+$t insert end "Indent\n" h2
+$t insert end "Normal text at the left margin.\n"
+$t insert end "Indented text with -lmargin1 30.\n" indent
+$t insert end "Back to normal text.\n"
 
-$t insert end "Versteckter Text\n" h2
-$t insert end "Sichtbar — "
-$t insert end "DIESER TEXT IST UNSICHTBAR (elide=1)" elided
-$t insert end "— wieder sichtbar.\n"
+$t insert end "Hidden text\n" h2
+$t insert end "Visible -- "
+$t insert end "THIS TEXT IS INVISIBLE (elide=1)" elided
+$t insert end "-- visible again.\n"
 
-$t insert end "Überlappende Tags\n" h2
-$t insert end "Dieser Text ist "
-$t insert end "rot und fett" {red bold}
-$t insert end " gleichzeitig, "
-$t insert end "blau und kursiv" {blue italic}
-$t insert end " gleichzeitig.\n"
+$t insert end "Overlapping tags\n" h2
+$t insert end "This text is "
+$t insert end "red and bold" {red bold}
+$t insert end " at once, "
+$t insert end "blue and italic" {blue italic}
+$t insert end " at once.\n"
 
 $t configure -state disabled
 
@@ -174,19 +174,19 @@ $t2 tag configure version \
     -font {Courier 9} -foreground "#006600"
 
 $t2 insert end "pdf4tcllib\n" title
-$t2 insert end "PDF-Erweiterungen für pdf4tcl\n" subtitle
+$t2 insert end "Extensions for pdf4tcl\n" subtitle
 
-$t2 insert end "Übersicht\n" section
-$t2 insert end "pdf4tcllib ist eine " body
-$t2 insert end "Erweiterungsschicht " emph
-$t2 insert end "für das pdf4tcl-Paket. Es bietet höhere Abstraktionen "
-$t2 insert end "für häufige PDF-Aufgaben:\n" body
+$t2 insert end "Overview\n" section
+$t2 insert end "pdf4tcllib is an " body
+$t2 insert end "extension layer " emph
+$t2 insert end "on top of pdf4tcl. It offers higher-level building blocks "
+$t2 insert end "for common PDF work:\n" body
 
 foreach item {
     "Unicode-sichere Textausgabe (sanitize)"
     "Automatischer Zeilenumbruch (writeParagraph)"
     "Tabellen mit Zebrastreifen und Rahmen"
-    "Kopf- und Fußzeilen (page::header/footer)"
+    "headers and footers (page::header/footer)"
     "Tablelist-Export (tablelist::render)"
     "Text-Widget-Export (textwidget::render)"
 } {
@@ -196,7 +196,7 @@ foreach item {
 $t2 insert end "\nInstallation\n" section
 $t2 insert end "Das Paket ist eine einzelne " body
 $t2 insert end ".tm" code
-$t2 insert end "-Datei ohne externe Abhängigkeiten:\n" body
+$t2 insert end "file with no external dependencies:\n" body
 $t2 insert end "tcl::tm::path add lib\npackage require pdf4tcllib 0.6\n" code
 
 $t2 insert end "\nWichtige Regeln\n" section
@@ -241,9 +241,9 @@ proc exportPDF {} {
     set tw  [dict get $ctx text_w]
     set top [dict get $ctx top]
 
-    # --- Seite 1: Formatierungsübersicht ---
+    # --- page 1: the formatting overview ---
     $pdf startPage
-    pdf4tcllib::page::header $pdf $ctx "Demo 57: Text-Widget -> PDF"
+    pdf4tcllib::page::header $pdf $ctx "Demo 57: Text widget -> PDF"
     pdf4tcllib::page::footer $pdf $ctx "Seite 1" 1
 
     set y [expr {$top + 8}]
@@ -258,7 +258,7 @@ proc exportPDF {} {
 
     # --- Seite 2: Dokument ---
     $pdf startPage
-    pdf4tcllib::page::header $pdf $ctx "Demo 57: Text-Widget -> PDF"
+    pdf4tcllib::page::header $pdf $ctx "Demo 57: Text widget -> PDF"
     pdf4tcllib::page::footer $pdf $ctx "Seite 2" 2
 
     set y [expr {$top + 8}]

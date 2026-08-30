@@ -57,7 +57,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 11
 set demo_name "coordinate_system"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -77,9 +77,9 @@ proc draw_coord_system {pdf orient ctx} {
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
     if {$orient} {
-        $pdf text "Demo 11: Koordinatensystem (orient=true)" -x $sx -y $sy
+        $pdf text "Demo 11: Coordinate system (orient=true)" -x $sx -y $sy
     } else {
-        $pdf text "Demo 11: Koordinatensystem (orient=false)" -x $sx -y $sy
+        $pdf text "Demo 11: Coordinate system (orient=false)" -x $sx -y $sy
     }
     
     # --- Info-Text ---
@@ -87,18 +87,18 @@ proc draw_coord_system {pdf orient ctx} {
     $pdf setFont 10 Helvetica
     
     if {$orient} {
-        $pdf text "Origin: (0,0) = Oben Links" -x $sx -y $y
+        $pdf text "Origin: (0,0) = top left" -x $sx -y $y
         set y [expr {$y + 15}]
-        $pdf text "Y-Achse: Wächst nach UNTEN" -x $sx -y $y
+        $pdf text "Y axis: grows DOWNWARDS" -x $sx -y $y
     } else {
-        $pdf text "Origin: (0,0) = Unten Links" -x $sx -y $y
+        $pdf text "Origin: (0,0) = bottom left" -x $sx -y $y
         set y [expr {$y + 15}]
-        $pdf text "Y-Achse: Wächst nach OBEN" -x $sx -y $y
+        $pdf text "Y axis: grows UPWARDS" -x $sx -y $y
     }
     
     # --- Encoding-Test ---
     set y [expr {$y + 20}]
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # ========================================================================
     # Grid-Raster (10mm = ~28.35pt Schritte)
@@ -152,7 +152,7 @@ proc draw_coord_system {pdf orient ctx} {
     
     # Y-Achse
     if {$orient} {
-        # Y wächst nach unten
+        # Y grows downwards
         $pdf line $origin_x $origin_y $origin_x [expr {$origin_y + $axis_len}]
         # Pfeil (unten)
         set arrow_x $origin_x
@@ -160,7 +160,7 @@ proc draw_coord_system {pdf orient ctx} {
         $pdf line $arrow_x $arrow_y [expr {$arrow_x - $arrow_size/2}] [expr {$arrow_y - $arrow_size}]
         $pdf line $arrow_x $arrow_y [expr {$arrow_x + $arrow_size/2}] [expr {$arrow_y - $arrow_size}]
     } else {
-        # Y wächst nach oben
+        # Y grows upwards
         $pdf line $origin_x $origin_y $origin_x [expr {$origin_y - $axis_len}]
         # Pfeil (oben)
         set arrow_x $origin_x
@@ -258,7 +258,7 @@ proc draw_coord_system {pdf orient ctx} {
     }
     
     # ========================================================================
-    # Info-Box mit Erklärung
+    # the box that explains it
     # ========================================================================
     
     set box_x [expr {$pw - 220}]
@@ -279,30 +279,30 @@ proc draw_coord_system {pdf orient ctx} {
     set text_y [expr {$box_y + 20}]
     
     $pdf setFont 10 Helvetica-Bold
-    $pdf text "Wichtig:" -x $text_x -y $text_y
+    $pdf text "Remember:" -x $text_x -y $text_y
     
     set text_y [expr {$text_y + 20}]
     $pdf setFont 8 Helvetica
     
     if {$orient} {
         set info_lines {
-            "orient=true ist Standard"
+            "orient=true is the default"
             ""
-            "* Origin: Oben Links"
-            "* Y wächst nach UNTEN"
-            "* Wie Bildschirm-"
-            "  Koordinaten"
-            "* Standard in PDFs"
+            "* origin: top left"
+            "* Y grows DOWNWARDS"
+            "* like screen"
+            "  coordinates"
+            "* what pdf4tcl uses"
         }
     } else {
         set info_lines {
-            "orient=false entspricht"
-            "PostScript-Standard"
+            "orient=false matches"
+            "the PostScript convention"
             ""
-            "* Origin: Unten Links"
-            "* Y wächst nach OBEN"
-            "* Wie Mathematik-"
-            "  Koordinaten"
+            "* origin: bottom left"
+            "* Y grows UPWARDS"
+            "* like mathematical"
+            "  coordinates"
         }
     }
     
@@ -330,7 +330,7 @@ package require pdf4tcl]"
     puts "  Output: $output_file"
     
     # ========================================================================
-    # Seite 1: orient=true (Y wächst nach unten)
+    # page 1: orient=true, Y grows downwards
     # ========================================================================
     
     puts "  Creating page 1 (orient=true)..."
@@ -347,14 +347,14 @@ package require pdf4tcl]"
     $pdf endPage
     
     # ========================================================================
-    # Seite 2: orient=false (Y wächst nach oben)
+    # page 2: orient=false, Y grows upwards
     # ========================================================================
     
     puts "  Creating page 2 (orient=false)..."
     
     # Neue Seite mit orient=false
     # WICHTIG: orient-Wechsel nur bei neuem PDF oder mit Canvas
-    # Hier erstellen wir neues PDF für Seite 2
+    # a second document for page 2
     
     $pdf write -file $output_file
     catch {$pdf destroy}
@@ -367,7 +367,7 @@ package require pdf4tcl]"
         -orient false \
         -unit p]
     
-    # Alte Datei lesen und Seite 1 übernehmen
+    # read the first file and keep page 1
     # (pdf4tcl kann keine existierende PDFs editieren, daher Workaround)
     
     $pdf startPage
@@ -378,15 +378,15 @@ package require pdf4tcl]"
     # WORKAROUND: 2 separate PDFs erstellen
     # ========================================================================
     
-    # Schreibe Seite 2 in temporäre Datei
+    # write page 2 to a temporary file
     set temp_file "[file rootname $output_file]_temp.pdf"
     $pdf write -file $temp_file
     catch {$pdf destroy}
     
     # Kombiniere beide Seiten
     # HINWEIS: pdf4tcl hat KEINE set_canvas_orient Methode!
-    # -orient wird beim Erstellen festgelegt und kann nicht geändert werden.
-    # Lösung: Beide Seiten mit -orient true, aber unterschiedliche Darstellung
+    # -orient is fixed when the document is created and cannot change.
+    # So both pages use -orient true and differ in what they draw.
     
     puts "  Combining pages..."
     

@@ -24,7 +24,7 @@ set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
 # ============================================================================
 $pdf startPage
 
-# Bookmark für Titelseite
+# bookmark for the title page
 $pdf bookmarkAdd -title "Title Page" -level 0
 
 # Titel
@@ -56,7 +56,7 @@ $pdf bookmarkAdd -title "Table of Contents" -level 0
 $pdf setFont 18 Helvetica-Bold
 $pdf text "Table of Contents" -x 50 -y 50
 
-# TOC-Einträge
+# contents entries
 $pdf setFont 12 Helvetica
 set y 90
 foreach {num title page} {
@@ -105,7 +105,7 @@ foreach {num title desc} {
 } {
     $pdf startPage
     
-    # Level 0 Bookmark für Kapitel
+    # level 0 bookmark for the chapter
     $pdf bookmarkAdd -title "Chapter $num: $title" -level 0
     
     # Kapitel-Überschrift
@@ -144,7 +144,7 @@ foreach {num title desc} {
     $pdf line 50 780 545 780
     $pdf setStrokeColor 0 0 0
     
-    # Fußzeile mit Seitenzahl
+    # footer with the page number
     $pdf setFont 10 Helvetica
     set page_num [expr {$num + 2}]
     $pdf text "Page $page_num" -x 297 -y 800 -align center
@@ -200,7 +200,7 @@ $pdf setLineWidth 0.5
 $pdf line 50 780 545 780
 $pdf setStrokeColor 0 0 0
 
-# Fußzeile
+# footer
 $pdf setFont 10 Helvetica
 $pdf text "Page 8" -x 297 -y 800 -align center
 $pdf setFont 9 Helvetica-Oblique

@@ -2,6 +2,19 @@
 package require tcltest
 namespace import ::tcltest::*
 
+# Damit die Datei auch EINZELN laeuft. Ohne diese Zeile findet sie
+# pdf4tcllib nur ueber ein installiertes Paket -- und die Constraints
+# unten fragen genau danach. Fehlt es, ueberspringt tcltest still
+# ALLES und meldet trotzdem Erfolg: Rueckgabewert 0, Failed 0. Der
+# Runner setzt den Pfad selbst, deshalb fiel es nie auf.
+tcl::tm::path add [file join [file dirname [file normalize [info script]]] .. lib]
+package require pdf4tcllib
+
+# pdf4tcl is the one external dependency. Tests that need it are marked,
+# so that a fresh clone WITHOUT pdf4tcl reports skips rather than failures
+# -- a red suite is how a new reader decides the library is broken.
+testConstraint pdf [expr {![catch {package require pdf4tcl}]}]
+
 # ============================================================
 # table::_isDictFormat -- Format-Erkennung
 # ============================================================
@@ -143,10 +156,6 @@ proc tagTestPdf {} {
     return $pdf
 }
 
-# pdf4tcl is the one external dependency. Tests that need it are marked,
-# so that a fresh clone WITHOUT pdf4tcl reports skips rather than failures
-# -- a red suite is how a new reader decides the library is broken.
-testConstraint pdf [expr {![catch {package require pdf4tcl}]}]
 
 proc tagTableData {} {
     return [list {Artikel Menge Preis} {left right right} \

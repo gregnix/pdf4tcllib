@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 08: Bilder einbinden
+# Demo 08: Placing images
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -91,7 +91,7 @@ package require pdf4tcl]"
         -orient [dict get $ctx orient] \
         -unit p]
     
-    # -orient true:  Y=0 ist OBEN, Y wächst nach UNTEN
+    # -orient true: Y=0 is at the TOP, Y grows DOWNWARDS
     # -unit p:       Alle Koordinaten in Points (1/72 inch)
     
     puts "  PDF object created"
@@ -114,11 +114,11 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 08: Bilder einbinden" -x $sx -y $sy
+    $pdf text "Demo 08: Placing images" -x $sx -y $sy
     
     set y [expr {$sy + 40}]
     
-    # --- Prüfe ob Test-Bild existiert ---
+    # --- is there a test image? ---
     set img_paths [list \
         [file join $scriptDir images test_image.png] \
         [file join $scriptDir images test_image.png] \
@@ -150,7 +150,7 @@ package require pdf4tcl]"
     if {$img_found} {
         # === MIT BILD ===
         $pdf setFont 12 Helvetica-Bold
-        $pdf text "Bild gefunden: [file tail $img_path]" -x $sx -y $y
+        $pdf text "Image found: [file tail $img_path]" -x $sx -y $y
         
         set y [expr {$y + 30}]
         
@@ -161,17 +161,17 @@ package require pdf4tcl]"
         } else {
             puts "  Image loaded successfully"
             
-            # Originalgröße
+            # original size
             $pdf setFont 10 Helvetica
-            $pdf text "1. Originalgröße:" -x $sx -y $y
+            $pdf text "1. Original size:" -x $sx -y $y
             
             set y [expr {$y + 15}]
             set img_y $y
             
-            # WICHTIG: Catch für putImage - falls Format nicht unterstützt
+            # putImage in a catch: the format may not be supported
             if {[catch {$pdf putImage $img -x $sx -y $img_y} err]} {
                 puts "  ⚠️  ERROR displaying image: $err"
-                $pdf text "ERROR: Bildformat nicht unterstützt" -x $sx -y $img_y
+                $pdf text "ERROR: image format not supported" -x $sx -y $img_y
             } else {
                 # Erfolgreich
             }
@@ -179,30 +179,30 @@ package require pdf4tcl]"
             set y [expr {$y + 160}]
             
             # Skaliert (klein)
-            $pdf text "2. Skaliert (100x75):" -x $sx -y $y
+            $pdf text "2. Scaled to 100x75:" -x $sx -y $y
             
             set y [expr {$y + 15}]
             set img_y2 $y
             
             if {[catch {$pdf putImage $img -x $sx -y $img_y2 -width 100 -height 75} err]} {
-                $pdf text "ERROR: Kann nicht skalieren" -x $sx -y $img_y2
+                $pdf text "ERROR: cannot scale" -x $sx -y $img_y2
             }
             
             set y [expr {$y + 90}]
             
             # Skaliert (mittel)
-            $pdf text "3. Skaliert (150x112):" -x $sx -y $y
+            $pdf text "3. Scaled to 150x112:" -x $sx -y $y
             
             set y [expr {$y + 15}]
             set img_y3 $y
             
             if {[catch {$pdf putImage $img -x $sx -y $img_y3 -width 150 -height 112} err]} {
-                $pdf text "ERROR: Kann nicht skalieren" -x $sx -y $img_y3
+                $pdf text "ERROR: cannot scale" -x $sx -y $img_y3
             }
             
             set y [expr {$y + 130}]
             
-            # WICHTIG: Image aufräumen!
+            # release the Tk image
             $pdf freeImage $img
             puts "  Image resources freed"
         }
@@ -211,11 +211,11 @@ package require pdf4tcl]"
     if {!$img_found} {
         # === PLATZHALTER (kein Bild gefunden) ===
         $pdf setFont 12 Helvetica-Bold
-        $pdf text "Kein Test-Bild gefunden - Zeige Platzhalter:" -x $sx -y $y
+        $pdf text "No test image found -- drawing a placeholder:" -x $sx -y $y
         
         set y [expr {$y + 30}]
         
-        # Platzhalter 1: Groß
+        # placeholder 1: large
         $pdf setFont 10 Helvetica
         $pdf text "Platzhalter (200x150):" -x $sx -y $y
         
@@ -278,7 +278,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 20}]
     $pdf setFont 10 Helvetica-Oblique
-    $pdf text "Unterstützte Formate: PNG, JPEG (je nach Tcl-Installation)" -x $sx -y $y
+    $pdf text "Formats: PNG and JPEG, depending on the Tcl installation" -x $sx -y $y
     
     # --- PFLICHT: Encoding-Test ---
     set y [expr {$y + 40}]
@@ -288,7 +288,7 @@ package require pdf4tcl]"
     
     set y [expr {$y + 25}]
     $pdf setFont 11 Helvetica
-    $pdf text "Deutsche Umlaute: äöüÄÖÜß" -x $sx -y $y
+    $pdf text "German umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df" -x $sx -y $y
     
     set y [expr {$y + 20}]
     $pdf text "Sonderzeichen: €£¥©®™" -x $sx -y $y

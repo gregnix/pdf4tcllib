@@ -57,13 +57,13 @@ foreach {sx col} {
     1.5 {0.4 0 0.5}
     2.0 {0.5 0.3 0}
 } {
-    # Label links (über Text, kein Überlappen)
+    # label on the left, above the text, clear of it
     rowLabel $pdf "sx=$sx" 40 $y
     # Skalierter Text darunter
     set ty [expr {$y + 18}]
     $pdf setFillColor {*}$col
     pdf4tcllib::drawing::textScaled $pdf "Text sx=$sx" 40 $ty $sx 1.0 13 Helvetica
-    # Info rechts auf gleicher Höhe wie Text
+    # note on the right, on the same line as the text
     rowLabel $pdf "(sx=$sx)" 480 $ty
     $pdf setFillColor 0 0 0
     set y [expr {$ty + 22}]

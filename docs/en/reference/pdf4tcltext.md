@@ -1,7 +1,7 @@
 # pdf4tcltext — Tk Text Widget PDF Export
 
-**Package:** `pdf4tcltext 0.2`  
-**File:** `pdf4tcltext-0.2.tm`  
+**Package:** `pdf4tcltext 0.3`  
+**File:** `pdf4tcltext-0.3.tm`  
 **Requires:** `pdf4tcllib 0.2`, `pdf4tcl 0.9.4.25+`, Tk
 
 Exports a Tk `text` widget to a formatted PDF, preserving fonts, colors,
@@ -18,6 +18,34 @@ package require pdf4tcltext
 ```
 
 `pdf4tcltext` automatically loads `pdf4tcllib 0.2` as a dependency.
+
+Runnable companion: [`examples/advanced/72_textwidget_tags.tcl`](../../../examples/advanced/72_textwidget_tags.tcl) -- what carries over and what does not, checked while drawing.
+
+### New in 0.3
+
+Three points found by an application using the module, not by the test
+suite:
+
+- **`-maxwidth` breaks lines.** Up to 0.2 it was read into an option
+  array, handed on as a parameter and never looked at. Each segment is
+  measured in its own font, because a word in bold is wider than the
+  same word in regular.
+- **`pdf4tcltext::render` exists.** The alias at the end of the file
+  does `namespace import`, but the source namespace had no
+  `namespace export` — without an export pattern Tcl imports nothing,
+  and does so without an error. The alias simply did not come into
+  being.
+- **A font loaded under the family name is used.** Up to 0.2 the mapping
+  knew only the 14 standard fonts, so a TrueType face registered as
+  `DejaVu Sans` came out as Helvetica — the one font without glyphs
+  beyond Latin-1. Unknown families still fall back to the 14.
+- **`-offset` raises and lowers the baseline** — superscript and
+  subscript. The line height is unchanged, and no size is invented.
+- **`-justify center` and `right` are applied.** The justification of
+  the first segment governs the whole line, as it does on screen — Tk
+  knows `-justify` per line, not per character. A line too wide for the
+  space is not shifted: an alignment that carries the text further out
+  of the frame is no alignment.
 The namespace `pdf4tcllib::textwidget` remains available alongside the
 `pdf4tcltext` alias.
 
@@ -84,7 +112,7 @@ Alias for `pdf4tcllib::textwidget::render`.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `-maxwidth W` | 480 | Content width in points |
+| `-maxwidth W` | 480 | Content width in points. Lines are broken at word boundaries to fit; a single word wider than `W` is drawn anyway rather than cut. **Up to 0.2 this option was accepted and ignored** — one widget line became one PDF line, however long, and the text left the page without a word said. |
 | `-fontsize N` | 10 | Default font size in points |
 | `-fontfamily S` | Helvetica | Default font family |
 | `-linespacing N` | 2 | Extra line spacing in points |
@@ -156,6 +184,27 @@ $t tag configure deleted -overstrike 1
 
 Both are rendered as PDF lines in the same color as the text.
 
+### Superscript and Subscript
+
+`-offset` shifts the baseline of that segment, positive up, negative
+down, exactly as Tk does. The value is a widget pixel measure and is
+converted to points with the same factor as `-lmargin1` (5 px → 3.75 pt).
+The line height does not change.
+
+The module does not invent a smaller size: give the tag a smaller
+`-font` as well if you want one, the way you would on screen.
+
+### Justification
+
+| Tag option | PDF |
+|---|---|
+| `-justify left` | default |
+| `-justify center` | line centred inside `-maxwidth` |
+| `-justify right` | line flushed to the right edge of `-maxwidth` |
+
+The first segment of a line decides. A line wider than the available
+space stays where it is rather than being pushed further out.
+
 ### Indentation and Spacing
 
 ```tcl
@@ -220,9 +269,7 @@ Each text segment is rendered with the merged style of all active tags.
 
 | Feature | Status |
 |---------|--------|
-| `-offset` (superscript / subscript) | Not implemented |
-| `-justify center/right` | Not implemented — all text left-aligned |
-| `-wrap none/char` | No pixel-based line breaking |
+| `-wrap none/char` | Word wrapping only, never mid-word |
 | `-spacing2` (inter-line spacing) | Not implemented — use `-linespacing` |
 | Embedded windows (`-window`) | Placeholder `[Widget]` |
 | Embedded images (`-image`) | Placeholder `[Image: name]` |

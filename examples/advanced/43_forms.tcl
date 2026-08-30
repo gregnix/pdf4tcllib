@@ -189,7 +189,7 @@ set fy [expr {$fy + 15}]
 $pdf text "• Multiline Field: address (3 lines)" -x [expr {$fx + 10}] -y $fy
 
 # ============================================================================
-# Fußzeile
+# footer
 # ============================================================================
 $pdf setFont 8 Helvetica
 $pdf setFillColor 0.5 0.5 0.5

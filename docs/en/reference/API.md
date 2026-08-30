@@ -63,7 +63,7 @@ Dependency: pdf4tcl (in `vendors/pkg/` or system-wide).
 > draw -- tables as `Table`/`TR`/`TH`/`TD`, form fields as `Form` with their
 > label, running heads and page numbers as artifacts. Nothing changes
 > without that one call. See [`accessibility.md`](accessibility.md) and
-> [`../examples/basic/39_accessible.tcl`](../examples/basic/39_accessible.tcl).
+> [`../examples/basic/39_accessible.tcl`](../../../examples/basic/39_accessible.tcl).
 
 ---
 
@@ -561,6 +561,40 @@ directly; without them `sanitize` maps them to ASCII/WinAnsi equivalents.
 See the [text](#text) section for `safeText` usage in context.
 
 ---
+
+### Which characters went missing (0.6.3)
+
+```tcl
+pdf4tcllib::unicode::resetSubst
+pdf4tcllib::unicode::safeText $pdf $text -x 50 -y 100
+
+set r [pdf4tcllib::unicode::substReport]
+# -> count 3 chars {U+03B1 U+03B2 U+2211}
+```
+
+`sanitize` replaces a character the font does not have with `?`. Until
+0.6.3 that happened silently: neither the return value nor a counter said
+anything. Measured on `math::renderLatex`, `\alpha \sum` without
+`fonts::init -cid 1` produced six question marks in the content stream,
+and nothing pointed at it.
+
+| Command | |
+|---|---|
+| `unicode::substCount` | how many characters were replaced |
+| `unicode::substReport` | `count` and `chars` — up to twelve distinct code points |
+| `unicode::resetSubst` | set both back |
+
+The counter is cumulative, queryable and resettable, like `getSubstCount`
+in pdf4tcl. A one-time warning goes to stderr as well, because a counter
+only helps whoever asks it.
+
+**Not counted** are substitutions that are intended and lose nothing: the
+emoji transliteration (U+1F600 → `:-)`) and the box-drawing characters in
+base mode. Counted is where a character disappears.
+
+Latin-1 passes through, so German text does not raise a false alarm.
+
+
 ## math
 
 Inline math formula rendering -- port of Arjen Markus' canvas-based
@@ -1451,7 +1485,17 @@ pdf4tcllib::tag::end $pdf
 | `tag::artifact $pdf ?-type Layout\|Pagination\|Page?` | open an artifact -- decoration that carries no content |
 | `tag::artifactEnd $pdf` | close it |
 | `tag::isActive $pdf` | is tagging on for this document |
+| `tag::depth $pdf` | how many elements are open right now |
 | `tag::forget $pdf` | drop the bookkeeping for a destroyed document |
+
+**Why `tag::depth` exists.** A building block that draws by itself has to
+know whether it stands inside an open element or not, and it cannot ask
+the document -- pdf4tcl keeps no such counter. Without it the block has
+to choose between two wrongs: mark up unconditionally, and a `Span` ends
+up nested inside a `P` that was opened by the caller; or never mark up,
+and leave a hole in the tree. `safeText` had exactly that hole until
+0.6.3: it marked up only sometimes, and the untagged operations were
+invisible until `getUntaggedCount` was asked.
 
 **What goes in an artifact.** Anything a reader should not announce
 because it says nothing: zebra stripes, rules, the frame of a callout,
@@ -1504,6 +1548,8 @@ set m [pdf4tcllib::measure::block mp {
 dict get $m height    ;# how much height it needs
 dict get $m pages     ;# how many pages it runs over
 dict get $m value     ;# what the block returned
+dict get $m overflow  ;# 1 if it ran past the sheet edge, 0 if not
+dict get $m sheet     ;# the sheet height it was measured against
 
 pdf4tcllib::measure::height mp $script ?-option ...?
 pdf4tcllib::measure::fits $space mp $script ?-option ...?
@@ -1517,6 +1563,23 @@ the same CID fonts.
 **The page count is a property of the call, not of the block.** Without
 `-ctx`, `table::draw` does not break and draws past the page edge, and
 the measurement says one page. Measure the way you will draw.
+
+**`overflow` is what the page count cannot see.** The count rises only
+when the block breaks pages *by itself*. A block that does not —
+`text::writeParagraph`, for one — runs off the bottom instead, and
+`pages` stays 1. Measured on a paragraph repeated thirty times on A4:
+height 1207 against a sheet of 841.89, seventy-one lines of text, the
+last one at y = -7.3, below the sheet. The measurement and the real run
+agreed with each other, and both were wrong.
+
+Neither checker catches that either: `geometry-check` does not look at
+text, and `layout-check` reads through pdftotext, which drops what lies
+beside the sheet — 359 of 360 words came back.
+
+Since 0.6.4 `fits` reads `overflow` and answers no. Up to 0.6.3 it said
+yes for a block that fitted on no page at all: the height was under the
+space given, the page count was 1, and part of the text lay off the
+sheet.
 
 A block returning something other than a number gets an empty height
 rather than an invented one.
@@ -1572,7 +1635,7 @@ if {[pdf4tcllib::validate_pdf "output.pdf"]} {
 
 ```tcl
 puts [pdf4tcllib::version]
-# -> 0.6.3   (the same number as [package provide pdf4tcllib])
+# -> 0.6.4   (the same number as [package provide pdf4tcllib])
 ```
 
 ### readFile

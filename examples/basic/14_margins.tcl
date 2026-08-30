@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 14: Margins & Safe Area
+# Demo 14: Margins and safe area
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,19 +15,19 @@
 #     tclsh 14_margins.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 14  (ohne führende 0)
-#   FALSCH:  set demo_num 014 (Oktal-Fehler!)
+#   RIGHT: set demo_num 14  (no leading zero)
+#   WRONG: set demo_num 014 (octal!)
 # ============================================================================
 # What this shows:
 #   - Margins und Safe Area verstehen
 #   - Warum Margins wichtig sind
-#   - DIN 5008 Margins für Geschäftsbriefe
+#   - DIN 5008 margins for business letters
 #   - PageContext nutzen
 #
 # Features:
 #   - Visualisierung der Safe Area
-#   - Papier-Rand vs. Inhalt-Bereich
-#   - Verschiedene Margin-Größen
+#   - Sheet edge vs. Inhalt-Bereich
+#   - margins of different sizes
 #   - Praktische Beispiele
 #
 # Encoding test: äöüÄÖÜß€
@@ -56,7 +56,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 14
 set demo_name "margins"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -120,18 +120,18 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 14: Margins & Safe Area" -x $sx -y $sy
+    $pdf text "Demo 14: Margins and safe area" -x $sx -y $sy
     
     # --- Encoding-Test ---
     set y [expr {$sy + 30}]
     $pdf setFont 10 Helvetica
-    $pdf text "Encoding-Test: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     # ========================================================================
     # Visualisierung: Ganze Seite
     # ========================================================================
     
-    # Papier-Rand (äußerer Rand)
+    # the sheet edge
     $pdf gsave
     $pdf setStrokeColor 1 0.5 0.5
     $pdf setLineWidth 3
@@ -181,11 +181,11 @@ package require pdf4tcl]"
     set text_y [expr {$legend_y + 20}]
     
     $pdf setFont 10 Helvetica-Bold
-    $pdf text "Legende:" -x $text_x -y $text_y
+    $pdf text "Key:" -x $text_x -y $text_y
     
     set text_y [expr {$text_y + 20}]
     
-    # Rot: Papier-Rand
+    # Rot: Sheet edge
     $pdf gsave
     $pdf setStrokeColor 1 0.5 0.5
     $pdf setLineWidth 2
@@ -193,11 +193,11 @@ package require pdf4tcl]"
     $pdf grestore
     
     $pdf setFont 9 Helvetica
-    $pdf text "Papier-Rand" -x [expr {$text_x + 25}] -y [expr {$text_y - 3}]
+    $pdf text "Sheet edge" -x [expr {$text_x + 25}] -y [expr {$text_y - 3}]
     
     set text_y [expr {$text_y + 18}]
     
-    # Grün: Safe Area
+    # green: the safe area
     $pdf gsave
     $pdf setStrokeColor 0.5 1 0.5
     $pdf setLineWidth 2
@@ -225,20 +225,20 @@ package require pdf4tcl]"
     set info_y [expr {$sy + 80}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "Was sind Margins?" -x $sx -y $info_y
+    $pdf text "What margins are" -x $sx -y $info_y
     
     set info_y [expr {$info_y + 25}]
     $pdf setFont 10 Helvetica
     
     set info_lines {
-        "Margins (Ränder) sind der Abstand zwischen Papier-Rand und Inhalt."
+        "A margin is the distance between the sheet edge and the content."
         ""
         "Warum sind Margins wichtig?"
-        "* Drucker können oft nicht bis zum Rand drucken"
+        "* most printers cannot print to the edge"
         "* Text am Rand ist schwer lesbar"
         "* Professionelles Aussehen"
-        "* Platz für Lochen, Heften, Binden"
-        "* DIN 5008 Standard für Geschäftsbriefe"
+        "* room for punching, stapling, binding"
+        "* DIN 5008 is the German business letter standard"
     }
     
     foreach line $info_lines {
@@ -247,12 +247,12 @@ package require pdf4tcl]"
     }
     
     # ========================================================================
-    # Margin-Größen Tabelle
+    # table of margin sizes
     # ========================================================================
     
     set info_y [expr {$info_y + 20}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "Standard-Margins" -x $sx -y $info_y
+    $pdf text "Common margins" -x $sx -y $info_y
     
     set info_y [expr {$info_y + 25}]
     
@@ -260,7 +260,7 @@ package require pdf4tcl]"
         {"Anwendung" "Margin (mm)" "Margin (pt)" "Verwendung"}
         {"Standard" "20" "57" "Allgemein"}
         {"Minimal" "10" "28" "Maximaler Platz"}
-        {"DIN 5008" "25 (links)" "71" "Geschäftsbriefe"}
+        {"DIN 5008" "25 (left)" "71" "business letters"}
         {"Buch/Print" "15-20" "43-57" "Druckprodukte"}
     }
     
@@ -272,7 +272,7 @@ package require pdf4tcl]"
         -font_size 9
     
     # ========================================================================
-    # Maße anzeigen
+    # the measurements
     # ========================================================================
     
     set measure_y [expr {$info_y + [expr {[llength $margin_data] * 22}] + 30}]
@@ -284,7 +284,7 @@ package require pdf4tcl]"
     $pdf setFont 10 Courier
     
     set measures [list \
-        "Papier-Größe:   $pw x $ph pt  (595 x 842 pt = A4)" \
+        "Sheet size:     $pw x $ph pt  (595 x 842 pt = A4)" \
         "Margin:         $margin_mm mm  ($margin_pt pt)" \
         "Safe Area:      $sw x $sh pt" \
         "Safe Area Pos:  ($sx, $sy) pt" \
@@ -296,12 +296,12 @@ package require pdf4tcl]"
     }
     
     # ========================================================================
-    # Code-Beispiel
+    # Example code
     # ========================================================================
     
     set measure_y [expr {$measure_y + 20}]
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "Code-Beispiel: PageContext nutzen" -x $sx -y $measure_y
+    $pdf text "Example code: PageContext nutzen" -x $sx -y $measure_y
     
     set measure_y [expr {$measure_y + 25}]
     $pdf setFont 9 Courier
@@ -326,10 +326,10 @@ package require pdf4tcl]"
     }
     
     # ========================================================================
-    # Maß-Annotationen auf der Seite
+    # the measurements drawn on the page
     # ========================================================================
     
-    # Margin-Maße mit Pfeilen
+    # margin measurements with arrows
     $pdf setFont 8 Helvetica
     $pdf setFillColor 0.5 0.5 0.5
     
@@ -399,7 +399,7 @@ puts "  # oder"
 puts "  evince $result"
 puts ""
 puts "TIPP: Beachten Sie die farbigen Linien!"
-puts "      Rot  = Papier-Rand (nicht bedruckbar)"
-puts "      Grün = Safe Area (Inhalt hier platzieren)"
+puts "      Rot  = Sheet edge (nicht bedruckbar)"
+puts "      green = the safe area, put content here"
 
 exit 0

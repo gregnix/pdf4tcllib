@@ -19,7 +19,7 @@
 
 package require pdf4tcllib 0.4
 
-package provide pdf4tcltable 0.3.1
+package provide pdf4tcltable 0.3.2
 
 namespace eval ::pdf4tcllib::tablelist {}
 
@@ -29,8 +29,80 @@ namespace eval ::pdf4tcllib::tablelist {}
 # Returns: dict with cols data cellstyles rowstyles rowindent zebra zebracolor
 #          hbg hfg vis
 # --------------------------------------------------------------------------
+# Was der Export NICHT uebertragen kann.
+#
+# Der Sinn dieses Exporteurs ist: was auf dem Bildschirm steht, kommt ins
+# PDF -- in der Reihenfolge, in der es dort steht. Drei Dinge kann er
+# nicht, und bis 0.3.1 verschwanden sie lautlos:
+#
+#   Bild in einer Zelle        cellconfigure -image
+#   eingebettetes Fenster      cellconfigure -window
+#   umbrechende Spalte         columnconfigure -wrap 1 -- im Widget steht
+#                              der Text mehrzeilig, im PDF eine Zeile mit
+#                              "...", weil table::draw nicht umbricht
+#
+# Gemessen an einer Spalte mit -wrap 1 und einem 82 Zeichen langen Text:
+# das Widget zeigt ihn ganz, das PDF endet nach 41 Zeichen mit "...".
+#
+# Gezaehlt wird jetzt, und einmal je Lauf gesagt. Der Bericht steht
+# danach in ::pdf4tcllib::tablelist::report.
+namespace eval ::pdf4tcllib::tablelist {
+    variable _fehlt
+    array set _fehlt {}
+}
+
+# Was beim letzten render nicht uebertragen wurde:
+#   {images N windows N wrapped N cells {0,2 1,0 ...}}
+proc ::pdf4tcllib::tablelist::report {} {
+    variable _fehlt
+    return [array get _fehlt]
+}
+
+proc ::pdf4tcllib::tablelist::_resetReport {} {
+    variable _fehlt
+    array unset _fehlt
+    array set _fehlt {images 0 windows 0 wrapped 0 cells {}}
+    return
+}
+
+proc ::pdf4tcllib::tablelist::_vermerk {art zelle} {
+    variable _fehlt
+    if {![info exists _fehlt($art)]} { set _fehlt($art) 0 }
+    incr _fehlt($art)
+    # Hoechstens zwoelf Zellen festhalten -- die Liste soll sagen WO,
+    # nicht jedes Vorkommen protokollieren.
+    if {[llength $_fehlt(cells)] < 12 &&
+            [lsearch -exact $_fehlt(cells) $zelle] < 0} {
+        lappend _fehlt(cells) $zelle
+    }
+    return
+}
+
+# Einmal je Lauf sagen, was nicht mitkam. Der Zaehler allein hilft nur
+# dem, der ihn abfragt -- und wer nicht weiss, dass es ihn gibt, fragt
+# nicht.
+proc ::pdf4tcllib::tablelist::_sagWasFehlt {} {
+    variable _fehlt
+    set teile {}
+    foreach {art wort} {images "cell image" windows "embedded window"
+            wrapped "wrapped column"} {
+        if {[info exists _fehlt($art)] && $_fehlt($art) > 0} {
+            lappend teile "$_fehlt($art) x $wort"
+        }
+    }
+    if {![llength $teile]} { return }
+    lappend ::pdf4tcl::warnings "tablelist::render: [join $teile {, }] could\
+            not be reproduced ([join [lrange $_fehlt(cells) 0 3] {, }]).\
+            A cell image or an embedded window is not drawn at all; a\
+            wrapped column is shortened to one line, because table::draw\
+            does not wrap. Ask ::pdf4tcllib::tablelist::report for the\
+            full list."
+    return
+}
+
 proc ::pdf4tcllib::tablelist::_extract {tbl opts first last} {
     upvar 1 $opts o
+    _resetReport
 
     # sichtbare Spalten
     set ncols [$tbl columncount]
@@ -44,7 +116,9 @@ proc ::pdf4tcllib::tablelist::_extract {tbl opts first last} {
             if {$wch < 0} { set wch [expr {-$wch}] }
             if {$wch == 0} { set wch 5 }
         }
+        set wrap 0; catch {set wrap [$tbl columncget $c -wrap]}
         lappend vis $c; lappend colAligns $align; lappend chW $wch
+        lappend colWrap $wrap
     }
     if {[llength $vis] == 0} {
         return [dict create cols {} data {} cellstyles {} rowstyles {} \
@@ -109,6 +183,24 @@ proc ::pdf4tcllib::tablelist::_extract {tbl opts first last} {
                        if {$t2 ne ""} {set ct $t2}}
             }
             lappend rowCells $ct
+
+            # Was hier nicht mitkommt, wird gezaehlt statt verschwiegen.
+            set bild ""
+            catch {set bild [$tbl cellcget $r,$c -image]}
+            if {$bild ne ""} { _vermerk images "$r,$c" }
+            set fenster ""
+            catch {set fenster [$tbl cellcget $r,$c -window]}
+            if {$fenster ne ""} { _vermerk windows "$r,$c" }
+            # Eine umbrechende Spalte allein ist noch kein Verlust --
+            # "kurz" passt auch dort in eine Zeile. Gemeldet wird nur,
+            # was laenger ist als die Spalte breit ist. Das ist eine
+            # Schaetzung ueber die Zeichenzahl, keine Messung: die
+            # genaue Breite kennt erst table::draw.
+            set idx [lsearch -exact $vis $c]
+            if {[lindex $colWrap $idx] &&
+                    [string length $ct] > [lindex $chW $idx]} {
+                _vermerk wrapped "$r,$c"
+            }
 
             set cstyle {}
             catch {set b [$tbl cellcget $r,$c -background]
@@ -188,6 +280,7 @@ proc ::pdf4tcllib::tablelist::render {pdf tbl x y args} {
 
     set ex [_extract $tbl opts 0 -1]
     if {![llength [dict get $ex vis]]} { return $y }
+    _sagWasFehlt
     set vis [dict get $ex vis]
 
     # Footer: either a widget or a list of values

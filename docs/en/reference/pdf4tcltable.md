@@ -1,7 +1,7 @@
 # pdf4tcltable — Tablelist Widget PDF Export
 
-**Package:** `pdf4tcltable 0.3.1`  
-**File:** `pdf4tcltable-0.3.1.tm`  
+**Package:** `pdf4tcltable 0.3.2`  
+**File:** `pdf4tcltable-0.3.2.tm`  
 **Requires:** `pdf4tcllib 0.4`, `pdf4tcl 0.9.4.25+`, `tablelist_tile` (Csaba Nemethi)
 
 > **0.3.1:** `-formatted` works. Until then `_extract` read the rows with
@@ -16,6 +16,39 @@ not from the internal text widget.
 
 > **Note:** tablelist has no built-in CSV or PDF export. `dumptostring` /
 > `dumptofile` is a proprietary save/restore format, not an export format.
+
+## What the export cannot carry over (0.3.2)
+
+The point of this exporter is that what is on the screen goes into the
+PDF, in the order it is on screen. Three things it cannot do, and until
+0.3.2 they disappeared without a word:
+
+| in the widget | in the PDF |
+|---|---|
+| `cellconfigure -image` | nothing is drawn |
+| `cellconfigure -window` | nothing is drawn |
+| `columnconfigure -wrap 1` | one line, shortened with `...` |
+
+The last one is the one that costs: `table::draw` does not wrap, so a
+cell the widget shows over three lines becomes one. Measured with an
+82-character text in a wrapped column -- the widget shows all of it, the
+PDF ends after 41 characters.
+
+```tcl
+pdf4tcllib::tablelist::render $pdf .tbl 50 70 -maxwidth 480
+set r [pdf4tcllib::tablelist::report]
+# -> images 1 windows 1 wrapped 1 cells {0,0 1,0 1,2}
+```
+
+The report covers the **last** run, not everything since the program
+started -- otherwise it would sum over several tables and no one would
+know which is meant. A one-line warning also goes to
+`::pdf4tcl::warnings`, because a counter only helps whoever asks for it.
+
+A wrapped column alone is not a loss: a short value fits on one line
+there too. Only a value longer than the column is counted, estimated from
+the character count -- the exact width is not known until `table::draw`
+runs.
 
 ## What's new in 0.3
 

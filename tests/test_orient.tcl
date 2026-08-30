@@ -6,6 +6,14 @@
 package require tcltest
 namespace import ::tcltest::*
 
+# Damit die Datei auch EINZELN laeuft. Ohne diese Zeile findet sie
+# pdf4tcllib nur ueber ein installiertes Paket -- und die Constraints
+# unten fragen genau danach. Fehlt es, ueberspringt tcltest still
+# ALLES und meldet trotzdem Erfolg: Rueckgabewert 0, Failed 0. Der
+# Runner setzt den Pfad selbst, deshalb fiel es nie auf.
+tcl::tm::path add [file join [file dirname [file normalize [info script]]] .. lib]
+package require pdf4tcllib
+
 # ============================================================
 # page::context -- orient true (y grows down)
 # ============================================================

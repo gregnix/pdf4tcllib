@@ -155,7 +155,7 @@ set items {
         "line -dash komplex"
         "-dash {10 3 2 3} (4 Elemente)"
         {
-            # canvas: komplexes Muster Strich-Lücke-Punkt-Lücke
+            # canvas: dash-gap-dot-gap pattern
             %W create line 8 [expr {%CH/2-10}] [expr {%CW-8}] [expr {%CH/2-10}] \
                 -fill "#0055aa" -width 2 -dash {10 3 2 3}
             %W create line 8 [expr {%CH/2+6}] [expr {%CW-8}] [expr {%CH/2+6}] \
@@ -445,7 +445,7 @@ set items {
         "path (tko)"
         "tko only: SVG M L C Q A Z"
         {
-            # canvas hat kein path-Item -- Polygon-Näherung
+            # canvas has no path item -- approximated with a polygon
             set cx [expr {%CW/2}]; set cy [expr {%CH/2}]
             set pts {}
             for {set i 0} {$i < 10} {incr i} {
@@ -506,7 +506,7 @@ set items {
         "gradient (tko)"
         "tko::path::gradient"
         {
-            # canvas: kein Gradient, Annäherung mit Rechtecken
+            # canvas: no gradient, approximated with rectangles
             for {set i 0} {$i < 10} {incr i} {
                 set x [expr {5 + $i*11}]
                 set r [expr {int(180 - $i*15)}]
@@ -583,7 +583,7 @@ set items {
             %W create text [expr {%CW*0.78}] [expr {%CH*0.55}]                 -text "90°" -font {Helvetica 9} -fill "#006600"                 -angle 90 -anchor center
         }
         {
-            # tko: -matrix rotate für Text-Rotation
+            # tko: -matrix rotate for rotated text
             set cx [expr {%CW*0.3}]; set cy [expr {%CH*0.6}]
             %W create text $cx $cy -text "0°"                 -fontsize 9 -fill "#0055aa" -textanchor middle
             set cx2 [expr {%CW*0.55}]; set cy2 [expr {%CH*0.6}]
@@ -618,7 +618,7 @@ set items {
         "active/disabled States"
         "-activefill -disabledfill"
         {
-            # State-abhängige Farben: hover=active, disabled=ausgegraut
+            # state-dependent colours: hover=active, disabled=greyed out
             %W create rectangle 8 10 [expr {%CW/2-4}] [expr {%CH-10}]                 -fill "#b3d1f0" -outline "#0055aa"                 -activefill "#ffee88" -activeoutline "#cc8800"                 -width 2 -tags demo_state
             %W create text [expr {%CW/4+4}] [expr {%CH/2}]                 -text "hover!" -font {Helvetica 8} -fill "#333" -anchor center
             %W create rectangle [expr {%CW/2+4}] 10 [expr {%CW-8}] [expr {%CH-10}]                 -fill "#cccccc" -outline "#888888"                 -disabledfill "#eeeeee"                 -width 1 -state disabled
@@ -693,8 +693,8 @@ array set statusBg {
 }
 
 # ===========================================================================
-# Hilfsproc: Script in Canvas-Widget ausführen
-# Ersetzt %W -> Widget-Pfad, %CW/%CH -> Zellbreite/-höhe
+# helper: run a script inside a canvas widget
+# substitutes %W -> widget path, %CW/%CH -> cell width and height
 # ===========================================================================
 proc runInCanvas {w script cw ch} {
     set s [string map [list %W $w %CW $cw %CH $ch] $script]
@@ -815,7 +815,7 @@ foreach item $items {
         pack .main.scroll.inner.r${rowIdx}c2.l -fill both -expand 1
     }
 
-    # Spalte 3: PDF Export (Vorschau -- wird beim Export befüllt)
+    # column 3: PDF export, a preview filled in when exporting
     frame .main.scroll.inner.r${rowIdx}c3 -width $CW -height $CH \
         -bg "#f8f8ff" -relief sunken -borderwidth 1
     grid .main.scroll.inner.r${rowIdx}c3 -row $rowIdx -column 3 \
@@ -890,7 +890,13 @@ proc exportPDF {} {
                       [expr {$lx+220}] \
                       [expr {$lx+280}] \
                       [expr {$lx+350}]]
-    set colW    [list 158 58 58 68 210]
+    # Die letzte Spalte war 210 breit. Die Tabelle beginnt bei lx (42,5 pt
+    # bei -margin 15) und endete damit bei 602,5 -- eine A4-Seite ist 595
+    # breit, der rechte Rand liegt bei 552,5. Also 50 Punkt zu breit, und
+    # der Hinweistext lief ueber das Blatt hinaus. Gefunden hat es
+    # geometry-check, nachdem es Transformationen folgt; pdftotext sah nur
+    # den Text, der noch knapp innen lag (xMax 597,4).
+    set colW    [list 158 58 58 68 160]
     set hdrTxt  [list "Item / Syntax" "canvas" "tko" "Status" "Hinweis"]
 
     # Header-Zeile
@@ -905,9 +911,9 @@ proc exportPDF {} {
     set y [expr {$y+14}]
 
     # Canvas-Zeilen
-    set rowH 44   ;# Zeilenhöhe im PDF (canvas CW x CH gescaled)
-    set pCW 54    ;# canvas-Breite im PDF
-    set pCH 40    ;# canvas-Höhe im PDF
+    set rowH 44   ;# row height in the PDF (canvas CW x CH, scaled)
+    set pCW 54    ;# canvas width in the PDF
+    set pCH 40    ;# canvas height in the PDF
 
     set rowIdx 0
     foreach item $items {
@@ -1051,7 +1057,7 @@ proc exportPDF {} {
     $pdf text "Zusammenfassung: Canvas-Item Export" -x $lx -y $y
     set y [expr {$y+20}]
 
-    # Zählung
+    # the tally
     set cnt_ok 0; set cnt_so 0; set cnt_miss 0
     foreach item $items {
         lassign $item name syntax cs ts status note

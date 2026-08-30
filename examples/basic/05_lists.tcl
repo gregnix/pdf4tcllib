@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 05: Listen (Bullets)
+# Demo 05: Lists and bullets
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -63,7 +63,7 @@ set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name
 proc demo_main {} {
     global output_file demo_num
     
-    puts "Starting Demo $demo_num: Listen (Bullets)"
+    puts "Starting Demo $demo_num: Lists and bullets"
     puts "  pdf4tcl version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
 package require pdf4tcllib 0.6
@@ -91,7 +91,7 @@ package require pdf4tcl]"
         -orient [dict get $ctx orient] \
         -unit p]
     
-    # -orient true:  Y=0 ist OBEN, Y wächst nach UNTEN
+    # -orient true: Y=0 is at the TOP, Y grows DOWNWARDS
     # -unit p:       Alle Koordinaten in Points (1/72 inch)
     
     puts "  PDF object created"
@@ -114,23 +114,23 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 05: Listen (Bullets)" -x $sx -y $sy
+    $pdf text "Demo 05: Lists and bullets" -x $sx -y $sy
     
     # --- Ungeordnete Liste (Bullets) ---
     set y [expr {$sy + 40}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "1. Ungeordnete Liste (Bullets):" -x $sx -y $y
+    $pdf text "1. Unordered list (bullets):" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 12 Helvetica
     
     set bullet_items {
-        "Erster Punkt"
-        "Zweiter Punkt mit Umlauten: äöüÄÖÜß"
-        "Dritter Punkt"
-        "Vierter Punkt mit Euro: 100€"
-        "Fünfter Punkt mit Sonderzeichen: ©®™"
+        "First item"
+        "Second item with umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df"
+        "Third item"
+        "Fourth item with a euro sign: 100\u20ac"
+        "Fifth item with symbols: \u00a9\u00ae\u2122"
     }
     
     foreach item $bullet_items {
@@ -142,17 +142,17 @@ package require pdf4tcl]"
     set y [expr {$y + 30}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "2. Nummerierte Liste:" -x $sx -y $y
+    $pdf text "2. Numbered list:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 12 Helvetica
     
     set numbered_items {
-        "Installation vorbereiten"
-        "Abhängigkeiten prüfen (äöü Test)"
-        "Konfiguration anpassen"
-        "Tests durchführen"
-        "Dokumentation lesen"
+        "Prepare the installation"
+        "Check dependencies (\u00e4\u00f6\u00fc test)"
+        "Adjust the configuration"
+        "Run the tests"
+        "Read the documentation"
     }
     
     set counter 1
@@ -166,12 +166,12 @@ package require pdf4tcl]"
     set y [expr {$y + 30}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "3. Checkliste (ASCII-Checkboxen):" -x $sx -y $y
+    $pdf text "3. Checklist (ASCII boxes):" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 12 Helvetica
     
-    # WICHTIG: [X] und [ ] müssen als \[X\] und \[ \] escaped werden!
+    # NOTE: [X] and [ ] have to be escaped as \[X\] and \[ \]
     set checklist {
         {true "Demo 01 erstellt"}
         {true "Demo 02 erstellt"}
@@ -182,7 +182,7 @@ package require pdf4tcl]"
     
     foreach item $checklist {
         lassign $item checked text
-        # \[ und \] für Tcl-Escaping!
+        # \[ and \] for Tcl escaping
         set checkbox [expr {$checked ? "\[X\]" : "\[ \]"}]
         $pdf text "$checkbox $text" -x $sx -y $y
         set y [expr {$y + 20}]
@@ -192,23 +192,23 @@ package require pdf4tcl]"
     set y [expr {$y + 30}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "4. Verschachtelte Liste:" -x $sx -y $y
+    $pdf text "4. Nested list:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 12 Helvetica
     
     # Hauptpunkte
-    $pdf text "* Hauptpunkt 1" -x $sx -y $y
+    $pdf text "* Main item 1" -x $sx -y $y
     set y [expr {$y + 20}]
     
-    # Unterpunkte (eingerückt)
+    # sub-items, indented
     set indent [expr {$sx + 20}]
-    $pdf text "- Unterpunkt 1.1" -x $indent -y $y
+    $pdf text "- Sub-item 1.1" -x $indent -y $y
     set y [expr {$y + 20}]
-    $pdf text "- Unterpunkt 1.2 (äöü)" -x $indent -y $y
+    $pdf text "- Sub-item 1.2 (\u00e4\u00f6\u00fc)" -x $indent -y $y
     set y [expr {$y + 20}]
     
-    $pdf text "* Hauptpunkt 2" -x $sx -y $y
+    $pdf text "* Main item 2" -x $sx -y $y
     set y [expr {$y + 20}]
     
     $pdf text "- Unterpunkt 2.1" -x $indent -y $y
@@ -229,11 +229,11 @@ package require pdf4tcl]"
     $pdf setFont 12 Helvetica
     
     set bullet_styles {
-        {"*" "Stern (Standard)"}
-        {"-" "Minus/Bindestrich"}
-        {"+" "Plus-Zeichen"}
-        {">" "Größer-als"}
-        {"#" "Raute/Hash"}
+        {"*" "asterisk (default)"}
+        {"-" "hyphen-minus"}
+        {"+" "plus sign"}
+        {">" "greater-than"}
+        {"#" "number sign"}
     }
     
     foreach style $bullet_styles {
@@ -252,11 +252,11 @@ package require pdf4tcl]"
     $pdf setFont 11 Helvetica
     
     set encoding_items {
-        "* Deutsche Umlaute: äöüÄÖÜß"
-        "* Euro-Symbol: 100€ oder 200€"
-        "* Französisch: àèìòù ÀÈÌÒÙ"
-        "* Spanisch: ñÑ ¿Hola? ¡Sí!"
-        "* Sonderzeichen: ©®™ £¥¢"
+        "* German umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df"
+        "* Euro sign: 100\u20ac or 200\u20ac"
+        "* French: \u00e0\u00e8\u00ec\u00f2\u00f9 \u00c0\u00c8\u00cc\u00d2\u00d9"
+        "* Spanish: \u00f1\u00d1 \u00bfHola? \u00a1S\u00ed!"
+        "* Symbols: \u00a9\u00ae\u2122 \u00a3\u00a5\u00a2"
     }
     
     foreach item $encoding_items {

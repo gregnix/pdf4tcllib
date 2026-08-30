@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 17: Produkt-Etiketten
+# Demo 17: Product labels
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,18 +15,18 @@
 #     tclsh 17_labels.tcl
 #
 # TCL OCTAL PITFALL:
-#   RICHTIG: set demo_num 17  (ohne führende 0)
-#   FALSCH:  set demo_num 017 (Oktal-Fehler!)
+#   RIGHT: set demo_num 17  (no leading zero)
+#   WRONG: set demo_num 017 (octal!)
 # ============================================================================
 # What this shows:
-#   - Etiketten-Layout erstellen
+#   - lay out a sheet of labels
 #   - Grid-Positionierung
 #   - Barcode-Platzhalter
-#   - Professionelles Produkt-Etikett
+#   - a product label that looks finished
 #
 # Features:
-#   - 6 Produkt-Etiketten auf A4 (2 × 3)
-#   - Produktname, Artikelnummer, Preis
+#   - six product labels on A4 (2 x 3)
+#   - product name, item number, price
 #   - Barcode-Platzhalter
 #   - Rahmen und Schnittlinien
 #
@@ -56,7 +56,7 @@ package require pdf4tcl]"
 set output_dir [file join $scriptDir pdf]
 file mkdir $output_dir
 
-# WICHTIG: demo_num OHNE führende 0 (wegen Tcl-Oktal!)
+# NOTE: demo_num without a leading zero -- Tcl would read it as octal
 set demo_num 17
 set demo_name "labels"
 set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name}.pdf"]
@@ -66,7 +66,7 @@ set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name
 # ============================================================================
 
 proc draw_product_label {pdf x y product_name art_nr price} {
-    # Etikett-Größe: 90mm × 60mm
+    # label size: 90mm x 60mm
     set label_w [pdf4tcllib::units::mm 90]  ;# ~255pt
     set label_h [pdf4tcllib::units::mm 60]  ;# ~170pt
     
@@ -89,7 +89,7 @@ proc draw_product_label {pdf x y product_name art_nr price} {
     set margin 8
     
     # ========================================================================
-    # Produktname (oben, groß)
+    # product name, top, large
     # ========================================================================
     
     set text_x [expr {$x + $margin}]
@@ -105,11 +105,11 @@ proc draw_product_label {pdf x y product_name art_nr price} {
     set text_y [expr {$text_y + 25}]
     $pdf setFont 9 Helvetica
     $pdf setFillColor 0.4 0.4 0.4
-    $pdf text "Art.-Nr: $art_nr" -x $text_x -y $text_y
+    $pdf text "Item no: $art_nr" -x $text_x -y $text_y
     $pdf setFillColor 0 0 0
     
     # ========================================================================
-    # Preis (groß, fett, rechts)
+    # price, large, bold, right
     # ========================================================================
     
     set price_y [expr {$y + $margin + 5}]
@@ -229,28 +229,28 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 17: Produkt-Etiketten (6 auf A4)" -x $sx -y $sy
+    $pdf text "Demo 17: Product labels, six on A4" -x $sx -y $sy
     
     # --- Info ---
     set info_y [expr {$sy + 25}]
     $pdf setFont 9 Helvetica
-    $pdf text "Format: 90mm x 60mm | Encoding-Test: äöüÄÖÜß €" -x $sx -y $info_y
+    $pdf text "Format: 90mm x 60mm | Encoding test: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $info_y
     
     # ========================================================================
-    # Produkt-Daten
+    # the products
     # ========================================================================
     
     set products {
-        {"Laptop Professional" "LP-2025-001" "1.299,99 €"}
-        {"USB-C Kabel 2m" "USB-C-200" "19,99 €"}
-        {"Wireless Maus" "WM-500-BLK" "39,99 €"}
-        {"Tastatur RGB" "KB-RGB-DE" "89,99 €"}
-        {"Monitor 27\"" "MON-27-4K" "449,99 €"}
-        {"Webcam HD" "WC-1080P" "79,99 €"}
+        {"Laptop Professional" "LP-2025-001" "1,299.99 \u20ac"}
+        {"USB-C cable 2m" "USB-C-200" "19.99 \u20ac"}
+        {"Wireless mouse" "WM-500-BLK" "39.99 \u20ac"}
+        {"RGB keyboard" "KB-RGB-DE" "89.99 \u20ac"}
+        {"Monitor 27\"" "MON-27-4K" "449.99 \u20ac"}
+        {"Webcam HD" "WC-1080P" "79.99 \u20ac"}
     }
     
     # ========================================================================
-    # Layout: 2 Spalten × 3 Zeilen = 6 Etiketten
+    # layout: 2 columns x 3 rows = 6 labels
     # ========================================================================
     
     set label_w [pdf4tcllib::units::mm 90]
@@ -275,7 +275,7 @@ package require pdf4tcl]"
             set x [expr {$start_x + $col * ($label_w + $spacing)}]
             set y [expr {$start_y + $row * ($label_h + $spacing)}]
             
-            # Etikett zeichnen
+            # draw the label
             draw_product_label $pdf $x $y $prod_name $art_nr $price
             
             # Schnittlinien (grau)
@@ -313,10 +313,10 @@ package require pdf4tcl]"
     
     set notes {
         "Hinweise:"
-        "* Gestrichelte Linien = Etikett-Rahmen (optional ausschneiden)"
+        "* dashed lines mark the label edges, for cutting"
         "* Graue Linien = Schnittlinien"
         "* Barcode ist ein Platzhalter (echte Barcodes: siehe Barcode-Libraries)"
-        "* Für Etikettendruck: Spezial-Etikettenbogen verwenden"
+        "* print on a proper label sheet"
     }
     
     foreach note $notes {
@@ -382,7 +382,7 @@ puts "  xdg-open $result"
 puts "  # oder"
 puts "  evince $result"
 puts ""
-puts "TIPP: Drucken Sie auf Etikettenbogen (90x60mm)"
+puts "Print on a 90x60mm label sheet."
 puts "      oder schneiden Sie selbst zu!"
 
 exit 0

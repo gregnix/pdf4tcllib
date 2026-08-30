@@ -20,14 +20,14 @@ file mkdir $outdir
 set outfile [file join $outdir "demo_49_canvas.pdf"]
 
 # ---------------------------------------------------------------------------
-# Tk-Canvas erstellen (wird nicht angezeigt -- nur als Zeichenfläche)
+# a Tk canvas, never mapped -- it only serves as a drawing surface
 # ---------------------------------------------------------------------------
 wm withdraw .
 canvas .c -width 500 -height 700 -background white
 pack .c
 
 # ---------------------------------------------------------------------------
-# Canvas mit allen Item-Typen befüllen
+# fill the canvas with one of every item type
 # ---------------------------------------------------------------------------
 
 # Titel

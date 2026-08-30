@@ -39,13 +39,12 @@ conform:
 
 # Was layout-check nicht sieht: Gezeichnetes. Drei Demos liefen darum
 # monatelang ueber den Blattrand, ohne dass eine Pruefung anschlug.
-# examples/basic muss sauber sein und laesst den Lauf scheitern.
-# examples/advanced nicht: die Canvas-Exporte setzen ihren Inhalt mit
-# einer cm-Transformation, die das Skript nicht liest -- sechs
-# Fehlalarme, die zu melden aber nicht zu beheben sind.
+# Beide Verzeichnisse muessen sauber sein. Seit der Pruefer
+# cm-Transformationen folgt, sind die frueheren sechs "Fehlalarme" in
+# examples/advanced erledigt: vier waren welche, zwei waren Fehler.
 geometry:
 	$(TCLSH) tools/geometry-check.tcl examples/basic/pdf
-	-$(TCLSH) tools/geometry-check.tcl examples/advanced/pdf
+	$(TCLSH) tools/geometry-check.tcl examples/advanced/pdf
 
 clean:
 	rm -rf out/*.pdf out/*.html 2>/dev/null || true

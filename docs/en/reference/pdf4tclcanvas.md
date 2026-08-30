@@ -4,6 +4,8 @@
 **File:** `pdf4tclcanvas-0.1.tm`
 **Requires:** `pdf4tcllib 0.6.3`, `pdf4tcl 0.9.4.25+`, Tk
 
+Runnable companion: [`examples/advanced/71_canvas_place.tcl`](../../../examples/advanced/71_canvas_place.tcl) -- puts `place` and a raw `$pdf canvas` side by side and measures the difference (scale, structure tree, `fitPage`).
+
 Places a canvas in a frame: to scale, anchored, and inside the structure
 tree.
 

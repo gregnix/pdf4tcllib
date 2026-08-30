@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 03: Text mit Farben
+# Demo 03: Coloured text
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -15,16 +15,16 @@
 #     tclsh 03_colors.tcl
 # ============================================================================
 # What this shows:
-#   - Text in verschiedenen Farben darstellen
+#   - draw text in different colours
 #   - RGB-Farbmodell verstehen (0.0 - 1.0)
-#   - Graustufen verwenden
-#   - Farben zurücksetzen
+#   - use greys
+#   - reset the colour
 #
 # Features:
-#   - Primärfarben (Rot, Grün, Blau)
-#   - Sekundärfarben (Cyan, Magenta, Gelb)
-#   - Graustufen
-#   - Encoding-Test in verschiedenen Farben
+#   - primary colours (red, green, blue)
+#   - secondary colours (cyan, magenta, yellow)
+#   - greys
+#   - an encoding test in colour
 #
 # Encoding test: äöüÄÖÜß€
 # ============================================================================
@@ -63,7 +63,7 @@ set output_file [file join $output_dir "demo_[format %02d $demo_num]_${demo_name
 proc demo_main {} {
     global output_file demo_num
     
-    puts "Starting Demo $demo_num: Text mit Farben"
+    puts "Starting Demo $demo_num: Coloured text"
     puts "  pdf4tcl version: [set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
 package require pdf4tcllib 0.6
@@ -91,7 +91,7 @@ package require pdf4tcl]"
         -orient [dict get $ctx orient] \
         -unit p]
     
-    # -orient true:  Y=0 ist OBEN, Y wächst nach UNTEN
+    # -orient true: Y=0 is at the TOP, Y grows DOWNWARDS
     # -unit p:       Alle Koordinaten in Points (1/72 inch)
     
     puts "  PDF object created"
@@ -114,39 +114,39 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf setFillColor 0.0 0.0 0.0  ;# Schwarz
-    $pdf text "Demo 03: Text mit Farben" -x $sx -y $sy
+    $pdf setFillColor 0.0 0.0 0.0  ;# black
+    $pdf text "Demo 03: Coloured text" -x $sx -y $sy
     
-    # --- Primärfarben (RGB) ---
+    # --- primary colours (RGB) ---
     set y [expr {$sy + 40}]
     
     $pdf setFont 14 Helvetica-Bold
     $pdf setFillColor 0.0 0.0 0.0
-    $pdf text "Primärfarben (RGB):" -x $sx -y $y
+    $pdf text "Primary colours (RGB):" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
     
-    # Rot
+    # red
     $pdf setFillColor 1.0 0.0 0.0  ;# RGB: R=1.0, G=0.0, B=0.0
-    $pdf text "Roter Text - RGB(1.0, 0.0, 0.0)" -x $sx -y $y
+    $pdf text "Red text - RGB(1.0, 0.0, 0.0)" -x $sx -y $y
     
     set y [expr {$y + 25}]
-    # Grün
+    # green
     $pdf setFillColor 0.0 1.0 0.0  ;# RGB: R=0.0, G=1.0, B=0.0
-    $pdf text "Grüner Text - RGB(0.0, 1.0, 0.0)" -x $sx -y $y
+    $pdf text "Green text - RGB(0.0, 1.0, 0.0)" -x $sx -y $y
     
     set y [expr {$y + 25}]
-    # Blau
+    # blue
     $pdf setFillColor 0.0 0.0 1.0  ;# RGB: R=0.0, G=0.0, B=1.0
-    $pdf text "Blauer Text - RGB(0.0, 0.0, 1.0)" -x $sx -y $y
+    $pdf text "Blue text - RGB(0.0, 0.0, 1.0)" -x $sx -y $y
     
-    # --- Sekundärfarben (CMY) ---
+    # --- secondary colours (CMY) ---
     set y [expr {$y + 50}]
     
     $pdf setFont 14 Helvetica-Bold
     $pdf setFillColor 0.0 0.0 0.0
-    $pdf text "Sekundärfarben (CMY):" -x $sx -y $y
+    $pdf text "Secondary colours (CMY):" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
@@ -161,29 +161,29 @@ package require pdf4tcl]"
     $pdf text "Magenta - RGB(1.0, 0.0, 1.0)" -x $sx -y $y
     
     set y [expr {$y + 25}]
-    # Gelb
+    # yellow
     $pdf setFillColor 1.0 1.0 0.0  ;# RGB: R=1.0, G=1.0, B=0.0
-    $pdf text "Gelb - RGB(1.0, 1.0, 0.0)" -x $sx -y $y
+    $pdf text "Yellow - RGB(1.0, 1.0, 0.0)" -x $sx -y $y
     
-    # --- Graustufen ---
+    # --- greys ---
     set y [expr {$y + 50}]
     
     $pdf setFont 14 Helvetica-Bold
     $pdf setFillColor 0.0 0.0 0.0
-    $pdf text "Graustufen:" -x $sx -y $y
+    $pdf text "Greys:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
     
     # Verschiedene Graustufen
     set gray_levels {0.0 0.2 0.4 0.6 0.8 1.0}
-    set gray_names {"Schwarz (0%)" "Dunkelgrau (20%)" "Grau (40%)" "Grau (60%)" "Hellgrau (80%)" "Weiß (100%)"}
+    set gray_names {"Black (0%)" "Dark grey (20%)" "Grey (40%)" "Grey (60%)" "Light grey (80%)" "White (100%)"}
     
     for {set i 0} {$i < [llength $gray_levels]} {incr i} {
         set level [lindex $gray_levels $i]
         set name [lindex $gray_names $i]
         
-        # Für Weiß: Hintergrund zeichnen, damit man es sieht
+        # White needs a background, or it is invisible on white paper
         if {$level == 1.0} {
             $pdf setFillColor 0.9 0.9 0.9  ;# Hellgrauer Hintergrund
             $pdf rectangle $sx $y 350 20 -filled 1
@@ -200,27 +200,27 @@ package require pdf4tcl]"
     
     $pdf setFont 14 Helvetica-Bold
     $pdf setFillColor 0.0 0.0 0.0
-    $pdf text "Encoding-Test in Farbe:" -x $sx -y $y
+    $pdf text "Encoding test, in colour:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
     
-    # Rot
+    # red
     $pdf setFillColor 1.0 0.0 0.0
-    $pdf text "Rot: äöüÄÖÜß €" -x $sx -y $y
+    $pdf text "Red: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $sx -y $y
     
     set y [expr {$y + 25}]
-    # Grün
+    # green
     $pdf setFillColor 0.0 0.7 0.0
-    $pdf text "Grün: àèìòù ÀÈÌÒÙ" -x $sx -y $y
+    $pdf text "Green: àèìòù ÀÈÌÒÙ" -x $sx -y $y
     
     set y [expr {$y + 25}]
-    # Blau
+    # blue
     $pdf setFillColor 0.0 0.0 1.0
-    $pdf text "Blau: ©®™ £¥¢" -x $sx -y $y
+    $pdf text "Blue: ©®™ £¥¢" -x $sx -y $y
     
-    # --- Farbe zurücksetzen ---
-    $pdf setFillColor 0.0 0.0 0.0  ;# Zurück zu Schwarz
+    # --- reset the colour ---
+    $pdf setFillColor 0.0 0.0 0.0  ;# back to black
     
     # --- Debug-Grid (nur wenn PDF4TCL_DEBUG=1) ---
     pdf4tcllib::page::grid $pdf 50

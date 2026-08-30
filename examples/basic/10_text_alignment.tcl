@@ -1,6 +1,6 @@
 #!/usr/bin/env tclsh
 # ============================================================================
-# Demo 10: Text-Alignment
+# Demo 10: Text alignment
 # ============================================================================
 # Built against: SPEC.lock
 #   pdf4tcl: 0.9.4
@@ -17,14 +17,14 @@
 # What this shows:
 #   - Textausrichtung (links, rechts, zentriert)
 #   - -align Parameter verwenden
-#   - Ausrichtung mit verschiedenen Schriftgrößen
-#   - Referenzlinien für visuelle Kontrolle
+#   - alignment at different type sizes
+#   - reference lines to check against
 #
 # Features:
-#   - Linksbündig (Standard)
-#   - Rechtsbündig
+#   - left aligned (default)
+#   - right aligned
 #   - Zentriert
-#   - Mit verschiedenen Schriftgrößen
+#   - at different type sizes
 #
 # Encoding test: äöüÄÖÜß€
 # ============================================================================
@@ -91,7 +91,7 @@ package require pdf4tcl]"
         -orient [dict get $ctx orient] \
         -unit p]
     
-    # -orient true:  Y=0 ist OBEN, Y wächst nach UNTEN
+    # -orient true: Y=0 is at the TOP, Y grows DOWNWARDS
     # -unit p:       Alle Koordinaten in Points (1/72 inch)
     
     puts "  PDF object created"
@@ -116,7 +116,7 @@ package require pdf4tcl]"
     
     # --- Titel ---
     $pdf setFont 18 Helvetica-Bold
-    $pdf text "Demo 10: Text-Alignment" -x $sx -y $sy
+    $pdf text "Demo 10: Text alignment" -x $sx -y $sy
     
     # --- Referenzlinien (gestrichelt) ---
     set center_x [expr {$pw / 2}]
@@ -137,79 +137,79 @@ package require pdf4tcl]"
     
     $pdf grestore
     
-    # --- 1. Linksbündig (Standard) ---
+    # --- 1. left aligned (default) ---
     set y [expr {$sy + 50}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "1. Linksbündig (Standard):" -x $sx -y $y
+    $pdf text "1. Left aligned (default):" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
     
-    $pdf text "Linksbündiger Text (Standard)" -x $sx -y $y
+    $pdf text "Left aligned text (default)" -x $sx -y $y
     
     set y [expr {$y + 25}]
-    $pdf text "Dieser Text ist linksbündig ausgerichtet." -x $sx -y $y
+    $pdf text "This text is aligned to the left." -x $sx -y $y
     
     set y [expr {$y + 25}]
-    $pdf text "Mit Umlauten: äöüÄÖÜß und Euro: €" -x $sx -y $y
+    $pdf text "With umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df and a euro sign: \u20ac" -x $sx -y $y
     
-    # --- 2. Zentriert ---
+    # --- 2. centred ---
     set y [expr {$y + 50}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "2. Zentriert:" -x $sx -y $y
+    $pdf text "2. Centred:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
     
-    $pdf text "Zentrierter Text" -x $center_x -y $y -align center
+    $pdf text "Centred text" -x $center_x -y $y -align center
     
     set y [expr {$y + 25}]
-    $pdf text "Dieser Text ist zentriert." -x $center_x -y $y -align center
+    $pdf text "This text is centred." -x $center_x -y $y -align center
     
     set y [expr {$y + 25}]
-    $pdf text "Mit Umlauten: äöüÄÖÜß €" -x $center_x -y $y -align center
+    $pdf text "With umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $center_x -y $y -align center
     
-    # --- 3. Rechtsbündig ---
+    # --- 3. right aligned ---
     set y [expr {$y + 50}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "3. Rechtsbündig:" -x $sx -y $y
+    $pdf text "3. Right aligned:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 12 Helvetica
     
-    $pdf text "Rechtsbündiger Text" -x $right_x -y $y -align right
+    $pdf text "Right aligned text" -x $right_x -y $y -align right
     
     set y [expr {$y + 25}]
-    $pdf text "Dieser Text ist rechtsbündig." -x $right_x -y $y -align right
+    $pdf text "This text is aligned to the right." -x $right_x -y $y -align right
     
     set y [expr {$y + 25}]
-    $pdf text "Mit Umlauten: äöüÄÖÜß €" -x $right_x -y $y -align right
+    $pdf text "With umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac" -x $right_x -y $y -align right
     
-    # --- 4. Verschiedene Schriftgrößen (zentriert) ---
+    # --- 4. different type sizes, centred ---
     set y [expr {$y + 60}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "4. Verschiedene Größen (zentriert):" -x $sx -y $y
+    $pdf text "4. Different sizes, centred:" -x $sx -y $y
     
     set y [expr {$y + 35}]
     
     $pdf setFont 8 Helvetica
-    $pdf text "Klein (8pt) - zentriert" -x $center_x -y $y -align center
+    $pdf text "Small (8pt) - centred" -x $center_x -y $y -align center
     
     set y [expr {$y + 25}]
     $pdf setFont 12 Helvetica
-    $pdf text "Normal (12pt) - zentriert" -x $center_x -y $y -align center
+    $pdf text "Normal (12pt) - centred" -x $center_x -y $y -align center
     
     set y [expr {$y + 30}]
     $pdf setFont 16 Helvetica-Bold
-    $pdf text "Groß (16pt) - zentriert" -x $center_x -y $y -align center
+    $pdf text "Large (16pt) - centred" -x $center_x -y $y -align center
     
     set y [expr {$y + 40}]
     $pdf setFont 24 Helvetica-Bold
-    $pdf text "Sehr Groß (24pt)" -x $center_x -y $y -align center
+    $pdf text "Very large (24pt)" -x $center_x -y $y -align center
     
     # --- 5. Kombiniert: Links, Mitte, Rechts ---
     set y [expr {$y + 70}]
@@ -226,49 +226,49 @@ package require pdf4tcl]"
     $pdf text "Rechts" -x $right_x -y $y -align right
     
     set y [expr {$y + 25}]
-    $pdf text "äöü" -x $sx -y $y
+    $pdf text "\u00e4\u00f6\u00fc" -x $sx -y $y
     $pdf text "ÄÖÜ" -x $center_x -y $y -align center
-    $pdf text "ß€" -x $right_x -y $y -align right
+    $pdf text "\u00df\u20ac" -x $right_x -y $y -align right
     
-    # --- 6. Längere Texte ---
+    # --- 6. longer lines ---
     set y [expr {$y + 50}]
     
     $pdf setFont 14 Helvetica-Bold
-    $pdf text "6. Längere Texte:" -x $sx -y $y
+    $pdf text "6. Longer lines:" -x $sx -y $y
     
     set y [expr {$y + 30}]
     $pdf setFont 10 Helvetica
     
-    set long_text "Dies ist ein längerer linksbündiger Text mit Umlauten: äöüÄÖÜß"
+    set long_text "A longer left aligned line with umlauts: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df"
     $pdf text $long_text -x $sx -y $y
     
     set y [expr {$y + 20}]
-    set long_text2 "Dies ist ein längerer zentrierter Text mit Euro: 100€"
+    set long_text2 "A longer centred line with a euro sign: 100\u20ac"
     $pdf text $long_text2 -x $center_x -y $y -align center
     
     set y [expr {$y + 20}]
-    set long_text3 "Dies ist ein längerer rechtsbündiger Text"
+    set long_text3 "A longer right aligned line"
     $pdf text $long_text3 -x $right_x -y $y -align right
     
     # --- PFLICHT: Encoding-Test ---
     set y [expr {$y + 50}]
     
     $pdf setFont 12 Helvetica-Bold
-    $pdf text "Encoding-Test:" -x $sx -y $y
+    $pdf text "Encoding test:" -x $sx -y $y
     
     set y [expr {$y + 25}]
     $pdf setFont 11 Helvetica
     
     # Links
-    $pdf text "Links: äöüÄÖÜß €£¥" -x $sx -y $y
+    $pdf text "Left: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac\u00a3\u00a5" -x $sx -y $y
     
     set y [expr {$y + 20}]
     # Zentriert
-    $pdf text "Zentriert: äöüÄÖÜß €£¥" -x $center_x -y $y -align center
+    $pdf text "Centred: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac\u00a3\u00a5" -x $center_x -y $y -align center
     
     set y [expr {$y + 20}]
     # Rechts
-    $pdf text "Rechts: äöüÄÖÜß €£¥" -x $right_x -y $y -align right
+    $pdf text "Right: \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df \u20ac\u00a3\u00a5" -x $right_x -y $y -align right
     
     # --- Debug-Grid (nur wenn PDF4TCL_DEBUG=1) ---
     pdf4tcllib::page::grid $pdf 50

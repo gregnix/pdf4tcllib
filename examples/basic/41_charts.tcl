@@ -7,10 +7,11 @@
 # element with an alternate text, and everything inside it is an artifact.
 # ===========================================================================
 
+set scriptDir [file dirname [file normalize [info script]]]
+tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
 package require pdf4tcllib
 package require pdf4tclchart
 
-set scriptDir [file dirname [file normalize [info script]]]
 set outdir [expr {$argc > 0 ? [lindex $argv 0] : [file join $scriptDir pdf]}]
 file mkdir $outdir
 set outPDF [file join $outdir "demo_41_charts.pdf"]

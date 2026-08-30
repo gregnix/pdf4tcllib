@@ -24,7 +24,7 @@ set PAGE_H  [lindex $DA 1]
 
 # Titel
 $pdf setFont 16 Helvetica
-$pdf text "Demo 21 — Lines & Paths" -x 60 -y 40
+$pdf text "Demo 21: Lines and paths" -x 60 -y 40
 
 $pdf setFont 12 Helvetica
 

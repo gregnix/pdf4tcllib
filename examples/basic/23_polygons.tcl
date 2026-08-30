@@ -14,9 +14,9 @@ set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true -compress 1]
 $pdf startPage
 
 $pdf setFont 16 Helvetica-Bold
-$pdf text "Demo 23 -- Polygone" -x 60 -y 40
+$pdf text "Demo 23: Polygons" -x 60 -y 40
 $pdf setFont 10 Helvetica
-$pdf text "Regelmaessige Vielecke und Sterne mit pdf4tcl polygon" -x 60 -y 58
+$pdf text "Regular polygons and stars with pdf4tcl polygon" -x 60 -y 58
 
 # ---------------------------------------------------------------------------
 # Hilfsprocs (aus Original uebernommen)
@@ -48,20 +48,20 @@ proc draw_star {pdf cx cy r_outer {points 5} {ratio 0.5} {stroke 1} {fill 0}} {
 # Zeile 1: Dreieck, Viereck, Fuenfeck (nur Umriss)
 # ---------------------------------------------------------------------------
 $pdf setFont 11 Helvetica-Bold
-$pdf text "Nur Umriss (-stroke 1 -filled 0):" -x 60 -y 85
+$pdf text "Outline only (-stroke 1 -filled 0):" -x 60 -y 85
 
 $pdf setStrokeColor 0 0 0.6
 $pdf setLineWidth 1.5
 draw_polygon $pdf 130 190 55 3 1 0
 $pdf setFont 9 Helvetica
 $pdf setFillColor 0.3 0.3 0.3
-$pdf text "Dreieck (3)" -x 95 -y 258
+$pdf text "Triangle (3)" -x 95 -y 258
 
 draw_polygon $pdf 290 190 55 4 1 0
-$pdf text "Viereck (4)" -x 255 -y 258
+$pdf text "Square (4)" -x 255 -y 258
 
 draw_polygon $pdf 450 190 55 5 1 0
-$pdf text "Fuenfeck (5)" -x 415 -y 258
+$pdf text "Pentagon (5)" -x 415 -y 258
 
 $pdf setStrokeColor 0 0 0
 $pdf setFillColor 0 0 0
@@ -70,7 +70,7 @@ $pdf setFillColor 0 0 0
 # Zeile 2: Sechseck gefuellt, Achteck, Stern
 # ---------------------------------------------------------------------------
 $pdf setFont 11 Helvetica-Bold
-$pdf text "Mit Fuellung (-stroke 1 -filled 1):" -x 60 -y 285
+$pdf text "Filled (-stroke 1 -filled 1):" -x 60 -y 285
 
 $pdf setFillColor 0.7 0.85 1.0
 $pdf setStrokeColor 0 0 0.5

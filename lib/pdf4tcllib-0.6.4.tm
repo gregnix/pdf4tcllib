@@ -36,7 +36,7 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.6.3
+package provide pdf4tcllib 0.6.4
 
 namespace eval ::pdf4tcllib {
     # Aus package provide abgeleitet statt daneben gepflegt: die beiden
@@ -695,6 +695,65 @@ proc ::pdf4tcllib::fonts::_buildSubset {} {
 namespace eval ::pdf4tcllib::unicode {
     variable _warned
     array set _warned {}
+
+    # Wieviele Zeichen sanitize durch "?" ersetzt hat, und welche.
+    #
+    # Bis 0.6.3 geschah das lautlos: ein Zeichen, das die Schrift nicht
+    # hat, wurde zu "?", und weder der Rueckgabewert noch ein Zaehler
+    # sagte etwas. Gemessen an math::renderLatex: "\alpha \sum" ohne
+    # fonts::init -cid 1 ergab sechs Fragezeichen im Inhaltsstrom, und
+    # nichts wies darauf hin.
+    #
+    # Der Zaehler laeuft wie der von pdf4tcl (getSubstCount): kumulativ,
+    # abfragbar, zuruecksetzbar. Nicht gezaehlt werden Ersetzungen, die
+    # eine ABSICHT sind und nichts verlieren -- die Emoji-Umschrift
+    # (U+1F600 -> ":-)") und die Kaesten der Rahmenzeichen im Base-Modus.
+    # Gezaehlt wird, wo ein Zeichen verschwindet.
+    variable _subst 0
+    variable _substChars {}
+}
+
+# Wieviele Zeichen wurden ersetzt, seit zuletzt zurueckgesetzt wurde.
+proc ::pdf4tcllib::unicode::substCount {} {
+    variable _subst
+    return $_subst
+}
+
+# Zaehler und Liste: {count N chars {U+03B1 U+2211 ...}}
+#
+# Die Liste haelt hoechstens zwoelf verschiedene Codepunkte fest -- sie
+# soll sagen, WAS fehlt, nicht jedes Vorkommen protokollieren.
+proc ::pdf4tcllib::unicode::substReport {} {
+    variable _subst
+    variable _substChars
+    return [dict create count $_subst chars $_substChars]
+}
+
+proc ::pdf4tcllib::unicode::resetSubst {} {
+    variable _subst
+    variable _substChars
+    set _subst 0
+    set _substChars {}
+    return
+}
+
+# Eine Ersetzung vermerken.
+proc ::pdf4tcllib::unicode::_countSubst {cp} {
+    variable _subst
+    variable _substChars
+    incr _subst
+    set name [format "U+%04X" $cp]
+    if {[lsearch -exact $_substChars $name] < 0 &&
+            [llength $_substChars] < 12} {
+        lappend _substChars $name
+    }
+    # Einmal je Sitzung laut werden -- der Zaehler allein hilft nur dem,
+    # der ihn abfragt.
+    _warnOnce subst "sanitize: at least one character is missing from the\
+ font and was replaced with '?' (first: $name). Ask\
+ ::pdf4tcllib::unicode::substReport for the list, or load a font that has\
+ it -- fonts::init -cid 1 for Greek and mathematical symbols."
+    return
 }
 
 # One-time warning to stderr (deduplicated by key) so a catch-based fallback
@@ -914,6 +973,7 @@ proc ::pdf4tcllib::unicode::sanitize {line args} {
             } elseif {[::pdf4tcllib::fonts::inSubset $cp]} {
                 append result $c
             } else {
+                _countSubst $cp
                 append result "?"
             }
         } else {
@@ -936,6 +996,7 @@ proc ::pdf4tcllib::unicode::sanitize {line args} {
                 # Tab, Newline, CR
                 append result $c
             } else {
+                _countSubst $cp
                 append result "?"
             }
         }
@@ -1085,6 +1146,23 @@ proc ::pdf4tcllib::unicode::safeText {pdf txt args} {
 
     set clean [sanitize $txt -mono $mono]
 
+    # Ein Loch im Strukturbaum, wenn niemand ausgezeichnet hat.
+    #
+    # safeText ist eine oeffentliche Zeichenprozedur, und sie liess bis
+    # 0.6.3 einen ungetaggten Zeichenbefehl stehen -- gemessen mit
+    # getUntaggedCount 1 nach einem einzigen Aufruf. Dieselbe Klasse wie
+    # die Formularbeschriftungen, der Text-Widget-Export und die Pfeile,
+    # die in dieser Sitzung schon geschlossen wurden. Gefunden hat es
+    # eine Demo, die sich selbst prueft.
+    #
+    # Ausgezeichnet wird NUR, wenn kein Element offen ist. Sonst
+    # schachtelte ein P in ein P, sobald ein Aufrufer -- table::draw,
+    # forms:: oder math::_pdfBackend -- schon ausgezeichnet hat. Genau
+    # dafuer gibt es tag::depth.
+    set selbstTaggen [expr {[::pdf4tcllib::tag::isActive $pdf]
+            && [::pdf4tcllib::tag::depth $pdf] == 0}]
+    if {$selbstTaggen} { ::pdf4tcllib::tag::begin $pdf Span }
+
     if {[catch {$pdf text $clean {*}$passArgs} err]} {
         # Notfall: Alles on druckbares ASCII reduzieren. Das ersetzt Zeichen,
         # daher sichtbar machen statt Glyphen still zu verlieren.
@@ -1106,6 +1184,7 @@ proc ::pdf4tcllib::unicode::safeText {pdf txt args} {
  ($err2); text was not drawn"
         }
     }
+    if {$selbstTaggen} { ::pdf4tcllib::tag::end $pdf }
 }
 
 # ================================================================
@@ -2149,7 +2228,12 @@ proc ::pdf4tcllib::math::_pdfBackend {pdf op args} {
     # Fontprogramm, und veraPDF faellt darueber (Klausel 6.2.11.4.1).
     if {$font eq ""} { set font [::pdf4tcllib::fonts::fontSans] }
     $pdf setFont $size $font
-            $pdf text $text -x $x -y $y
+            # Ueber safeText statt direkt: eine Formel besteht ueberwiegend
+            # aus Zeichen, die eine Standardschrift nicht hat. Vorher gingen
+            # die als "?" durch, ohne Zaehler und ohne Wort -- gemessen
+            # ergab "\alpha \sum" ohne fonts::init -cid 1 sechs
+            # Fragezeichen im Inhaltsstrom.
+            ::pdf4tcllib::unicode::safeText $pdf $text -x $x -y $y
             return
         }
         line {
@@ -2709,6 +2793,8 @@ proc ::pdf4tcllib::page::orientationLegend {pdf ctx} {
 namespace eval ::pdf4tcllib::tag {
     variable active
     array set active {}
+    variable _tiefe
+    array set _tiefe {}
 }
 
 proc ::pdf4tcllib::tag::isActive {pdf} {
@@ -2730,19 +2816,42 @@ proc ::pdf4tcllib::tag::isActive {pdf} {
 }
 
 proc ::pdf4tcllib::tag::forget {pdf} {
+    variable _tiefe
+    unset -nocomplain _tiefe($pdf)
     variable active
     unset -nocomplain active($pdf)
 }
 
 # Open a structure element, or do nothing when tagging is off.
+# Wie tief steckt dieses Dokument gerade in offenen Elementen?
+#
+# Gebraucht wird das von Bausteinen, die selbst zeichnen und nicht wissen
+# koennen, ob ihr Aufrufer sie schon ausgezeichnet hat -- safeText etwa.
+# Ohne diese Auskunft muessten sie entweder ein Loch lassen oder ein
+# Element in ein gleichartiges schachteln.
+proc ::pdf4tcllib::tag::depth {pdf} {
+    variable _tiefe
+    if {![info exists _tiefe($pdf)]} { return 0 }
+    return $_tiefe($pdf)
+}
+
 proc ::pdf4tcllib::tag::begin {pdf type args} {
     if {![isActive $pdf]} { return }
-    catch {$pdf tagBegin $type {*}$args}
+    variable _tiefe
+    if {![catch {$pdf tagBegin $type {*}$args}]} {
+        if {![info exists _tiefe($pdf)]} { set _tiefe($pdf) 0 }
+        incr _tiefe($pdf)
+    }
 }
 
 proc ::pdf4tcllib::tag::end {pdf} {
     if {![isActive $pdf]} { return }
-    catch {$pdf tagEnd}
+    variable _tiefe
+    if {![catch {$pdf tagEnd}]} {
+        if {[info exists _tiefe($pdf)] && $_tiefe($pdf) > 0} {
+            incr _tiefe($pdf) -1
+        }
+    }
 }
 
 # Mark decoration -- rules, shading, grid lines. Without this a reader
@@ -2894,6 +3003,10 @@ proc ::pdf4tcllib::measure::block {varName script args} {
     }
     set mpdf [::pdf4tcl::new %AUTO% -paper $o(-paper) -orient $o(-orient) \
             -margin $o(-margin) -landscape $o(-landscape)]
+    # Die Blatthoehe des Wegwerf-Dokuments, um Ueberlauf erkennen zu
+    # koennen. getPageSize liefert {breite hoehe} in Punkt.
+    set blatthoehe ""
+    catch {set blatthoehe [lindex [$mpdf getPageSize] 1]}
     # upvar auf einen Namen, den der Aufrufer schon benutzt, waere ein
     # Fehler ("variable already exists"); deshalb erst freimachen.
     upvar 1 $varName zielVar
@@ -2912,7 +3025,34 @@ proc ::pdf4tcllib::measure::block {varName script args} {
     if {[string is double -strict $res]} {
         set hoehe [expr {abs($res - $o(-y))}]
     }
-    return [dict create height $hoehe pages $seiten value $res]
+
+    # UEBERLAUF -- was pages nicht sieht.
+    #
+    # Die Seitenzahl steigt nur, wenn der Baustein SELBST umbricht. Ein
+    # Baustein, der das nicht tut (text::writeParagraph zum Beispiel),
+    # laeuft stattdessen unten aus dem Blatt heraus, und pages bleibt 1.
+    # Gemessen am 2026-08-29: ein Absatz mit 30 Wiederholungen auf a4
+    # ergab height 1207 bei einer Blatthoehe von 841,89 -- 71 Textzeilen,
+    # die letzte bei y=-7,3, also unter dem Blatt. measure und der echte
+    # Lauf waren sich einig, und beide lagen daneben.
+    #
+    # Und keins der beiden Pruefwerkzeuge sieht es: geometry-check schaut
+    # nicht auf Text, layout-check liest ueber pdftotext, und pdftotext
+    # laesst weg, was neben dem Blatt liegt (359 von 360 Woertern).
+    #
+    # Deshalb hier, wo die Blatthoehe bekannt ist: overflow ist 1, wenn
+    # der Endpunkt ueber die Blattkante hinausgeht, sonst 0 -- und "",
+    # wenn sich das nicht entscheiden laesst.
+    set ueberlauf ""
+    if {$blatthoehe ne "" && [string is double -strict $res]} {
+        if {$o(-orient)} {
+            set ueberlauf [expr {$res > $blatthoehe ? 1 : 0}]
+        } else {
+            set ueberlauf [expr {$res < 0 ? 1 : 0}]
+        }
+    }
+    return [dict create height $hoehe pages $seiten value $res \
+            overflow $ueberlauf sheet $blatthoehe]
 }
 
 # Nur die Hoehe. Leerer String, wenn der Block sie nicht hergibt.
@@ -2933,6 +3073,12 @@ proc ::pdf4tcllib::measure::fits {platz varName script args} {
             {*}$args]]
     set h [dict get $m height]
     if {$h eq ""} { return "" }
+    # Drei Bedingungen, und die dritte fehlte bis 0.6.4: der Block darf
+    # nicht ueber die Blattkante gelaufen sein. Ohne sie sagte fits ja
+    # fuer einen Absatz, der auf keine Seite passt -- die Hoehe war
+    # kleiner als der genannte Platz, die Seitenzahl 1, und der Text lag
+    # trotzdem zum Teil neben dem Blatt. Siehe overflow in block.
+    if {[dict get $m overflow] eq "1"} { return 0 }
     return [expr {$h <= $platz && [dict get $m pages] == 1}]
 }
 
@@ -3146,13 +3292,12 @@ namespace eval ::pdf4tcllib::table {}
 # ein Fall, und ein Vorleseprogramm nennt dann die falsche Ueberschrift.
 #
 # ERKANNT wird die Dict-Form an der Kombination: gerade Anzahl Elemente,
-# Schluessel "text" UND Schluessel "colspan". Eine gewoehnliche Zelle
+# Schluessel "text" UND (colspan ODER rowspan). Eine gewoehnliche Zelle
 # muesste also woertlich "text ... colspan ..." lauten, um verwechselt zu
 # werden -- alles andere bleibt Text und wird unveraendert gezeichnet.
 #
-# rowspan gibt es hier nicht. Ueber Zeilen hinweg zu verbinden verlangt
-# eine Buchhaltung ueber die Zeilenbaender, die Gitterlinien und den
-# Seitenumbruch hinweg; das ist ein eigener Schritt.
+# rowspan kam spaeter dazu und wird von _cellRowSpan und _gridPlan
+# getragen; siehe die Erklaerung dort. Hier zaehlt nur die Breite.
 # Die Zelle, die in Spalte $idx BEGINNT -- und nur wenn sie dort auch
 # endet. Verbundene Zellen und die von ihnen ueberdeckten Spalten liefern
 # \uFFFF, damit die Breitenrechnung sie ueberspringt.

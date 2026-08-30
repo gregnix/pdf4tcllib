@@ -161,7 +161,7 @@ foreach {txt font size} {
     set w [$pdf getStringWidth $txt -font $font -size $size]
     set w_fmt [format "%.1f" $w]
 
-    # Text in der richtigen Grösse zeichnen
+    # draw the text at the right size
     $pdf setFont $size $font
     $pdf text $txt -x 46 -y $y
 
