@@ -36,7 +36,7 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.6.4
+package provide pdf4tcllib 0.6.5
 
 namespace eval ::pdf4tcllib {
     # Aus package provide abgeleitet statt daneben gepflegt: die beiden
@@ -4760,7 +4760,7 @@ proc ::pdf4tcllib::table::_dwWidths {pdf wspec headers data aligns fs fReg fBold
 # One cell: optional background plus text on the baseline (curY+rowH-pad),
 # aligned by pdf4tcl itself, as in 0.2. Draws NO lines.
 proc ::pdf4tcllib::table::_dwCell {pdf cx y cw rowH value colAlign colFont fs pad style {indent 0} {ovr {}}} {
-    array set st {-bg {} -fg {} -font {} -align {}}
+    array set st {-bg {} -fg {} -font {} -align {} -notruncate 0}
     array set st $style
     set al   [expr {$st(-align) ne "" ? $st(-align) : $colAlign}]
     set fw   [expr {$st(-font)  ne "" ? $st(-font)  : $colFont}]
@@ -4768,7 +4768,19 @@ proc ::pdf4tcllib::table::_dwCell {pdf cx y cw rowH value colAlign colFont fs pa
     if {$st(-bg) ne ""} { _dwFill $pdf $cx $y $cw $rowH $st(-bg) }
     set value  [::pdf4tcllib::unicode::sanitize $value]
     set availW [expr {$cw - 2 * $pad - $indent}]
-    set value  [::pdf4tcllib::text::truncate $value $availW $fs $font $pdf]
+    # -notruncate: Werte, die nicht gekuerzt werden duerfen.
+    #
+    # Fuer Bemerkungen und Modellnamen ist die Kuerzung mit "..." richtig
+    # -- ein langer Name soll die Spalte nicht sprengen. Fuer Werte, die
+    # abgetippt werden muessen (Kennwoerter, Schluessel, Pruefsummen), ist
+    # sie falsch: das Blatt sieht richtig aus und ist es nicht.
+    #
+    # Gemessen 14.09.2026: gekuerzt wird nach BREITE, nicht nach
+    # Zeichenzahl -- 24 Zeichen in Versalien fielen weg, 29 gemischte
+    # nicht. Wer die Laenge im Blick behaelt, uebersieht es.
+    if {!$st(-notruncate)} {
+        set value [::pdf4tcllib::text::truncate $value $availW $fs $font $pdf]
+    }
     set bl [expr {$y + $rowH - $pad}]
     if {$st(-fg) ne ""} { lassign $st(-fg) r g b; $pdf setFillColor $r $g $b }
     $pdf setFont $fs $font
@@ -4908,14 +4920,16 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
 
     # cols normalisieren
     set headers {}; set aligns {}; set colFonts {}; set wspec {}
+    set colNoTrunc {}
     foreach c $cols {
         array unset cc
-        array set cc {-header {} -width auto -align left -font reg}
+        array set cc {-header {} -width auto -align left -font reg -notruncate 0}
         array set cc $c
         lappend headers  $cc(-header)
         lappend aligns   $cc(-align)
         lappend colFonts $cc(-font)
         lappend wspec    $cc(-width)
+        lappend colNoTrunc $cc(-notruncate)
     }
     set colW [_dwWidths $pdf $wspec $headers $data $aligns $fs $fReg $fBold $pad $o(-maxwidth) $o(-rowindent)]
     set totalW 0.0
@@ -5008,6 +5022,11 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
             if {$rs(-font) ne ""} { lappend eff -font $rs(-font) }
             if {[dict exists $cellstyles "$r,$c"]} {
                 set eff [dict merge $eff [dict get $cellstyles "$r,$c"]]
+            }
+            # Spaltenweites -notruncate; eine Zellangabe in cellstyles
+            # hat Vorrang, weil eff spaeter gemergt wurde.
+            if {[lindex $colNoTrunc $c] && ![dict exists $eff -notruncate]} {
+                lappend eff -notruncate 1
             }
             set cellIndent [expr {$c == 0 ? $ind : 0}]
             if {$span > 1} {

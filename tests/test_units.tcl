@@ -10,6 +10,18 @@ namespace import ::tcltest::*
 tcl::tm::path add [file join [file dirname [file normalize [info script]]] .. lib]
 package require pdf4tcllib
 
+# WELCHES Paket wurde geladen?
+#
+# Ohne diese Zeile sagt ein gruener Lauf nur: irgendein Paket dieses
+# Namens funktioniert. Liegt der Arbeitsbaum nicht vorn im Suchpfad,
+# nimmt "package require" das INSTALLIERTE -- gleiche Nummer, anderer
+# Baum, keine Meldung. Gemessen 14./15.09.2026, dreimal.
+#
+# run_all.tcl meldet es fuer den Sammellauf; hier fuer den Einzellauf.
+puts stdout "pdf4tcllib [package provide pdf4tcllib] aus:\
+        [lindex [package ifneeded pdf4tcllib \
+        [package provide pdf4tcllib]] end]"
+
 # ============================================================
 # mm -> pt
 # ============================================================

@@ -17,13 +17,14 @@ MODULES := $(notdir $(wildcard lib/*.tm))
 TCLSH   ?= tclsh
 SH      ?= sh
 
-.PHONY: all test conform geometry clean help
+.PHONY: all test conform geometry textpos clean help
 
 help:
 	@echo "Targets:"
 	@echo "  make test    # Testsuite (tests/run_all.tcl)"
 	@echo "  make conform # veraPDF ueber die erzeugten PDFs"
 	@echo "  make geometry# gezeichnete Geometrie ausserhalb der Seite"
+	@echo "  make textpos # Textgrundlinien ausserhalb der Seite"
 	@echo "  make clean   # entfernt generierte Test-Ausgaben (out/)"
 	@echo "  Module: $(MODULES)"
 
@@ -45,6 +46,20 @@ conform:
 geometry:
 	$(TCLSH) tools/geometry-check.tcl examples/basic/pdf
 	$(TCLSH) tools/geometry-check.tcl examples/advanced/pdf
+
+# Die dritte Ecke. geometry-check sieht keinen Text -- das steht in seinem
+# eigenen Kopf --, und layout-check liest ueber pdftotext, das weglaesst,
+# was neben dem Blatt liegt. Ein Absatz, der unten hinauslaeuft, ist fuer
+# beide unsichtbar. Gemessen: writeParagraph mit langem Text, 88 Zeilen,
+# 18 davon unter dem Blatt, geometry-check meldet null und pdftotext gibt
+# 446 von 520 Woertern zurueck.
+#
+# Kein Teil von "make test": der Prueflauf ueber examples/ setzt voraus,
+# dass die Beispiele erzeugt sind, und er meldet heute in beiden
+# Verzeichnissen etwas. Erst lesen, dann entscheiden -- wie bei geometry.
+textpos:
+	$(TCLSH) tools/text-check.tcl examples/basic/pdf
+	$(TCLSH) tools/text-check.tcl examples/advanced/pdf
 
 clean:
 	rm -rf out/*.pdf out/*.html 2>/dev/null || true

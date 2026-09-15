@@ -10,6 +10,18 @@ namespace import ::tcltest::*
 tcl::tm::path add [file join [file dirname [file normalize [info script]]] .. lib]
 package require pdf4tcllib
 
+# WELCHES Paket wurde geladen?
+#
+# Ohne diese Zeile sagt ein gruener Lauf nur: irgendein Paket dieses
+# Namens funktioniert. Liegt der Arbeitsbaum nicht vorn im Suchpfad,
+# nimmt "package require" das INSTALLIERTE -- gleiche Nummer, anderer
+# Baum, keine Meldung. Gemessen 14./15.09.2026, dreimal.
+#
+# run_all.tcl meldet es fuer den Sammellauf; hier fuer den Einzellauf.
+puts stdout "pdf4tcllib [package provide pdf4tcllib] aus:\
+        [lindex [package ifneeded pdf4tcllib \
+        [package provide pdf4tcllib]] end]"
+
 # pdf4tcl is the one external dependency. Tests that need it are marked,
 # so that a fresh clone WITHOUT pdf4tcl reports skips rather than failures
 # -- a red suite is how a new reader decides the library is broken.
@@ -543,5 +555,76 @@ test tbl-fmt-1.2 {-formatted 0 nimmt den rohen} \
 
 rename ::tblFmtStrom {}
 rename ::fmtJaNein {}
+
+
+# ---------------------------------------------------------------------------
+# -notruncate: Werte, die nicht gekuerzt werden duerfen
+#
+# table::draw kuerzt jeden Zellwert auf die Spaltenbreite und haengt
+# "..." an. Fuer Bemerkungen und Modellnamen richtig -- fuer Werte, die
+# abgetippt werden muessen (Kennwoerter, Schluessel, Pruefsummen),
+# falsch: das Blatt sieht richtig aus und ist es nicht.
+#
+# GEKUERZT WIRD NACH BREITE, nicht nach Zeichenzahl. Gemessen
+# 14.09.2026: 24 Zeichen in Versalien fielen weg, 29 gemischte nicht.
+# Wer die Laenge im Blick behaelt, uebersieht es -- darum steht unten
+# ein Fall mit beiden Schreibweisen bei GLEICHER Zeichenzahl.
+
+proc ::tblNoTruncStrom {wert notrunc} {
+    set pdf [pdf4tcl::new %AUTO% -paper a4 -compress 0]
+    $pdf startPage
+    $pdf setFont 9 Helvetica
+    set cols [list \
+            [list -header "Feld" -width 100] \
+            [list -header "Wert" -width 120 -notruncate $notrunc]]
+    ::pdf4tcllib::table::draw $pdf 40 780 $cols [list [list Kennwort $wert]] \
+            -header 1 -fontsize 9 -pad 3
+    set out [$pdf get]
+    $pdf destroy
+    return $out
+}
+
+test tbl-notrunc-1.0 {ohne -notruncate wird nach Breite gekuerzt} \
+        -constraints pdf -body {
+    set lang "XKQW-7RHV-2MTP-9BDL-4NFZ-6CGY-8JSA-1EUK-VERYLONG"
+    set out [::tblNoTruncStrom $lang 0]
+    list [string match "*$lang*" $out] \
+         [expr {[string first "XKQW-7RHV" $out] >= 0}]
+} -result {0 1}
+
+test tbl-notrunc-1.1 {mit -notruncate steht der Wert vollstaendig da} \
+        -constraints pdf -body {
+    set lang "XKQW-7RHV-2MTP-9BDL-4NFZ-6CGY-8JSA-1EUK-VERYLONG"
+    string match "*$lang*" [::tblNoTruncStrom $lang 1]
+} -result 1
+
+test tbl-notrunc-1.2 {gekuerzt wird nach Breite, nicht nach Zeichenzahl} \
+        -constraints pdf -body {
+    # Beide 24 Zeichen. Versalien sind breiter und fallen frueher weg.
+    # Faellt dieser Fall, misst die Kuerzung ploetzlich Zeichen -- dann
+    # ist die Begruendung fuer -notruncate hinfaellig.
+    set gross "ACCESS-REPORT-SECRET-130"
+    set klein "access-report-secret-130"
+    list [string match "*$gross*" [::tblNoTruncStrom $gross 0]] \
+         [string match "*$klein*" [::tblNoTruncStrom $klein 0]]
+} -result {0 1}
+
+test tbl-notrunc-1.3 {-notruncate gilt auch ueber cellstyles} \
+        -constraints pdf -body {
+    set lang "XKQW-7RHV-2MTP-9BDL-4NFZ-6CGY-8JSA-1EUK-VERYLONG"
+    set pdf [pdf4tcl::new %AUTO% -paper a4 -compress 0]
+    $pdf startPage
+    $pdf setFont 9 Helvetica
+    set cols [list [list -header "Feld" -width 100] \
+                   [list -header "Wert" -width 120]]
+    ::pdf4tcllib::table::draw $pdf 40 780 $cols [list [list Kennwort $lang]] \
+            -header 1 -fontsize 9 -pad 3 \
+            -cellstyles [dict create 0,1 [list -notruncate 1]]
+    set out [$pdf get]
+    $pdf destroy
+    string match "*$lang*" $out
+} -result 1
+
+rename ::tblNoTruncStrom {}
 
 cleanupTests

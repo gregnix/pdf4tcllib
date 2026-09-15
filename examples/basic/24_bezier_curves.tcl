@@ -1,6 +1,12 @@
 #!/usr/bin/env tclsh
 # Demo 24: Bezier curves (pdf4tcl 0.9.4.11, orient true, without moveTo/curve)
 
+# --- UTF-8 sicherstellen (Tcl 8.6 liest Skripte in der Systemkodierung) ---
+source [file join [file dirname [info script]] .. _utf8.tcl]
+if {![utf8Pruefen "ä"]} {
+    if {[utf8Neuladen [info script]]} { return }
+}
+
 set scriptDir [file dirname [file normalize [info script]]]
 tcl::tm::path add [file normalize [file join $scriptDir ../.. lib]]
 package require pdf4tcllib 0.6

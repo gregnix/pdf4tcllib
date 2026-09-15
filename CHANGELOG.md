@@ -5,6 +5,43 @@ and module headers.
 
 ---
 
+## pdf4tcllib 0.6.5
+
+### Added -- `table::draw -notruncate`
+
+`table::draw` shortens every cell value to the column width and appends
+`...`. That is right for remarks and model names -- a long name should
+not break the column. It is wrong for values that have to be typed in
+again: passwords, keys, checksums. The sheet looks correct and is not.
+
+Shortening goes by **width, not by character count**. Measured
+2026-09-14: 24 characters in capitals were cut, 29 mixed-case ones were
+not. Anyone watching the length will miss it.
+
+```tcl
+set cols [list \
+    [list -header "Field" -width 100] \
+    [list -header "Value" -width 120 -notruncate 1]]
+```
+
+Per column as above, or per cell via `-cellstyles`. **The default stays
+0** -- existing output is unchanged.
+
+Four cases in `tests/test_table.tcl` (`tbl-notrunc-1.0` to `1.3`),
+including one that fails if shortening ever starts counting characters
+instead of measuring width -- the reason for the option would be gone
+then.
+
+### Added -- the test files report which package was loaded
+
+`run_all.tcl` did; the individual files did not. A test run against the
+**installed** copy instead of the tree looks exactly the same -- same
+version number, different tree, no message. Measured three times on
+2026-09-14/15, once while adding `-notruncate` itself: two cases failed
+because the tree copy was never loaded.
+
+---
+
 ## pdf4tcllib 0.6.4
 
 ### Added -- test_consistency.tcl, procedures that must agree

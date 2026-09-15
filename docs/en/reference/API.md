@@ -978,6 +978,26 @@ Common options: `-ctx`, `-maxwidth`, `-header 0|1`, `-headerbg`, `-headerfg`,
 `-cellstyles`, `-rowstyles`, `-rowindent`, `-footer` / `-footerbg` /
 `-footerbold`, `-yvar`, `-pagevar`.
 
+Column options: `-header`, `-width`, `-align`, `-font`, **`-notruncate`**.
+
+**`-notruncate 1`** keeps a value that does not fit -- by default the
+cell is shortened to the column width and `...` is appended. That is
+right for remarks and model names; it is wrong for values that have to
+be typed in again (passwords, keys, checksums), because the sheet then
+looks correct and is not.
+
+Shortening goes by **width, not by character count**: 24 characters in
+capitals were cut where 29 mixed-case ones were not. Watching the
+length does not catch it.
+
+```tcl
+set cols [list \
+    [list -header "Field" -width 100] \
+    [list -header "Value" -width 120 -notruncate 1]]
+```
+
+Per cell via `-cellstyles {0,1 {-notruncate 1}}`. Default `0`.
+
 > Full reference: [`docs/en/reference/table-draw.md`](table-draw.md).
 
 ### simpleTable

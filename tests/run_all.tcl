@@ -26,6 +26,22 @@ if {![llength $files]} { puts "Keine test_*.tcl gefunden."; exit 0 }
 set sumTotal 0; set sumPassed 0; set sumSkipped 0; set sumFailed 0
 set failedFiles {}
 
+# WELCHES Paket wurde geladen?
+#
+# Ohne diese Ausgabe sagt eine gruene Suite nur: irgendein Paket dieses
+# Namens funktioniert. Gemessen 14.09.2026: eine Aenderung an
+# lib/pdf4tcllib-0.6.4.tm schien wirkungslos, weil die INSTALLIERTE
+# Fassung geladen wurde -- gleiche Nummer, anderer Baum, keine
+# Fehlermeldung.
+if {![catch {
+    ::tcl::tm::path add $libDir
+    package require pdf4tcllib
+}]} {
+    puts "pdf4tcllib [package provide pdf4tcllib] aus:\
+            [lindex [package ifneeded pdf4tcllib \
+            [package provide pdf4tcllib]] end]"
+}
+
 foreach f $files {
     set name [file tail $f]
     # Bootstrap for the child interp. argv stays empty so the test file's

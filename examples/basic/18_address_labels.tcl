@@ -7,9 +7,13 @@
 #   Manual:  pdf4tcl.man @ 2023-09-18
 #   API:     0.9 (pdf4tcl::pdf4tcl create)
 #
-# WINDOWS USERS:
-#   For correct umlauts (aeoeueAEOEUEss, euro sign) use:
-#     tclsh examples/main.tcl 18_address_labels.tcl
+# WINDOWS: nichts zu tun -- der UTF-8-Vorspann unten liest diese
+#   Datei neu, wenn die Systemkodierung nicht UTF-8 ist. Hier stand
+#   frueher ein Verweis auf "examples/main.tcl" -- eine Datei, die es
+#   in diesem Baum nicht gibt.
+#   that does not exist in this tree. Reported 05.09.2026: umlauts came
+#   out as A-tilde sequences, and the documented workaround pointed
+#   nowhere.
 #
 #   NOT directly -- that gives wrong characters in the PDF:
 #     tclsh 18_address_labels.tcl
@@ -34,6 +38,12 @@
 # ============================================================================
 
 # --- Setup ---
+# --- UTF-8 sicherstellen (Tcl 8.6 liest Skripte in der Systemkodierung) ---
+source [file join [file dirname [info script]] .. _utf8.tcl]
+if {![utf8Pruefen "ä"]} {
+    if {[utf8Neuladen [info script]]} { return }
+}
+
 set script_dir [file dirname [file normalize [info script]]]
 
 # Load helper library

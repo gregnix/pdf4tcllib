@@ -20,6 +20,12 @@
 # Encoding test: äöüÄÖÜß€
 # ============================================================================
 
+# --- UTF-8 sicherstellen (Tcl 8.6 liest Skripte in der Systemkodierung) ---
+source [file join [file dirname [info script]] .. _utf8.tcl]
+if {![utf8Pruefen "ä"]} {
+    if {[utf8Neuladen [info script]]} { return }
+}
+
 set demo_num 71
 set demo_name "canvas_place"
 

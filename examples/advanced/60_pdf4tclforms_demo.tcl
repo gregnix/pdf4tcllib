@@ -7,6 +7,12 @@
 #   demo_60_teilnehmerliste.pdf
 #   demo_60_bestellformular.pdf
 
+# --- UTF-8 sicherstellen (Tcl 8.6 liest Skripte in der Systemkodierung) ---
+source [file join [file dirname [info script]] .. _utf8.tcl]
+if {![utf8Pruefen "ä"]} {
+    if {[utf8Neuladen [info script]]} { return }
+}
+
 set scriptDir [file dirname [file normalize [info script]]]
 set libDir    [file normalize [file join $scriptDir ../.. lib]]
 tcl::tm::path add $libDir

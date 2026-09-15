@@ -176,6 +176,24 @@ proc ::pdf4tcllib::forms::_wertLesen {eintrag} {
 #
 #   -schema   wie bei read: prueft, ob die Felder ins Schema passen
 #   -strict   fehlende oder unbekannte Felder werfen (0)
+# ACHTUNG, geerbt von pdf4tcl::fillForms: der Wert wird GESCHRIEBEN,
+# nicht gezeichnet.
+#
+# fillForms setzt /V und schaltet /NeedAppearances ein; den vorhandenen
+# Appearance-Strom laesst es stehen. Ein Betrachter, der das Flag
+# befolgt, zeigt den neuen Wert -- Acrobat und die gaengigen Browser tun
+# das. Ein Druckweg, der die Darstellung rendert, zeigt den ALTEN.
+#
+# Gemessen am 04.09.2026: ein Feld mit -init "Alt", danach mit "Meier"
+# gefuellt, traegt /V (Meier), waehrend /AP weiterhin "Alt" zeichnet.
+# pdftotext liest den Wert und meldet "Meier"; auf dem Papier stuende
+# "Alt", und der Unterschied faellt erst auf, wenn das Blatt durch ist.
+#
+# Wo es nicht schiefgehen darf: das Dokument mit den Werten ERZEUGEN
+# statt es nachtraeglich zu fuellen. addForm baut die Stroeme mit. Der
+# Weg hier ist fuer Formulare gedacht, die von woanders kommen und sich
+# nicht neu erzeugen lassen -- und dort gehoert das Ergebnis in dem
+# Betrachter angesehen, der spaeter druckt.
 proc ::pdf4tcllib::forms::write {inFile outFile werte args} {
     array set o {-schema {} -strict 0}
     foreach {k v} $args {
