@@ -21,14 +21,24 @@ testConstraint lib [expr {![catch {package require pdf4tcllib}]}]
 
 catch {::pdf4tcllib::fonts::init}
 
-# Ein Bild aus dem pdf4tcl-Beispielbestand, sonst wird uebersprungen.
-set ::imgDatei ""
-foreach k [list \
-        [file join [file dirname [info script]] .. .. pdf4tcl examples smile.png] \
-        /home/claude/tk/pdf4tcl/examples/smile.png] {
-    if {[file readable $k]} { set ::imgDatei [file normalize $k]; break }
-}
-testConstraint bild [expr {$::imgDatei ne ""}]
+# Das Bild liegt im Repo. Es wird nicht gesucht.
+#
+# Bis 27.09.2026 stand hier eine Kandidatenliste: erst smile.png aus dem
+# pdf4tcl-Geschwisterbaum, dann ein fester Pfad aus dem Arbeitsverzeichnis der
+# Sitzung, in der die Zeile entstand -- den schreibe ich hier nicht aus, sonst
+# meldet ihn die Ausgangspruefung wieder, und zu Recht: ein solcher Pfad hat in
+# einer verfolgten Datei auch im Kommentar nichts zu suchen. Auf jeder anderen
+# Maschine ohne Geschwisterbaum war
+# ::imgDatei leer, die Constraint "bild" nicht erfuellt, und alle Tests dieser
+# Datei fielen weg -- sichtbar nur, wenn man die uebersprungenen zaehlt.
+#
+# [file readable] in einer Kandidatenliste garantiert, dass sich nichts
+# beschwert. Darum keine Liste und keine Suche: 210 Byte PNG, 100x83 Pixel wie
+# das alte smile.png, damit place-1.6 und place-1.7 dieselben dpi-Grenzen
+# treffen (40x40 pt bei 150 dpi brauchen 83 Pixel -- genau die Hoehe).
+set ::imgDatei [file join [file dirname [file normalize [info script]]] \
+        images testbild-100x83.png]
+testConstraint bild [file readable $::imgDatei]
 
 proc imgNew {} {
     set pdf [::pdf4tcl::new %AUTO% -paper a4]

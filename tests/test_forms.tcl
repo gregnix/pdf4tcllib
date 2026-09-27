@@ -75,90 +75,95 @@ test forms-schema-checkbox-init "checkbox init wird boolsch" -body {
 
 # ---------------------------------------------------------------- render (braucht pdf4tcl)
 
-if {![catch {package require pdf4tcl}]} {
-    test forms-render-callnote "renderSchema erzeugt gueltiges PDF" -setup {
-        set tdir [file dirname [file normalize [info script]]]
-        set out [file normalize [file join $tdir out/test_callnote.pdf]]
-        file mkdir [file dirname $out]
-        set ctx [pdf4tcllib::page::context a4 -margin 25 -orient true]
-        set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
-        $pdf startPage
-        set y [dict get $ctx top]
-    } -body {
-        pdf4tclforms::renderSchema $pdf $ctx [pdf4tclforms::template callnote] -yvar y
-        $pdf endPage
-        $pdf write -file $out
-        set v [pdf4tcllib::validate_pdf $out]
-        dict get $v valid
-    } -cleanup {
-        catch {$pdf destroy}
-        catch {file delete -force $out}
-    } -result 1
+# Die Tests werden IMMER angemeldet und tragen ihre Bedingung selbst.
+#
+# Bis 27.09.2026 stand hier "if {![catch {package require pdf4tcl}]} { <Tests> }
+# else { testConstraint pdf4tcl 0 }". Ohne pdf4tcl wurden die vier Tests gar
+# nicht angemeldet -- tcltest konnte sie also nicht als uebersprungen zaehlen,
+# und die gesetzte Constraint pruefte niemand, weil kein angemeldeter Test sie
+# nannte. Der Lauf meldete Total 8 statt 12 und Failed 0.
+testConstraint pdf4tcl [expr {![catch {package require pdf4tcl}]}]
 
-    test forms-render-order "renderSchema order erzeugt gueltiges PDF" -setup {
-        set tdir [file dirname [file normalize [info script]]]
-        set out [file normalize [file join $tdir out/test_order.pdf]]
-        file mkdir [file dirname $out]
-        set ctx [pdf4tcllib::page::context a4 -margin 25 -orient true]
-        set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
-        $pdf startPage
-        set y [dict get $ctx top]
-    } -body {
-        pdf4tclforms::renderSchema $pdf $ctx [pdf4tclforms::template order] -yvar y
-        $pdf endPage
-        $pdf write -file $out
-        set v [pdf4tcllib::validate_pdf $out]
-        dict get $v valid
-    } -cleanup {
-        catch {$pdf destroy}
-        catch {file delete -force $out}
-    } -result 1
+test forms-render-callnote "renderSchema erzeugt gueltiges PDF" -constraints pdf4tcl -setup {
+    set tdir [file dirname [file normalize [info script]]]
+    set out [file normalize [file join $tdir out/test_callnote.pdf]]
+    file mkdir [file dirname $out]
+    set ctx [pdf4tcllib::page::context a4 -margin 25 -orient true]
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
+    $pdf startPage
+    set y [dict get $ctx top]
+} -body {
+    pdf4tclforms::renderSchema $pdf $ctx [pdf4tclforms::template callnote] -yvar y
+    $pdf endPage
+    $pdf write -file $out
+    set v [pdf4tcllib::validate_pdf $out]
+    dict get $v valid
+} -cleanup {
+    catch {$pdf destroy}
+    catch {file delete -force $out}
+} -result 1
 
-    test forms-render-custom "renderSchema mit eigenem Dict erzeugt gueltiges PDF" -setup {
-        set tdir [file dirname [file normalize [info script]]]
-        set out [file normalize [file join $tdir out/test_custom.pdf]]
-        file mkdir [file dirname $out]
-        set ctx [pdf4tcllib::page::context a4 -margin 25 -orient true]
-        set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
-        $pdf startPage
-        set y [dict get $ctx top]
-        set spec [dict create title "Testformular" sections [dict create \
-            s1 [dict create title "Daten" fields {
-                {row {
-                    {id f_datum type text label "Datum:" width 100 init ""}
-                    {id f_name  type text label "Name:"  width 180 init ""}
-                }}
-                {id f_bem type text label "Bemerkung:" multiline 1 fieldh 40}
-            }] \
-            s2 [dict create \
-                title "Liste" \
-                table [dict create \
-                    headers {Nr Text} widths {30 200} emptyRows 2 editable 1 idPrefix f_c]]]]
-    } -body {
-        pdf4tclforms::renderSchema $pdf $ctx $spec -yvar y
-        $pdf endPage
-        $pdf write -file $out
-        set v [pdf4tcllib::validate_pdf $out]
-        dict get $v valid
-    } -cleanup {
-        catch {$pdf destroy}
-        catch {file delete -force $out}
-    } -result 1
+test forms-render-order "renderSchema order erzeugt gueltiges PDF" -constraints pdf4tcl -setup {
+    set tdir [file dirname [file normalize [info script]]]
+    set out [file normalize [file join $tdir out/test_order.pdf]]
+    file mkdir [file dirname $out]
+    set ctx [pdf4tcllib::page::context a4 -margin 25 -orient true]
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
+    $pdf startPage
+    set y [dict get $ctx top]
+} -body {
+    pdf4tclforms::renderSchema $pdf $ctx [pdf4tclforms::template order] -yvar y
+    $pdf endPage
+    $pdf write -file $out
+    set v [pdf4tcllib::validate_pdf $out]
+    dict get $v valid
+} -cleanup {
+    catch {$pdf destroy}
+    catch {file delete -force $out}
+} -result 1
 
-    test forms-render-y-advances "renderSchema erhoeht y" -setup {
-        set ctx [pdf4tcllib::page::context a4 -margin 25 -orient true]
-        set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
-        $pdf startPage
-        set y0 [dict get $ctx top]
-        set y $y0
-    } -body {
-        pdf4tclforms::renderSchema $pdf $ctx [pdf4tclforms::template checklist -emptyRows 3] -yvar y
-        expr {$y > $y0}
-    } -cleanup {
-        catch {$pdf destroy}
-    } -result 1
-} else {
-    tcltest::testConstraint pdf4tcl 0
-}
+test forms-render-custom "renderSchema mit eigenem Dict erzeugt gueltiges PDF" -constraints pdf4tcl -setup {
+    set tdir [file dirname [file normalize [info script]]]
+    set out [file normalize [file join $tdir out/test_custom.pdf]]
+    file mkdir [file dirname $out]
+    set ctx [pdf4tcllib::page::context a4 -margin 25 -orient true]
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
+    $pdf startPage
+    set y [dict get $ctx top]
+    set spec [dict create title "Testformular" sections [dict create \
+        s1 [dict create title "Daten" fields {
+            {row {
+                {id f_datum type text label "Datum:" width 100 init ""}
+                {id f_name  type text label "Name:"  width 180 init ""}
+            }}
+            {id f_bem type text label "Bemerkung:" multiline 1 fieldh 40}
+        }] \
+        s2 [dict create \
+            title "Liste" \
+            table [dict create \
+                headers {Nr Text} widths {30 200} emptyRows 2 editable 1 idPrefix f_c]]]]
+} -body {
+    pdf4tclforms::renderSchema $pdf $ctx $spec -yvar y
+    $pdf endPage
+    $pdf write -file $out
+    set v [pdf4tcllib::validate_pdf $out]
+    dict get $v valid
+} -cleanup {
+    catch {$pdf destroy}
+    catch {file delete -force $out}
+} -result 1
+
+test forms-render-y-advances "renderSchema erhoeht y" -constraints pdf4tcl -setup {
+    set ctx [pdf4tcllib::page::context a4 -margin 25 -orient true]
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true]
+    $pdf startPage
+    set y0 [dict get $ctx top]
+    set y $y0
+} -body {
+    pdf4tclforms::renderSchema $pdf $ctx [pdf4tclforms::template checklist -emptyRows 3] -yvar y
+    expr {$y > $y0}
+} -cleanup {
+    catch {$pdf destroy}
+} -result 1
 
 cleanupTests
