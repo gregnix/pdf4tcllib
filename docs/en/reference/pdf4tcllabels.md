@@ -138,10 +138,39 @@ around it.
 | `-start N` | 0 | leave the first N positions empty -- what a part-used sheet needs. Only the person holding the sheet knows how many are gone. |
 | `-only {i j ...}` | `{}` | use exactly these positions, for reprinting single labels onto a part-used sheet. Must name at least as many positions as there are records. |
 | `-offsetx MM` `-offsety MM` | 0.0 | printer offset in millimetres, see `calibration` |
-| `-frame 0\|1` | 0 | thin outline round every position, for aligning on paper. Never for production. |
+| `-frame 0\|1\|layer` | 0 | outlines round every position. `1` fixes them in the content, drawn *before* the labels -- the proof sheet you print and throw away, never for production. `layer` puts them in a switchable PDF layer, drawn *after* the labels. See below. |
 | `-tag TYPE` | `Sect` | structure type each label is wrapped in when tagging is on |
 
-An unknown option is an error listing the known ones.
+An unknown option is an error listing the known ones. `-frame` takes only
+`0`, `1` or `layer`.
+
+### `-frame layer` -- checking a real run
+
+`-frame 1` leaves a choice between no outlines and outlines on the goods.
+While checking a production run you want neither: the text and the label
+boundary on the same sheet, and then the labels printed without a grid
+baked into them.
+
+`-frame layer` draws the outlines into an Optional Content Group named
+**Label grid** (ISO 32000-1 8.11). A reader shows it in its layer panel and
+switches it off with one click; it is created with `-print 0`, so with
+pdf4tcl **0.9.4.70 or newer** it does not reach the printer.
+
+Drawn *after* the labels on purpose -- a label design with a filled
+background would hide a grid drawn underneath, and a grid you cannot see
+checks nothing.
+
+`-frame layer` refuses to run where the grid would reach the printer
+anyway -- an error, not a silent fallback:
+
+- **pdf4tcl without `addLayer`** (before 0.9.4.63).
+- **pdf4tcl up to 0.9.4.69**: `-print 0` was written into the layer but
+  filed under the wrong `/AS` event, so no reader applied it. Fixed in
+  0.9.4.70; `labels-layer-3` tells the two apart.
+- **`-pdfa 2b` / `-pdfa 3b`**: PDF/A-2 and -3 forbid `/AS` (veraPDF clause
+  6.9), so `-print 0` has no effect. Use `-frame 1` on a separate proof
+  sheet. (`-pdfa 1b` forbids layers altogether; pdf4tcl's `addLayer`
+  refuses it.)
 
 Measured, sheet 3474 with 24 positions:
 

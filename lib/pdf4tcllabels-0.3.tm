@@ -1,4 +1,4 @@
-# pdf4tcllabels-0.1.tm -- label sheets: Zweckform/Avery and friends.
+# pdf4tcllabels-0.3.tm -- label sheets: Zweckform/Avery and friends.
 #
 #   package require pdf4tcllabels
 #   pdf4tcllib::labels::render $pdf 3474 $records {x y w h rec} { ... }
@@ -173,9 +173,23 @@ namespace eval ::pdf4tcllib::labels {
     #              part-used sheet needs, and it is the reason this is a
     #              parameter and not something clever: only the person
     #              holding the sheet knows how many are gone.
-    #   -frame 0|1 draw a thin outline round every position. For getting the
-    #              alignment right on paper -- print one, hold it against a
-    #              real sheet. Never for production.
+    #   -frame 0|1|layer
+    #              0      nothing (default)
+    #              1      a thin outline round every position, fixed in the
+    #                     content and drawn BEFORE the labels. The proof
+    #                     sheet you print and throw away. Never for
+    #                     production.
+    #              layer  the same outlines in an Optional Content Group,
+    #                     drawn AFTER the labels so they sit on top of
+    #                     filled artwork. A reader can switch them off, and
+    #                     with pdf4tcl 0.9.4.70 or newer they do not reach
+    #                     the printer (-print 0).
+    #
+    #              "layer" is what you want while checking a REAL run: text
+    #              and label boundary on the same sheet, one click apart,
+    #              and the production labels still go out without a grid
+    #              baked into them. With -frame 1 that is impossible --
+    #              either no outlines or outlines on the goods.
     #   -tag TYPE  structure type each label is wrapped in when tagging is
     #              on, Sect by default. Each label is a unit of its own.
     #
@@ -190,6 +204,12 @@ namespace eval ::pdf4tcllib::labels {
             }
             dict set opts $k $v
         }
+        set frame [dict get $opts -frame]
+        if {$frame ni {0 1 layer}} {
+            return -code error "-frame: 0, 1 or layer, not \"$frame\""
+        }
+        if {$frame eq "layer"} { LayerCheck $pdf }
+        set gridLayer ""
         if {[llength $argSpec] != 5} {
             return -code error "argSpec must name five variables:\
                     {x y w h record}"
@@ -244,7 +264,14 @@ namespace eval ::pdf4tcllib::labels {
                 $pdf startPage -paper [dict get $geo paper]
                 incr sheetsWritten
                 set open 1
-                if {[dict get $opts -frame]} { Frames $pdf $geo }
+                if {$frame eq "1"} { Frames $pdf $geo }
+                if {$frame eq "layer" && $gridLayer eq ""} {
+                    # Once per document -- an OCG belongs to the file, not
+                    # to a page. Named so the reader's layer panel says what
+                    # it is without the caller explaining.
+                    set gridLayer [$pdf addLayer "Label grid" \
+                            -visible 1 -print 0]
+                }
             }
             lassign [place $geo $slot] x y
 
@@ -279,13 +306,57 @@ namespace eval ::pdf4tcllib::labels {
             if {[llength $only]} { continue }
             incr slot
             if {$slot >= $per} {
+                if {$gridLayer ne ""} { GridLayer $pdf $geo $gridLayer }
                 $pdf endPage
                 set open 0
                 set slot 0
             }
         }
-        if {$open} { $pdf endPage }
+        if {$open} {
+            if {$gridLayer ne ""} { GridLayer $pdf $geo $gridLayer }
+            $pdf endPage
+        }
         return $sheetsWritten
+    }
+
+    # The outlines inside an Optional Content Group. Called at the END of a
+    # page on purpose: a label design with a filled background would hide a
+    # grid drawn underneath it, and a grid you cannot see checks nothing.
+    #
+    # BDC and EMC have to pair up within the page -- pdf4tcl throws in
+    # endPage if a layer is still open (ISO 32000-1 14.6), so this closes
+    # before the caller's endPage ever runs.
+    # No silent downgrade: a caller who asked for a grid that stays off the
+    # printer and quietly got one that prints would print it onto the goods.
+    # Three ways that happens, each an error here:
+    #   - no addLayer at all (pdf4tcl before 0.9.4.63)
+    #   - addLayer, but -print 0 ignored (up to 0.9.4.69: wrong /AS event)
+    #   - -pdfa 2*/3*: PDF/A forbids /AS, so nothing applies -print 0
+    # (-pdfa 1* is refused by addLayer itself from 0.9.4.70.)
+    # ver: pdf4tcl version, default the loaded one -- a parameter for tests.
+    proc LayerCheck {pdf {ver ""}} {
+        if {"addLayer" ni [info object methods $pdf -all]} {
+            return -code error "-frame layer needs a pdf4tcl with addLayer\
+                    (0.9.4.63 or newer); this one has none"
+        }
+        if {$ver eq ""} { set ver [package present pdf4tcl] }
+        if {![package vsatisfies $ver 0.9.4.70-]} {
+            return -code error "-frame layer needs pdf4tcl 0.9.4.70 or newer:\
+                    $ver ignores -print 0, the grid would print"
+        }
+        set pdfa ""
+        catch {set pdfa [$pdf cget -pdfa]}
+        if {[string match {[23]*} $pdfa]} {
+            return -code error "-frame layer under -pdfa $pdfa: PDF/A forbids\
+                    /AS, so -print 0 has no effect and the grid would print;\
+                    use -frame 1 on a separate proof sheet"
+        }
+    }
+
+    proc GridLayer {pdf geo layer} {
+        $pdf beginLayer $layer
+        Frames $pdf $geo
+        $pdf endLayer
     }
 
     # ------------------------------------------------------------------
@@ -404,4 +475,4 @@ namespace eval ::pdf4tcllib::labels {
     }
 }
 
-package provide pdf4tcllabels 0.2
+package provide pdf4tcllabels 0.3

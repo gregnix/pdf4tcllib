@@ -86,7 +86,7 @@ separate packages, each usable on its own -- take only what you use.
 | `lib/pdf4tclcanvas-0.1.tm` | `pdf4tclcanvas` | place a canvas in a frame, to scale and in the structure tree |
 | `lib/pdf4tcltext-0.3.tm` | `pdf4tcltext` | export a Tk `text` widget |
 | `lib/pdf4tclforms-0.2.3.tm` | `pdf4tclforms` | declarative AcroForm layouts |
-| `lib/pdf4tcllabels-0.2.tm` | `pdf4tcllabels` | label sheets and roll labels |
+| `lib/pdf4tcllabels-0.3.tm` | `pdf4tcllabels` | label sheets and roll labels |
 | `lib/pdf4tcltoc-0.1.tm` | `pdf4tcltoc` | table of contents with real page numbers |
 | `lib/pdf4tclchart-0.1.1.tm` | `pdf4tclchart` | bar, line and pie charts |
 | `lib/pdf4tclflow-0.1.tm` | `pdf4tclflow` | text through columns and pages |
@@ -400,6 +400,9 @@ own. `calibration` writes a test sheet for the printer offset -- one to two
 millimetres is the rule, not the exception, and `-offsetx`/`-offsety`
 settle it permanently. `fitSize`, `wrap` and `ellipsize` fit text into the
 box; with tagging on, every label is one structure element.
+`-frame layer` puts the grid on a non-printing layer and needs
+**pdf4tcl 0.9.4.70 or later** (older versions printed it anyway, so it is
+refused there); under PDF/A-2/-3 it is refused as well.
 
 Full reference: `docs/en/reference/pdf4tcllabels.md`. Howtos:
 `docs/en/howtos/howto-label-sheets.md`,
@@ -517,7 +520,8 @@ tclsh examples/run_all.tcl -noadvanced   # basic only
 
 ## Requirements
 
-- pdf4tcl 0.9.4.23+ (recommended; 0.9.4.11+ minimum for basic use)
+- pdf4tcl 0.9.4.23+ (recommended; 0.9.4.11+ minimum for basic use;
+  0.9.4.70+ for `pdf4tcllabels -frame layer`)
 - Tcl 8.6+ (required)
 - Tk (only for `pdf4tcllib::image`)
 - DejaVu fonts (optional; falls back to Helvetica/Type1)
@@ -535,7 +539,7 @@ All functions are designed for reuse in any pdf4tcl-based project.
 ## Running the tests
 
 ```bash
-make test                 # 582 tests in 31 files
+make test                 # 595 tests in 31 files
 tclsh tests/run_all.tcl   # the same, directly
 ```
 

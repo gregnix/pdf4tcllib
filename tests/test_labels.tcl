@@ -392,4 +392,124 @@ test labels-roll-6 "ein eigenes Rollenformat mit mehr als einem Etikett wird abg
 } -result 1
 
 
+# ============================================================
+# -frame layer -- das Raster als abschaltbare Ebene (01.10.2026)
+# ============================================================
+#
+# -frame 1 zeichnet die Rahmen fest in den Inhalt und VOR den Etiketten.
+# Das ist der Probebogen, den man wegwirft. Beim Pruefen eines ECHTEN Laufs
+# hilft es nicht: entweder keine Rahmen, oder Rahmen auf der Ware.
+#
+# -frame layer legt sie in eine Optional Content Group -- im Leser
+# abschaltbar, und mit pdf4tcl 0.9.4.70 oder neuer erreichen sie den
+# Drucker nicht (-print 0). Gezeichnet NACH den Etiketten, sonst verdeckt
+# ein Etikett mit Fuellung das Raster, das es pruefen soll.
+
+proc labelsPdfText {frame {n 6}} {
+    set p [pdf4tcl::new %AUTO% -compress 0]
+    set recs {}
+    for {set i 1} {$i <= $n} {incr i} { lappend recs "Satz $i" }
+    ::pdf4tcllib::labels::render $p 3474 $recs {x y w h rec} {
+        $p setFont 9 Helvetica
+        $p text $rec -x [expr {$x + 4}] -y [expr {$y + 12}]
+    } -frame $frame
+    set d [$p get]
+    $p destroy
+    return $d
+}
+
+test labels-layer-1 "-frame layer legt eine benannte Ebene an" \
+        -constraints {labels pdf} -body {
+    set d [labelsPdfText layer]
+    list [string match "*/OCProperties*" $d] [string match "*Label grid*" $d]
+} -result {1 1}
+
+test labels-layer-2 "-frame 1 und 0 legen keine an" \
+        -constraints {labels pdf} -body {
+    list [string match "*/OCProperties*" [labelsPdfText 1]] \
+         [string match "*/OCProperties*" [labelsPdfText 0]]
+} -result {0 0}
+
+test labels-layer-3 "die Ebene traegt -print 0, und es wird auch abgeholt" \
+        -constraints {labels pdf} -body {
+    # Beides muss zusammenkommen: der Zustand in der Ebene UND ein
+    # /AS-Eintrag /Event /Print, der sie nennt. Bis pdf4tcl 0.9.4.69 war
+    # nur das erste da, und das sieht im Leser aus wie Erfolg -- bis
+    # jemand druckt.
+    set d [labelsPdfText layer]
+    list [string match "*/PrintState /OFF*" $d] \
+         [string match "*/Event /Print*" $d]
+} -result {1 1}
+
+test labels-layer-4 "BDC und EMC gehen ueber mehrere Bogen auf" \
+        -constraints {labels pdf} -body {
+    # pdf4tcl wirft in endPage, wenn eine Ebene offen bleibt. Zwei Bogen
+    # sind der Beweis, dass je Seite geschlossen wird; eine offene Ebene
+    # ueber die Seitengrenze waere ein ungueltiges PDF, das die meisten
+    # Leser trotzdem zeichnen.
+    set per [dict get [::pdf4tcllib::labels::sheet 3474] perSheet]
+    set d [labelsPdfText layer [expr {$per + 1}]]
+    set auf [regexp -all {/OC /Lyr[0-9]+ BDC} $d]
+    set zu  [regexp -all {EMC} $d]
+    list [expr {$auf == 2}] [expr {$zu >= $auf}]
+} -result {1 1}
+
+test labels-layer-5 "-frame nimmt nur 0, 1 und layer" \
+        -constraints {labels pdf} -body {
+    set p [pdf4tcl::new %AUTO%]
+    set ok [catch {
+        ::pdf4tcllib::labels::render $p 3474 {A} {x y w h rec} {} -frame ja
+    } e]
+    $p destroy
+    list $ok [string match "*0, 1 or layer*" $e]
+} -result {1 1}
+
+test labels-layer-6 "das Raster liegt UEBER den Etiketten" \
+        -constraints {labels pdf} -body {
+    # Sonst verdeckt ein Etikett mit Fuellung genau das, was geprueft
+    # werden soll. Gemessen an der Reihenfolge im Inhaltsstrom: der erste
+    # BDC steht hinter dem letzten Text.
+    set d [labelsPdfText layer 3]
+    set bdc  [string first "/OC /Lyr" $d]
+    set text [string last "Satz 3" $d]
+    expr {$bdc > $text}
+} -result 1
+
+
+# Kein stilles Durchlassen: ein Raster, das trotz "-frame layer" druckt,
+# landet auf der Ware. LayerCheck nimmt die Version als Parameter, damit
+# der Fall 0.9.4.69 ohne zweites pdf4tcl im Prozess pruefbar ist.
+test labels-layer-7 "pdf4tcl bis 0.9.4.69 ist ein Fehler, ab 0.9.4.70 nicht" \
+        -constraints {labels pdf} -body {
+    set p [pdf4tcl::new %AUTO%]
+    set alt [catch {::pdf4tcllib::labels::LayerCheck $p 0.9.4.69} e]
+    set neu [catch {::pdf4tcllib::labels::LayerCheck $p 0.9.4.70}]
+    $p destroy
+    list $alt [string match "*0.9.4.70*" $e] $neu
+} -result {1 1 0}
+
+test labels-layer-8 "-pdfa 2b/3b ist ein Fehler, Raster wuerde drucken" \
+        -constraints {labels pdf} -body {
+    set r {}
+    foreach a {2b 3b} {
+        set p [pdf4tcl::new %AUTO% -pdfa $a]
+        lappend r [catch {
+            ::pdf4tcllib::labels::render $p 3474 {A} {x y w h rec} {} \
+                    -frame layer
+        } e] [string match "*-frame 1*" $e]
+        $p destroy
+    }
+    set r
+} -result {1 1 1 1}
+
+test labels-layer-9 "-pdfa 2b mit -frame 1 bleibt erlaubt" \
+        -constraints {labels pdf} -body {
+    set p [pdf4tcl::new %AUTO% -pdfa 2b]
+    set rc [catch {
+        ::pdf4tcllib::labels::render $p 3474 {A} {x y w h rec} {} -frame 1
+    } e]
+    $p destroy
+    set rc
+} -result 0
+
 cleanupTests

@@ -22,14 +22,66 @@ proc runner::interpFor {f wishNeeded} {
 # a display, while the same run passes without DISPLAY because Tk fails to
 # load there in the first place.
 #
-# timeout(1) comes from coreutils and is absent on Windows; there this runs
-# as before, without a limit.
+# The limit is kept here, in Tcl, not by timeout(1): that one comes from
+# coreutils, and on Windows "timeout" finds C:\Windows\System32\timeout.exe,
+# a pause command that rejects "timeout 120 tclsh ..." ("Die Standardoption
+# darf nicht mehr als 1 Mal verwendet werden") -- every example failed.
 namespace eval runner {
     variable timeout 120
-    variable timeoutCmd {}
-    if {[llength [auto_execok timeout]] > 0} {
-        set timeoutCmd [list timeout $timeout]
+}
+
+# Run CMD (a list) with the time limit. STREAM 1 passes the output through
+# as it arrives (a hanging run must not look like silence), 0 collects it.
+# Returns {rc output timedout}; rc is the exit code, -1 when it was killed.
+proc runner::execLimited {cmd stream} {
+    variable timeout
+    variable st
+    if {[catch {open [list | {*}$cmd 2>@1] r} ch]} {
+        return [list 1 $ch 0]
     }
+    set pid [pid $ch]
+    chan configure $ch -blocking 0 -translation auto
+    # Tcl 9 reads strictly; an example writing in another code page must
+    # not stop the run (replace invalid bytes; 8.6 has no -profile)
+    catch {chan configure $ch -profile replace}
+    set st($ch,out) ""
+    unset -nocomplain st($ch,done)
+    chan event $ch readable [list apply {{ch stream} {
+        if {[catch {read $ch} chunk]} { set chunk "" ; set ::runner::st($ch,done) eof }
+        if {$stream} { puts -nonewline $chunk ; flush stdout } \
+        else { append ::runner::st($ch,out) $chunk }
+        if {[chan eof $ch]} { set ::runner::st($ch,done) eof }
+    }} $ch $stream]
+    set timer [after [expr {$timeout * 1000}] [list set ::runner::st($ch,done) limit]]
+    vwait ::runner::st($ch,done)
+    after cancel $timer
+    chan event $ch readable {}
+    set out $st($ch,out)
+    set how $st($ch,done)
+    unset -nocomplain st($ch,out) st($ch,done)
+    if {$how eq "limit"} {
+        if {$::tcl_platform(platform) eq "windows"} {
+            catch {exec taskkill /PID $pid /T /F}
+        } else {
+            catch {exec kill -TERM $pid}
+            after 300
+            catch {exec kill -KILL $pid}
+        }
+        catch {close $ch}
+        return [list -1 $out 1]
+    }
+    chan configure $ch -blocking 1
+    set rc 0
+    if {[catch {close $ch} err opt]} {
+        set ec [dict get $opt -errorcode]
+        if {[lindex $ec 0] eq "CHILDSTATUS"} {
+            set rc [lindex $ec 2]
+        } else {
+            set rc 1
+            append out \n $err
+        }
+    }
+    return [list $rc $out 0]
 }
 
 # Sammle die Skripte eines Verzeichnisses ein und pruefe, dass es plausibel
@@ -57,41 +109,28 @@ proc runner::collect {dir pattern least what} {
 #   wishNeeded  1 when the script needs a window
 #   extra       further arguments, AFTER the output directory
 proc runner::runScript {f outdir {wishNeeded 0} {extra {}}} {
-    variable timeoutCmd
     variable timeout
-    set cmd [list {*}$timeoutCmd [interpFor $f $wishNeeded] $f]
+    set cmd [list [interpFor $f $wishNeeded] $f]
     if {$outdir ne ""} { lappend cmd $outdir }
     lappend cmd {*}$extra
     set t0 [clock milliseconds]
-    set rc [catch { exec {*}$cmd 2>@1 } msg]
+    lassign [execLimited $cmd 0] rc msg timedout
     set ms [expr {[clock milliseconds] - $t0}]
-    # Tcl haengt bei rc!=0 "child process exited abnormally" an die
-    # Ausgabe. In der FAIL-Zeile steht dann hinter der eigentlichen
-    # Ursache ("can't find package tkpath") noch ein Satz, der nichts
-    # sagt und wie ein zweiter Fehler aussieht.
-    set msg [string trim [string map \
-            {"child process exited abnormally" ""} $msg]]
-    if {$rc && [lindex $::errorCode 0] eq "CHILDSTATUS"
-            && [lindex $::errorCode 2] == 124} {
+    set msg [string trim $msg]
+    if {$timedout} {
         append msg "\nTIME LIMIT ($timeout s) -- does this script run into\
                 the event loop? An example that loads Tk and has no exit\
                 waits here forever."
     }
-    return [list $rc $msg $ms]
+    return [list [expr {$rc != 0}] $msg $ms]
 }
 
-# Run a sub-runner, with the time limit and without collecting its output:
-# exec otherwise holds everything back until the end, and a hanging run
-# then looks like silence. That cost time while searching for one.
+# Run a sub-runner, with the time limit, its output passed through as it
+# comes: a hanging run otherwise looks like silence. That cost time while
+# searching for one.
 proc runner::runRunner {script args} {
-    variable timeoutCmd
-    set cmd [list {*}$timeoutCmd [info nameofexecutable] $script {*}$args]
-    set rc [catch { exec {*}$cmd >@stdout 2>@stderr } msg]
-    if {$rc && [lindex $::errorCode 0] eq "CHILDSTATUS"
-            && [lindex $::errorCode 2] == 124} {
-        puts "TIME LIMIT in [file tail $script]"
-    } elseif {$msg ne ""} {
-        puts $msg
-    }
-    return $rc
+    lassign [execLimited [list [info nameofexecutable] $script {*}$args] 1] \
+        rc msg timedout
+    if {$timedout} { puts "TIME LIMIT in [file tail $script]" }
+    return [expr {$rc != 0}]
 }

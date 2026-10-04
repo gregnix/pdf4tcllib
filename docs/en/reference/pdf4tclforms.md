@@ -484,7 +484,8 @@ A boolean at a `/Btn` field becomes `/Yes` or `/Off`; everything else is
 passed through. Fields the document does not have are reported and
 skipped. Returns the number of fields filled.
 
-**Limitation:** `fillForms` in pdf4tcl writes the value but no new
-appearance stream (`/AP`) — a reader that does not regenerate appearances
-shows the old text. That is a known pdf4tcl issue, not one of this
-module.
+**Appearance:** since pdf4tcl 0.9.4.64 `fillForms` also draws the value
+— a new appearance stream (`/AP`), no `/NeedAppearances`. Only password,
+choice and comb fields without `/MaxLen` keep the old stream and get the
+flag. With pdf4tcl up to 0.9.4.63 the old text stayed in `/AP`, and a print
+path that renders appearances showed it.

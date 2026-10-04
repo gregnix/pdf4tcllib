@@ -5,6 +5,28 @@ and module headers.
 
 ---
 
+## examples/_runner.tcl (2026-10-04)
+
+- The time limit per example is kept in Tcl, no longer by `timeout(1)`. On
+  Windows `timeout` found `timeout.exe` (a pause command), and
+  `examples/run_all.tcl` failed every run with "Ungueltige Syntax".
+
+---
+
+## pdf4tcllabels 0.3
+
+- New `render -frame layer`: label outlines in an optional content group
+  "Label grid", switchable in the reader, not printed (`-print 0`). Drawn
+  after the labels, closed before every `endPage`.
+- `-frame layer` is an error where the grid would print anyway: pdf4tcl
+  without `addLayer`, pdf4tcl up to 0.9.4.69, `-pdfa 2*`/`3*`. Check in
+  `labels::LayerCheck`.
+- Tests `labels-layer-1` to `-9`. Against pdf4tcl 0.9.4.69 the
+  `-frame layer` tests fail by design.
+- README: `-frame layer` needs pdf4tcl 0.9.4.70 or later.
+
+---
+
 ## pdf4tcllib 0.6.5
 
 ### Added -- `table::draw -notruncate`

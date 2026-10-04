@@ -176,18 +176,14 @@ proc ::pdf4tcllib::forms::_wertLesen {eintrag} {
 #
 #   -schema   wie bei read: prueft, ob die Felder ins Schema passen
 #   -strict   fehlende oder unbekannte Felder werfen (0)
-# ACHTUNG, geerbt von pdf4tcl::fillForms: der Wert wird GESCHRIEBEN,
-# nicht gezeichnet.
+# Seit pdf4tcl 0.9.4.64 zeichnet fillForms den Wert auch: zu /V kommt ein
+# neuer Appearance-Strom, /NeedAppearances bleibt aus (nur Passwort-,
+# Auswahl- und Kammfelder ohne /MaxLen behalten den alten Strom und
+# bekommen das Flag). Nachgemessen mit 0.9.4.70: Feld mit -init "Alt",
+# dann "Meier" -- (Meier) Tj im Strom, (Alt) weg, kein /NeedAppearances.
 #
-# fillForms setzt /V und schaltet /NeedAppearances ein; den vorhandenen
-# Appearance-Strom laesst es stehen. Ein Betrachter, der das Flag
-# befolgt, zeigt den neuen Wert -- Acrobat und die gaengigen Browser tun
-# das. Ein Druckweg, der die Darstellung rendert, zeigt den ALTEN.
-#
-# Gemessen am 04.09.2026: ein Feld mit -init "Alt", danach mit "Meier"
-# gefuellt, traegt /V (Meier), waehrend /AP weiterhin "Alt" zeichnet.
-# pdftotext liest den Wert und meldet "Meier"; auf dem Papier stuende
-# "Alt", und der Unterschied faellt erst auf, wenn das Blatt durch ist.
+# Bis 0.9.4.63 galt das nicht: /V neu, /AP alt, auf dem Papier der alte
+# Wert. Wer ein aelteres pdf4tcl laedt, hat dieses Verhalten noch.
 #
 # Wo es nicht schiefgehen darf: das Dokument mit den Werten ERZEUGEN
 # statt es nachtraeglich zu fuellen. addForm baut die Stroeme mit. Der

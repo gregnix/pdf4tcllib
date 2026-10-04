@@ -40,6 +40,13 @@ if {![catch {
     puts "pdf4tcllib [package provide pdf4tcllib] aus:\
             [lindex [package ifneeded pdf4tcllib \
             [package provide pdf4tcllib]] end]"
+    # Dasselbe fuer pdf4tcl: zwei Baeume mit gleicher Nummer (Workspace und
+    # installierte Kopie) waeren sonst nicht zu unterscheiden.
+    if {[package provide pdf4tcl] ne ""} {
+        puts "pdf4tcl [package provide pdf4tcl] aus:\
+                [lindex [package ifneeded pdf4tcl \
+                [package provide pdf4tcl]] end]"
+    }
 }
 
 foreach f $files {
