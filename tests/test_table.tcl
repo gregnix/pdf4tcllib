@@ -627,4 +627,13 @@ test tbl-notrunc-1.3 {-notruncate gilt auch ueber cellstyles} \
 
 rename ::tblNoTruncStrom {}
 
+
+# Zelltext muss keine gueltige Tcl-Liste sein: "{*}$args", "{a}, b",
+# "\"x\": y" brachen in _isCellSpec mit "list element in braces/quotes
+# followed by ..." ab.
+test tbl-celltext-nolist-1.1 {Zelltext, der keine Liste ist, gilt als einfache Zelle} -body {
+    lmap c [list {next {*}$args} {{a}, b} {"x": y}] {
+        list [pdf4tcllib::table::_cellSpan $c] [pdf4tcllib::table::_cellText $c]
+    }
+} -result {{1 {next {*}$args}} {1 {{a}, b}} {1 {"x": y}}}
 cleanupTests

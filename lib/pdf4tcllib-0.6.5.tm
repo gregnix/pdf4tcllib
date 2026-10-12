@@ -3893,7 +3893,9 @@ proc ::pdf4tcllib::table::_agg {wie werte leer} {
 }
 
 proc ::pdf4tcllib::table::_isCellSpec {cell} {
-    if {[llength $cell] % 2} { return 0 }
+    # Plain cell text need not be a valid Tcl list ("{*}$args", "{a}, b",
+    # "\"x\": y"); such text is never a cell spec.
+    if {[catch {llength $cell} n] || $n % 2} { return 0 }
     if {[catch {dict size $cell}]} { return 0 }
     if {![dict exists $cell text]} { return 0 }
     return [expr {[dict exists $cell colspan] || [dict exists $cell rowspan]}]

@@ -5,6 +5,14 @@ and module headers.
 
 ---
 
+## pdf4tcllib::table (2026-10-05)
+
+- Cell text that is not a valid Tcl list (`{*}$args`, `{a}, b`, `"x": y`)
+  no longer aborts a table with "list element in braces/quotes followed
+  by ...". `_isCellSpec` treats such text as a plain cell.
+
+---
+
 ## examples/_runner.tcl (2026-10-04)
 
 - The time limit per example is kept in Tcl, no longer by `timeout(1)`. On
