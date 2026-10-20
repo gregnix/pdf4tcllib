@@ -74,13 +74,13 @@ tcl::tm::path add /path/to/lib
 package require pdf4tcllib 0.6
 ```
 
-`pdf4tcllib-0.6.5.tm` is one file and holds the core: fonts, unicode, text,
+`pdf4tcllib-0.6.6.tm` is one file and holds the core: fonts, unicode, text,
 math, table, page, drawing, units, image, form, tag. The others are
 separate packages, each usable on its own -- take only what you use.
 
 | file | `package require` | |
 |---|---|---|
-| `lib/pdf4tcllib-0.6.5.tm` | `pdf4tcllib` | the core, needed by all of the below |
+| `lib/pdf4tcllib-0.6.6.tm` | `pdf4tcllib` | the core, needed by all of the below |
 | `lib/pdf4tcltable-0.3.2.tm` | `pdf4tcltable` | export a Tk `tablelist` widget |
 | `lib/pdf4tcltreeview-0.1.tm` | `pdf4tcltreeview` | export a `ttk::treeview`, as a table or as an outline |
 | `lib/pdf4tclcanvas-0.1.tm` | `pdf4tclcanvas` | place a canvas in a frame, to scale and in the structure tree |

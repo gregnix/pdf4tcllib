@@ -36,7 +36,7 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.6.5
+package provide pdf4tcllib 0.6.6
 
 namespace eval ::pdf4tcllib {
     # Aus package provide abgeleitet statt daneben gepflegt: die beiden
@@ -738,6 +738,22 @@ proc ::pdf4tcllib::unicode::resetSubst {} {
 }
 
 # Eine Ersetzung vermerken.
+# 1 if the CID face that will draw the text contains this codepoint.
+# mono: the monospace face (_Pdf4tcl_Base_Mono), else the regular face.
+# DejaVu Sans Mono lacks about 2700 glyphs of DejaVu Sans, and has a few
+# DejaVu Sans lacks (U+238B), so checking the wrong face lets glyphs vanish
+# or replaces glyphs that would have rendered. Bold and italic are checked
+# against the regular face; their repertoire is close to it (DejaVu: Bold
+# lacks 140, Oblique about 690, mostly Arabic and private use).
+# Unknown font state: let the character through.
+proc ::pdf4tcllib::unicode::_fontHas {cp {mono 0}} {
+    set face [expr {$mono ? "_Pdf4tcl_Base_Mono" : "_Pdf4tcl_Base_Regular"}]
+    if {![info exists ::pdf4tcl::BFA($face,charToGlyph)]} {
+        return 1
+    }
+    return [dict exists $::pdf4tcl::BFA($face,charToGlyph) $cp]
+}
+
 proc ::pdf4tcllib::unicode::_countSubst {cp} {
     variable _subst
     variable _substChars
@@ -774,7 +790,10 @@ proc ::pdf4tcllib::unicode::sanitize {line args} {
     # not darstellbar sind.
     #
     # Optionen:
-    #   -mono 0/1   Monospace mode (Courier): always ASCII replacement
+    #   -mono 0/1   Monospace text. Courier: ASCII replacement. In CID
+    #               mode with a TTF mono face: Unicode, checked against
+    #               that face (since 0.6.6).
+    #   -tabwidth N Tab expansion width (default 4, since 0.6.6)
     #
     # Zwei Modi:
     #   TTF-Modus (hasTtf=1, mono=0):
@@ -788,7 +807,23 @@ proc ::pdf4tcllib::unicode::sanitize {line args} {
     array set opt $args
 
     set hasTtf [::pdf4tcllib::fonts::hasTtf]
-    set effectiveTtf [expr {$hasTtf && !$opt(-mono)}]
+    # -mono forced WinAnsi because Courier has no Unicode. In CID mode with
+    # a TTF mono face (DejaVu Sans Mono) its repertoire is kept. If loading
+    # the mono TTF failed, fontMono is still Courier: stay in WinAnsi.
+    set monoTtf [expr {[::pdf4tcllib::fonts::isCidMode] &&
+        [::pdf4tcllib::fonts::fontMono] eq "Pdf4tclMono"}]
+    set effectiveTtf [expr {$hasTtf && (!$opt(-mono) || $monoTtf)}]
+
+    # Tabs have no glyph in DejaVu (nor in the base 14 fonts): they would
+    # be drawn as .notdef or vanish, and code indentation is lost -- e.g.
+    # Makefile recipe lines. Expand them to spaces, column by column per
+    # line. Width via -tabwidth (default 4, as text::expandTabs).
+    if {[string first "\t" $line] >= 0} {
+        set tw [expr {[info exists opt(-tabwidth)] ? $opt(-tabwidth) : 4}]
+        set line [join [lmap l [split $line \n] {
+            ::pdf4tcllib::text::expandTabs $l $tw
+        }] \n]
+    }
 
     # -- Stage 1: Replace known symbols --
 
@@ -965,11 +1000,17 @@ proc ::pdf4tcllib::unicode::sanitize {line args} {
                 continue
             }
             # TTF mode: the subset filter applies to the classic 256
-            # character encoding only. In CID mode (full Unicode)
-            # everything passes -- pdf4tcl does the glyph lookup and maps
-            # unknown code points to .notdef itself.
+            # character encoding only. In CID mode a codepoint passes when
+            # the face that draws it has a glyph; otherwise it becomes "?"
+            # (counted, warned once). Before 0.6.6 everything passed and
+            # pdf4tcl drew an empty .notdef -- the text silently vanished.
             if {[::pdf4tcllib::fonts::isCidMode]} {
-                append result $c
+                if {$cp == 0x0A || $cp == 0x0D || [_fontHas $cp $opt(-mono)]} {
+                    append result $c
+                } else {
+                    _countSubst $cp
+                    append result "?"
+                }
             } elseif {[::pdf4tcllib::fonts::inSubset $cp]} {
                 append result $c
             } else {

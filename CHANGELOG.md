@@ -5,6 +5,27 @@ and module headers.
 
 ---
 
+## pdf4tcllib 0.6.6 (2026-10-19)
+
+`unicode::sanitize` in CID mode (`fonts::init -cid 1`):
+
+- A code point the drawing face lacks becomes `?`, counted in
+  `substReport`. Before, everything passed and pdf4tcl drew an empty
+  `.notdef` box -- measured in a book build: a Japanese example line came
+  out as a row of boxes.
+- The face that draws is checked: `-mono 1` against the mono TTF, else the
+  regular face. DejaVu Sans Mono lacks about 2700 glyphs of DejaVu Sans and
+  has a few Sans lacks (U+238B).
+- `-mono 1` keeps Unicode when the mono face is a TTF (`fontMono` =
+  `Pdf4tclMono`). Before, it forced WinAnsi, and ⌘ → ∂ in code became `?`.
+  With Courier as mono face it stays WinAnsi.
+- Tabs become spaces, per line (`text::expandTabs`); new option
+  `-tabwidth` (default 4). DejaVu has no tab glyph: a tab was drawn as a
+  box, code indentation lost.
+- New tests: `tests/test_subst_cid.tcl`.
+
+---
+
 ## pdf4tcllib::table (2026-10-05)
 
 - Cell text that is not a valid Tcl list (`{*}$args`, `{a}, b`, `"x": y`)
