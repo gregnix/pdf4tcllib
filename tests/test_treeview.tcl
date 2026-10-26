@@ -222,4 +222,33 @@ test tv-2.3 {y wandert je Zeile weiter} -constraints {pdf tk tv} -body {
     expr {$yend - 60 == 60}
 } -result 1
 
+test tv-2.4 {outline -bookmarks 1 legt Lesezeichen in der Tiefe des Baums an} \
+        -constraints {pdf tk tv} -body {
+    # Bis 0.1 entstand kein einziges: bookmarkAdd bekam die Ebene als
+    # erstes Wort, warf "unknown option", und catch verschluckte es.
+    set tv [tvNew]
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::treeview::outline $pdf $tv 40 60 -all 1
+    $pdf endPage
+    set d [$pdf get]
+    $pdf destroy
+    destroy .tvT
+    # vier Knoten; M6 und M8 haengen unter Schrauben (/Count 2)
+    list [llength [regexp -all -inline {/Title\s*\(} $d]] \
+        [regexp {/Title\s*\(Schrauben\)[^>]*/Count 2} $d]
+} -result {4 1}
+
+test tv-2.5 {outline -bookmarks 0 legt keine an} -constraints {pdf tk tv} -body {
+    set tv [tvNew]
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient true -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::treeview::outline $pdf $tv 40 60 -all 1 -bookmarks 0
+    $pdf endPage
+    set d [$pdf get]
+    $pdf destroy
+    destroy .tvT
+    llength [regexp -all -inline {/Title\s*\(} $d]
+} -result 0
+
 cleanupTests

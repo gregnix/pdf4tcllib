@@ -179,7 +179,7 @@ proc ::pdf4tcllib::forms::_wertLesen {eintrag} {
 # Seit pdf4tcl 0.9.4.64 zeichnet fillForms den Wert auch: zu /V kommt ein
 # neuer Appearance-Strom, /NeedAppearances bleibt aus (nur Passwort-,
 # Auswahl- und Kammfelder ohne /MaxLen behalten den alten Strom und
-# bekommen das Flag). Nachgemessen mit 0.9.4.70: Feld mit -init "Alt",
+# bekommen das Flag). Nachgemessen mit 0.9.4.70 und 0.9.4.73: Feld mit -init "Alt",
 # dann "Meier" -- (Meier) Tj im Strom, (Alt) weg, kein /NeedAppearances.
 #
 # Bis 0.9.4.63 galt das nicht: /V neu, /AP alt, auf dem Papier der alte

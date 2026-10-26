@@ -5,6 +5,54 @@ and module headers.
 
 ---
 
+## pdf4tcllib 0.6.7, pdf4tclchart 0.1.2, pdf4tcltoc 0.1.1, pdf4tcltreeview 0.1.1 (2026-10-25)
+
+Changed behaviour:
+
+- `chart::bar`, `line`, `pie` (tagged): what is drawn inside the chart is
+  now the content of its `Figure`, no longer a `Layout` artifact. Before,
+  the `Figure` held nothing; pdf4tcl warned "the Figure element is empty
+  -- no content, no child element and no annotation", and a reader had no
+  area the alternate text belonged to. The alternate text is unchanged.
+  Test `chart-tag-1b` now checks the content and the missing warning.
+- `table::draw` understands `rowspan` (as `table::render` did): the cell
+  holds its column in the following rows, is drawn over its whole height
+  and tagged with `/RowSpan`; no page break inside such a block, a block
+  taller than a page is an error. Before, the cell was drawn as an
+  ordinary one and the next row shifted one column to the left. Tests
+  `draw-rs-1.1` to `1.4`.
+- `form::labelField`, `row`, `orderTable -cellForm`, `sumLine -id`: the
+  configured `fieldBg` and `fieldBorder` (new: `fieldBorderW`, default 1)
+  reach the field as `-bgcolor`, `-bordercolor`, `-borderwidth`, unless
+  the call gives its own. Before, they reached no field, and a field had
+  no frame. Forms look different now. Tests `fh-look-1`, `fh-look-2`.
+- `table::draw` raises on an unknown option, like the other modules
+  (`_checkOpts`). Before, `-zebar 1` for `-zebra 1` was stored and never
+  read: no stripes, no message. Test `draw-opt-1.1`.
+
+Fixes:
+
+- `treeview::outline -bookmarks 1` wrote no bookmark at all: it called
+  `bookmarkAdd` with the level as first word, pdf4tcl raised "unknown
+  option", and `catch` swallowed it. Tests `tv-2.4`, `tv-2.5`.
+- `toc::document -bookmarks 0` and `-gap n` had no effect on the
+  headings, which read only `toc::configure`. They now apply for the call
+  and the configuration is restored afterwards. Tests `toc-doc-8`, `9`.
+- `table::draw`: the inner vertical lines ran through a merged cell
+  (`colspan`), so a subtotal label from `table::group` read "Summe No|rd".
+  The line on the left edge of a covered column is now left out. Test
+  `draw-span-1.1`.
+- `tests/test_subst_cid.tcl` held its test strings as UTF-8 text. Tcl
+  8.6 reads a script in the system encoding, so under Windows (cp1252) or
+  `LANG=C` seven tests failed with mangled input. The strings are now
+  `\uXXXX` escapes, like in the other test files.
+- `image::gallery`: the error for a frame too small for the grid ran the
+  column count as a command (`[$o(-cols)]`), so instead of "the frame is
+  too small for 2x3 cells" the caller got `invalid command name "2"`.
+  Found while writing the error appendix of the book. Test `gallery-2.4`.
+
+---
+
 ## pdf4tcllib 0.6.6 (2026-10-19)
 
 `unicode::sanitize` in CID mode (`fonts::init -cid 1`):

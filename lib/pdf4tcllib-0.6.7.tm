@@ -36,7 +36,7 @@
 #   $pdf destroy
 
 package require Tcl 8.6-
-package provide pdf4tcllib 0.6.6
+package provide pdf4tcllib 0.6.7
 
 namespace eval ::pdf4tcllib {
     # Aus package provide abgeleitet statt daneben gepflegt: die beiden
@@ -4762,25 +4762,30 @@ proc ::pdf4tcllib::table::_dwFill {pdf x y w h rgb} {
 # Resolve the column widths: auto = content width (header bold, cells
 # regular, first column including its indent); fixed ones in points; if the
 # sum exceeds maxW, scale down.
-proc ::pdf4tcllib::table::_dwWidths {pdf wspec headers data aligns fs fReg fBold pad maxW rowindent} {
+# plan: the occupancy plan from _gridPlan. With rowspan a row alone does
+# not say which column a cell is in -- a cell from an earlier row holds
+# its column, and the row is shorter than the table is wide.
+proc ::pdf4tcllib::table::_dwWidths {pdf wspec headers plan aligns fs fReg fBold pad maxW rowindent} {
     set widths {}
     set i 0
     foreach w $wspec hd $headers {
         if {$w eq "auto"} {
             set mw [::pdf4tcllib::text::width $hd $fs $fBold $pdf]
             set r 0
-            foreach row $data {
+            foreach eintraege $plan {
                 # Wie in _calcColWidths: eine verbundene Zelle steht ueber
                 # mehreren Spalten und darf keine einzelne davon auf ihre
                 # Breite ziehen.
-                set cell [_cellAt $row $i]
-                if {$cell eq "\uFFFF"} { incr r ; continue }
-                set cw [::pdf4tcllib::text::width [_cellText $cell] $fs \
-                        $fReg $pdf]
-                if {$i == 0 && [dict exists $rowindent $r]} {
-                    set cw [expr {$cw + [dict get $rowindent $r]}]
+                foreach e $eintraege {
+                    lassign $e col cs rs cell
+                    if {$col != $i || $cs != 1} continue
+                    set cw [::pdf4tcllib::text::width [_cellText $cell] $fs \
+                            $fReg $pdf]
+                    if {$i == 0 && [dict exists $rowindent $r]} {
+                        set cw [expr {$cw + [dict get $rowindent $r]}]
+                    }
+                    if {$cw > $mw} { set mw $cw }
                 }
-                if {$cw > $mw} { set mw $cw }
                 incr r
             }
             lappend widths [expr {$mw + 2 * $pad}]
@@ -4798,6 +4803,26 @@ proc ::pdf4tcllib::table::_dwWidths {pdf wspec headers data aligns fs fReg fBold
         return $scaled
     }
     return $widths
+}
+
+# The stretches of a horizontal rule that are not inside a held column:
+# a flat list {x1 x2 x1 x2 ...}.
+proc ::pdf4tcllib::table::_dwFreeRuns {colX held} {
+    set runs {}
+    set n [expr {[llength $colX] - 1}]
+    set start {}
+    for {set c 0} {$c < $n} {incr c} {
+        if {$c in $held} {
+            if {$start ne ""} {
+                lappend runs $start [lindex $colX $c]
+                set start {}
+            }
+        } elseif {$start eq ""} {
+            set start [lindex $colX $c]
+        }
+    }
+    if {$start ne ""} { lappend runs $start [lindex $colX $n] }
+    return $runs
 }
 
 # One cell: optional background plus text on the baseline (curY+rowH-pad),
@@ -4839,7 +4864,10 @@ proc ::pdf4tcllib::table::_dwCell {pdf cx y cw rowH value colAlign colFont fs pa
 }
 
 # The inner vertical lines of a row, not the outer edges.
-proc ::pdf4tcllib::table::_dwInnerV {pdf x y rowH colW rgb lw} {
+# covered: column numbers that lie inside a merged cell (colspan) -- no
+# line on their left edge. Until 0.6.6 every inner line was drawn, and the
+# line went through the text of a merged cell ("Summe No|rd", table::group).
+proc ::pdf4tcllib::table::_dwInnerV {pdf x y rowH colW rgb lw {covered {}}} {
     lassign $rgb r g b
     $pdf setStrokeColor $r $g $b
     $pdf setLineWidth $lw
@@ -4847,7 +4875,7 @@ proc ::pdf4tcllib::table::_dwInnerV {pdf x y rowH colW rgb lw} {
     set n [llength $colW]
     set i 0
     foreach w $colW {
-        if {$i < $n - 1} {
+        if {$i < $n - 1 && ($i + 1) ni $covered} {
             $pdf line [expr {$cx + $w}] $y [expr {$cx + $w}] [expr {$y + $rowH}]
         }
         set cx [expr {$cx + $w}]
@@ -4907,6 +4935,10 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
         -footer {} -footerbg {0.90 0.90 0.90} -footerbold 1
         -fontreg {} -fontbold {} -summary {}
     }
+    # Unbekannte Optionen sind ein Fehler (seit 0.6.7). Vorher wurden sie
+    # still angenommen: -zebar 1 statt -zebra 1 ergab keine Streifen und
+    # keine Meldung.
+    _checkOpts table::draw [array get o] $args
     array set o $args
     # Die Richtung kennt das Dokument selbst; sie hier noch einmal
     # anzugeben ist eine Fehlerquelle. text::writeParagraph fragt seit
@@ -4974,7 +5006,28 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
         lappend wspec    $cc(-width)
         lappend colNoTrunc $cc(-notruncate)
     }
-    set colW [_dwWidths $pdf $wspec $headers $data $aligns $fs $fReg $fBold $pad $o(-maxwidth) $o(-rowindent)]
+    set nCols [llength $cols]
+    set plan [_gridPlan $data $nCols]
+    set colW [_dwWidths $pdf $wspec $headers $plan $aligns $fs $fReg $fBold $pad $o(-maxwidth) $o(-rowindent)]
+    # x of every column edge, and how far each row's block reaches: a row
+    # that starts a rowspan cell ends its block where the last such cell
+    # ends. No page break inside a block -- the merged cell would be torn
+    # apart and not repeated on the next page.
+    set colX [list $x]
+    foreach w $colW { lappend colX [expr {[lindex $colX end] + $w}] }
+    set blockEnd {}
+    set nRows [llength $plan]
+    for {set r 0} {$r < $nRows} {incr r} {
+        set e $r
+        for {set k $r} {$k <= $e && $k < $nRows} {incr k} {
+            foreach ent [lindex $plan $k] {
+                set ende [expr {$k + [lindex $ent 2] - 1}]
+                if {$ende > $e} { set e $ende }
+            }
+        }
+        if {$e >= $nRows} { set e [expr {$nRows - 1}] }
+        lappend blockEnd $e
+    }
     set totalW 0.0
     foreach w $colW { set totalW [expr {$totalW + $w}] }
 
@@ -5007,9 +5060,32 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
     set rowindent  $o(-rowindent)
 
     set r 0
-    foreach row $data {
-        # Seitenumbruch?
-        if {$haveCtx && ($y + $rowH) > $yBot} {
+    foreach eintraege $plan {
+        # Columns held by a rowspan cell from an earlier row: no top rule,
+        # no background, no inner line there.
+        set fromAbove {}
+        set covered {}
+        for {set s 0} {$s < $r} {incr s} {
+            foreach ent [lindex $plan $s] {
+                lassign $ent c0 cs0 rs0
+                if {$s + $rs0 - 1 < $r} continue
+                for {set k 0} {$k < $cs0} {incr k} {
+                    lappend fromAbove [expr {$c0 + $k}]
+                    if {$k > 0} { lappend covered [expr {$c0 + $k}] }
+                }
+            }
+        }
+        # Seitenumbruch? Nur an einer Zeile, in die keine Zelle von oben
+        # hineinreicht, und dann fuer den ganzen Block.
+        set need [expr {([lindex $blockEnd $r] - $r + 1) * $rowH}]
+        if {$haveCtx && ![llength $fromAbove] && ($y + $need) > $yBot} {
+            set room [expr {$yBot - $yTop - ($o(-header) ? $rowH : 0)}]
+            if {$need > $room} {
+                return -code error "table::draw: rows [expr {$r + 1}] to\
+                        [expr {[lindex $blockEnd $r] + 1}] are joined by\
+                        rowspan and need [format %.1f $need] pt, more than\
+                        a page holds ([format %.1f $room] pt)"
+            }
             if {$o(-border)} {
                 $pdf setStrokeColor 0.45 0.45 0.45; $pdf setLineWidth 0.6
                 $pdf rectangle $x $segTop $totalW [expr {$y - $segTop}]
@@ -5023,41 +5099,51 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
                            $o(-headerbg) $o(-headerfg) $rowH $o(-border)]
             }
         }
-        # Top rule of the row (0.78/0.3)
+        # Top rule of the row (0.78/0.3), in pieces around held columns
         if {$o(-border)} {
             $pdf setStrokeColor 0.78 0.78 0.78; $pdf setLineWidth 0.3
-            $pdf line $x $y [expr {$x + $totalW}] $y
+            foreach {a b} [_dwFreeRuns $colX $fromAbove] {
+                $pdf line $a $y $b $y
+            }
             $pdf setStrokeColor 0 0 0; $pdf setLineWidth 1
         }
-        # Zeilen-Hintergrund
+        # Zeilen-Hintergrund, ebenfalls ohne die gehaltenen Spalten; eine
+        # Zelle mit rowspan bekommt ihn ueber ihre ganze Hoehe.
         array unset rs
         array set rs {-bg {} -fg {} -font {}}
         if {[dict exists $rowstyles $r]} { array set rs [dict get $rowstyles $r] }
+        set rowBg {}
         if {$rs(-bg) ne ""} {
-            _dwFill $pdf $x $y $totalW $rowH $rs(-bg)
+            set rowBg $rs(-bg)
         } elseif {$o(-zebra) && (($r + $o(-zebrastart)) % 2 == 1)} {
-            _dwFill $pdf $x $y $totalW $rowH $o(-zebracolor)
+            set rowBg $o(-zebracolor)
+        }
+        if {$rowBg ne ""} {
+            foreach {a b} [_dwFreeRuns $colX $fromAbove] {
+                _dwFill $pdf $a $y [expr {$b - $a}] $rowH $rowBg
+            }
+            foreach ent $eintraege {
+                lassign $ent c span rsp
+                if {$rsp > 1} {
+                    set a [lindex $colX $c]
+                    set b [lindex $colX [expr {$c + $span}]]
+                    _dwFill $pdf $a [expr {$y + $rowH}] [expr {$b - $a}] \
+                            [expr {($rsp - 1) * $rowH}] $rowBg
+                }
+            }
         }
         # Zellen + Einrueckung
         set ind 0
         if {[dict exists $rowindent $r]} { set ind [dict get $rowindent $r] }
-        set cx $x
-        set c 0
         ::pdf4tcllib::tag::begin $pdf TR
         # Verbundene Zellen wie in table::render: eine Zelle darf ein
-        # Dict mit text und colspan sein. Ohne das stuende die Dict-Form
-        # woertlich im PDF -- "text {Summe Nord} colspan 2" --, und
-        # table::group waere nur mit render zu gebrauchen.
-        foreach value $row {
-            set span [_cellSpan $value]
-            if {$c + $span > [llength $colW]} {
-                set span [expr {[llength $colW] - $c}]
-            }
-            if {$span < 1} { break }
-            set cw 0
-            for {set k 0} {$k < $span} {incr k} {
-                set cw [expr {$cw + [lindex $colW [expr {$c + $k}]]}]
-            }
+        # Dict mit text und colspan und/oder rowspan sein. Ohne das stuende
+        # die Dict-Form woertlich im PDF -- "text {Summe Nord} colspan 2" --,
+        # und table::group waere nur mit render zu gebrauchen.
+        foreach ent $eintraege {
+            lassign $ent c span rsp value
+            set cx [lindex $colX $c]
+            set cw [expr {[lindex $colX [expr {$c + $span}]] - $cx}]
             set cAl   [lindex $aligns $c]
             set cFont [lindex $colFonts $c]
             set eff {}
@@ -5071,21 +5157,32 @@ proc ::pdf4tcllib::table::draw {pdf x y cols data args} {
             if {[lindex $colNoTrunc $c] && ![dict exists $eff -notruncate]} {
                 lappend eff -notruncate 1
             }
-            set cellIndent [expr {$c == 0 ? $ind : 0}]
-            if {$span > 1} {
-                ::pdf4tcllib::tag::begin $pdf TD -colspan $span
-            } else {
-                ::pdf4tcllib::tag::begin $pdf TD
+            set cellIndent 0
+            if {$c == 0} { set cellIndent $ind }
+            set spanArgs {}
+            if {$span > 1} { lappend spanArgs -colspan $span }
+            if {$rsp > 1}  { lappend spanArgs -rowspan $rsp }
+            ::pdf4tcllib::tag::begin $pdf TD {*}$spanArgs
+            set cy $y
+            if {$rsp > 1} {
+                # Eigener Zellhintergrund ueber die ganze Hoehe, der Text in
+                # der Mitte des Blocks.
+                if {[dict exists $eff -bg] && [dict get $eff -bg] ne ""} {
+                    _dwFill $pdf $cx $y $cw [expr {$rsp * $rowH}] [dict get $eff -bg]
+                    dict set eff -bg {}
+                }
+                set cy [expr {$y + ($rsp - 1) * $rowH / 2.0}]
             }
-            _dwCell $pdf $cx $y $cw $rowH [_cellText $value] $cAl $cFont \
+            _dwCell $pdf $cx $cy $cw $rowH [_cellText $value] $cAl $cFont \
                     $fs $pad $eff $cellIndent $fontOvr
             ::pdf4tcllib::tag::end $pdf
-            set cx [expr {$cx + $cw}]
-            incr c $span
+            for {set k 1} {$k < $span} {incr k} { lappend covered [expr {$c + $k}] }
         }
         ::pdf4tcllib::tag::end $pdf
-        # innere V-Linien (0.75/0.3)
-        if {$o(-border)} { _dwInnerV $pdf $x $y $rowH $colW {0.75 0.75 0.75} 0.3 }
+        # innere V-Linien (0.75/0.3), nicht durch verbundene Zellen
+        if {$o(-border)} {
+            _dwInnerV $pdf $x $y $rowH $colW {0.75 0.75 0.75} 0.3 $covered
+        }
         set y [expr {$y + $rowH}]
         incr r
     }
@@ -5970,7 +6067,7 @@ proc ::pdf4tcllib::image::gallery {pdf bilder x y w h args} {
     set bildH [expr {$zellH - $capH}]
     if {$zellW <= 0 || $bildH <= 0} {
         return -code error "image::gallery: the frame is too small for\
-                [$o(-cols)]x[$o(-rows)] cells"
+                $o(-cols)x$o(-rows) cells"
     }
 
     set proSeite [expr {$o(-cols) * $o(-rows)}]
@@ -6216,6 +6313,7 @@ namespace eval ::pdf4tcllib::form {
         fieldH            16
         fieldBg           {0.96 0.96 0.96}
         fieldBorder       {0.70 0.70 0.70}
+        fieldBorderW      1
         sectionBg         {0.88 0.88 0.88}
         labelColor        {0.0  0.0  0.0}
         lineColor         {0.70 0.70 0.70}
@@ -6271,6 +6369,29 @@ proc ::pdf4tcllib::form::configure {args} {
             error "pdf4tcllib::form::configure: unknown option -$key"
         }
     }
+}
+
+# -- _fieldLook ----------------------------------------------
+# Background and border of a field from the configuration, as addForm
+# options -- only those the caller did not give. fieldBg {} means no
+# background, fieldBorderW 0 no border. Until 0.6.6 fieldBg and fieldBorder
+# were configurable but never reached a field: without own options a
+# field had no frame, and on screen nothing showed where to click.
+proc ::pdf4tcllib::form::_fieldLook {given} {
+    variable CFG
+    set look {}
+    if {![dict exists $given -bgcolor] && [llength $CFG(fieldBg)]} {
+        lappend look -bgcolor $CFG(fieldBg)
+    }
+    if {$CFG(fieldBorderW) > 0} {
+        if {![dict exists $given -bordercolor]} {
+            lappend look -bordercolor $CFG(fieldBorder)
+        }
+        if {![dict exists $given -borderwidth]} {
+            lappend look -borderwidth $CFG(fieldBorderW)
+        }
+    }
+    return $look
 }
 
 # -- fieldHeight ---------------------------------------------
@@ -6381,7 +6502,8 @@ proc ::pdf4tcllib::form::labelField {pdf ctx yVar label ftype args} {
 
     $pdf setFont $CFG(fontSize) [_family]
     set fx [expr {$x + $labelW + $CFG(labelGap)}]
-    $pdf addForm $ftype $fx $y $fieldW $fieldH {*}$passArgs
+    $pdf addForm $ftype $fx $y $fieldW $fieldH \
+            {*}[_fieldLook $passArgs] {*}$passArgs
     ::pdf4tcllib::tag::end $pdf
 
     $pdf setFillColor 0 0 0
@@ -6469,7 +6591,8 @@ proc ::pdf4tcllib::form::row {pdf ctx yVar fields} {
 
         $pdf setFont $CFG(fontSize) [_family]
         set fx [expr {$x + $labelW + $gap}]
-        $pdf addForm $ftype $fx $y $fieldW $fieldH {*}$addArgs
+        $pdf addForm $ftype $fx $y $fieldW $fieldH \
+                {*}[_fieldLook $addArgs] {*}$addArgs
         ::pdf4tcllib::tag::end $pdf
 
         # Next pair: at least totalW, but never less than what was
@@ -6625,7 +6748,8 @@ proc ::pdf4tcllib::form::orderTable {pdf ctx yVar headers colWidths \
                 if {$cellAlt eq ""} { set cellAlt "Eingabefeld" }
                 ::pdf4tcllib::tag::begin $pdf Form -alt $cellAlt
                 $pdf addForm text [expr {$cx + $pad}] [expr {$y + $pad}] $fw $fh \
-                    -id "${cellForm}_${r}_${colIdx}" -init $cell {*}$copt
+                    -id "${cellForm}_${r}_${colIdx}" -init $cell \
+                    {*}[_fieldLook $copt] {*}$copt
                 ::pdf4tcllib::tag::end $pdf
             } elseif {$cell ne ""} {
                 ::pdf4tcllib::unicode::safeText $pdf [string range $cell 0 40] \
@@ -6706,7 +6830,7 @@ proc ::pdf4tcllib::form::sumLine {pdf ctx yVar colWidths label value args} {
         if {$fjs ne ""}  { lappend aa -js $fjs }
         ::pdf4tcllib::tag::begin $pdf Form -alt $label
         $pdf addForm text $fx [expr {$y + $pad}] $fw $fh \
-            -id $fid -align right -init $finit {*}$aa
+            -id $fid -align right -init $finit {*}[_fieldLook {}] {*}$aa
         ::pdf4tcllib::tag::end $pdf
     } else {
         $pdf setFont $CFG(fontSize) [_family]

@@ -39,7 +39,7 @@
 package require Tk
 package require pdf4tcllib 0.6.3
 
-package provide pdf4tcltreeview 0.1
+package provide pdf4tcltreeview 0.1.1
 
 namespace eval ::pdf4tcllib::treeview {}
 
@@ -312,10 +312,13 @@ proc ::pdf4tcllib::treeview::outline {pdf tv x y args} {
         ::pdf4tcllib::unicode::safeText $pdf $t -x $tx -y $y
         ::pdf4tcllib::tag::end $pdf
         ::pdf4tcllib::tag::end $pdf
-        if {$opts(-bookmarks)} {
-            # bookmarkAdd nimmt die Ebene; ein Knoten der Tiefe 0 ist
-            # Ebene 1.
-            catch {$pdf bookmarkAdd [expr {$tiefe + 1}] $t}
+        if {$opts(-bookmarks) && [string trim $t] ne ""} {
+            # bookmarkAdd nimmt -title und -level; die Ebene zaehlt ab 0
+            # wie die Tiefe im Baum. Bis 0.1 stand hier die Ebene als
+            # erstes Wort, pdf4tcl warf "unknown option", und catch
+            # verschluckte es: kein einziges Lesezeichen.
+            $pdf bookmarkAdd -title [::pdf4tcllib::unicode::sanitize $t] \
+                    -level $tiefe
         }
         set y [expr {$y + $lh}]
     }

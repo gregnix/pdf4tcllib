@@ -430,4 +430,122 @@ test wd-5.7 {unbekannte Option meldet sich} -constraints {pdf lib} -body {
     string match "*unknown option -quatsch*" $e
 } -result 1
 
+# ============================================================
+# Senkrechte Linien und verbundene Zellen (0.6.7)
+# ============================================================
+
+proc innereLinien {rows} {
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf startPage
+    ::pdf4tcllib::table::draw $pdf 50 50 \
+        {{-width 60} {-width 60} {-width 60}} $rows -header 0
+    $pdf endPage
+    set d [$pdf get]
+    $pdf destroy
+    regexp -all -line {^\S+ \S+ l$} $d
+}
+
+test draw-span-1.1 {keine Linie durch eine Zelle mit colspan} \
+        -constraints {pdf lib} -body {
+    # Bis 0.6.6 lief die Linie zwischen Spalte 0 und 1 durch "Summe Nord".
+    list [innereLinien {{a b c}}] \
+        [innereLinien [list [list [dict create text Summe colspan 2] 3]]]
+} -result {3 2}
+
+test draw-opt-1.1 {table::draw: unbekannte Option ist ein Fehler} \
+        -constraints {pdf lib} -body {
+    # Bis 0.6.6 ging -zebar 1 still durch: keine Streifen, keine Meldung.
+    set pdf [::pdf4tcl::new %AUTO% -paper a4]
+    $pdf startPage
+    set rc [catch {::pdf4tcllib::table::draw $pdf 50 50 {{-width 60}} {{a}} \
+        -zebar 1} msg]
+    $pdf destroy
+    list $rc [string match "table::draw: unknown option -zebar*" $msg]
+} -result {1 1}
+
+# ============================================================
+# rowspan in table::draw (0.6.7)
+# ============================================================
+
+proc rsDraw {rows args} {
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf tagged 1
+    $pdf startPage
+    set y [::pdf4tcllib::table::draw $pdf 50 50 \
+        {{-header R -width 80} {-header Q -width 60} {-header W -width 60}} \
+        $rows {*}$args]
+    $pdf endPage
+    set res [list $pdf $y]
+    return $res
+}
+
+test draw-rs-1.1 {die Zeile nach rowspan rueckt in die richtige Spalte} \
+        -constraints {pdf lib} -body {
+    # Bis 0.6.6 kannte draw kein rowspan: "Q2" stand in der ersten Spalte.
+    lassign [rsDraw [list [list [dict create text Nord rowspan 2] Q1 120] \
+        [list Q2 90]]] pdf y
+    set d [$pdf get]
+    $pdf destroy
+    # x der Textmarke vor (Q2): Spalte 2 beginnt bei 50+80
+    set x {}
+    regexp {([0-9.]+) [0-9.]+ Tm\s*\(Q2\)} $d -> x
+    expr {$x > 130 && $x < 190}
+} -result 1
+
+test draw-rs-1.2 {TD traegt /RowSpan} -constraints {pdf lib} -body {
+    lassign [rsDraw [list [list [dict create text Nord rowspan 2] Q1 120] \
+        [list Q2 90]]] pdf y
+    set f [file join [file dirname [info script]] out zz-rowspan.pdf]
+    file mkdir [file dirname $f]
+    $pdf write -file $f
+    $pdf destroy
+    set fh [open $f rb]; set d [read $fh]; close $fh
+    regexp {/RowSpan 2} $d
+} -result 1
+
+test draw-rs-1.3 {kein Umbruch innerhalb eines rowspan-Blocks} \
+        -constraints {pdf lib} -body {
+    # Je Gruppe drei Zeilen; jede Seite muss mit einer Gruppe beginnen.
+    set rows {}
+    for {set i 0} {$i < 30} {incr i} {
+        lappend rows [list [dict create text G$i rowspan 3] a$i 1] \
+            [list b$i 2] [list c$i 3]
+    }
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1]
+    set ctx [::pdf4tcllib::page::context a4 -margin 20]
+    $pdf startPage
+    ::pdf4tcllib::table::draw $pdf 50 50 {{-width 80} {-width 60} {-width 60}} \
+        $rows -ctx $ctx
+    $pdf endPage
+    set f [file join [file dirname [info script]] out zz-rowspan2.pdf]
+    $pdf write -file $f
+    set n [$pdf pageCount]
+    $pdf destroy
+    set ok 1
+    if {![catch {exec pdftotext -layout $f -} txt]} {
+        foreach seite [lrange [split $txt \f] 1 end] {
+            foreach z [split $seite \n] {
+                if {[regexp {\m([abc])[0-9]+\M} $z -> k]} {
+                    if {$k ne "a"} { set ok 0 }
+                    break
+                }
+            }
+        }
+    }
+    list [expr {$n > 1}] $ok
+} -result {1 1}
+
+test draw-rs-1.4 {ein Block hoeher als eine Seite ist ein Fehler} \
+        -constraints {pdf lib} -body {
+    set rows [list [list [dict create text G rowspan 80] a 1]]
+    for {set i 1} {$i < 80} {incr i} { lappend rows [list b$i 2] }
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1]
+    set ctx [::pdf4tcllib::page::context a4 -margin 20]
+    $pdf startPage
+    set rc [catch {::pdf4tcllib::table::draw $pdf 50 50 \
+        {{-width 80} {-width 60} {-width 60}} $rows -ctx $ctx} msg]
+    $pdf destroy
+    list $rc [string match "*joined by rowspan*" $msg]
+} -result {1 1}
+
 cleanupTests

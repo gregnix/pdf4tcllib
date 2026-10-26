@@ -21,7 +21,7 @@
 
 package require pdf4tcllib 0.6
 
-package provide pdf4tclchart 0.1.1
+package provide pdf4tclchart 0.1.2
 
 namespace eval ::pdf4tcllib::chart {
     namespace export bar line pie legend niceScale
@@ -130,7 +130,11 @@ proc ::pdf4tcllib::chart::_colorFor {opts idx} {
 
 # A chart is a figure. Tagged, it is one element with an alternate text --
 # without that a reader announces a scattering of numbers and nothing else.
-# The parts inside are decoration and are marked as artifacts.
+# What is drawn inside -- grid, bars, labels -- is the content of that
+# Figure; the alternate text stands for it. Until 0.1.1 it was all marked
+# as artifacts, which left the Figure without any content: pdf4tcl warns
+# "the Figure element is empty", and a reader has nothing the alternate
+# text belongs to (no bounding box, nothing to highlight).
 proc ::pdf4tcllib::chart::_beginFigure {pdf opts} {
     array set o $opts
     set alt $o(-alt)
@@ -221,7 +225,6 @@ proc ::pdf4tcllib::chart::bar {pdf x y w h data args} {
     lassign [niceScale $lo $hi $o(-grid)] lo hi step
 
     _beginFigure $pdf $opts
-    ::pdf4tcllib::tag::artifact $pdf -type Layout
 
     set top [_title $pdf $x $y $w $opts]
     set axisW  [_axisWidth $pdf $lo $hi $step $opts]
@@ -231,7 +234,6 @@ proc ::pdf4tcllib::chart::bar {pdf x y w h data args} {
     set pw [expr {$w - $axisW}]
     set ph [expr {$y + $h - $top - $labelH}]
     if {$ph <= 0 || $pw <= 0} {
-        ::pdf4tcllib::tag::artifactEnd $pdf
         _endFigure $pdf
         return -code error "chart::bar: box too small -- [format %.1f $w] x\
                 [format %.1f $h] pt leaves no room for axis and labels"
@@ -274,7 +276,6 @@ proc ::pdf4tcllib::chart::bar {pdf x y w h data args} {
         incr i
     }
     $pdf setFillColor 0 0 0
-    ::pdf4tcllib::tag::artifactEnd $pdf
     _endFigure $pdf
     return [expr {$y + $h}]
 }
@@ -325,7 +326,6 @@ proc ::pdf4tcllib::chart::line {pdf x y w h data args} {
     lassign [niceScale $lo $hi $o(-grid)] lo hi step
 
     _beginFigure $pdf $opts
-    ::pdf4tcllib::tag::artifact $pdf -type Layout
 
     set top    [_title $pdf $x $y $w $opts]
     set axisW  [_axisWidth $pdf $lo $hi $step $opts]
@@ -335,7 +335,6 @@ proc ::pdf4tcllib::chart::line {pdf x y w h data args} {
     set pw [expr {$w - $axisW}]
     set ph [expr {$y + $h - $top - $labelH}]
     if {$ph <= 0 || $pw <= 0} {
-        ::pdf4tcllib::tag::artifactEnd $pdf
         _endFigure $pdf
         return -code error "chart::line: box too small"
     }
@@ -389,7 +388,6 @@ proc ::pdf4tcllib::chart::line {pdf x y w h data args} {
         incr i
     }
     $pdf setFillColor 0 0 0
-    ::pdf4tcllib::tag::artifactEnd $pdf
     _endFigure $pdf
     return [expr {$y + $h}]
 }
@@ -423,7 +421,6 @@ proc ::pdf4tcllib::chart::pie {pdf x y w h data args} {
     }
 
     _beginFigure $pdf $opts
-    ::pdf4tcllib::tag::artifact $pdf -type Layout
 
     set top [_title $pdf $x $y $w $opts]
     set avail [expr {$y + $h - $top}]
@@ -459,7 +456,6 @@ proc ::pdf4tcllib::chart::pie {pdf x y w h data args} {
                 $pairs $opts -total $total
     }
     $pdf setFillColor 0 0 0
-    ::pdf4tcllib::tag::artifactEnd $pdf
     _endFigure $pdf
     return [expr {$y + $h}]
 }

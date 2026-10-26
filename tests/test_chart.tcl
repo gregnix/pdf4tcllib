@@ -301,7 +301,7 @@ test chart-pie-4 "-legend schreibt Anteile in Prozent" -constraints {chart pdf} 
 # Tagging
 # ============================================================
 
-test chart-tag-1 "ein Diagramm ist ein Figure-Element, sein Inneres Artefakt" \
+test chart-tag-1 "ein Diagramm ist ein Figure-Element" \
         -constraints {chart pdf} -body {
     set out [chartOut]
     set pdf [::pdf4tcl::new %AUTO% -paper a4]
@@ -322,23 +322,22 @@ test chart-tag-1 "ein Diagramm ist ein Figure-Element, sein Inneres Artefakt" \
     regexp {/Figure} $d
 } -result 1
 
-test chart-tag-1b "das Innere des Diagramms ist als Artefakt markiert" \
+test chart-tag-1b "das Gezeichnete ist Inhalt der Figure, nicht Artefakt" \
         -constraints {chart pdf} -body {
-    set out [chartOut]
+    # Bis 0.1.1 war alles im Diagramm Artefakt; die Figure blieb leer, und
+    # pdf4tcl warnte "the Figure element is empty". Seit 0.1.2 traegt die
+    # Figure den Inhalt (MCID), die Warnung entfaellt.
     set pdf [::pdf4tcl::new %AUTO% -paper a4 -compress 0]
     $pdf tagged 1
+    set ::pdf4tcl::warnings {}
     $pdf startPage
     ::pdf4tcllib::chart::bar $pdf 60 60 460 200 {A 1 B 2} -title "Titel"
     $pdf endPage
-    $pdf write -file $out
+    set d [$pdf get]
     $pdf destroy
-    set fh [open $out rb]
-    fconfigure $fh -encoding iso8859-1 -translation binary
-    set d [read $fh]
-    close $fh
-    file delete $out
-    regexp {/Artifact} $d
-} -result 1
+    list [expr {[regexp -all {/MCID} $d] > 0}] \
+        [llength [lsearch -all -glob $::pdf4tcl::warnings "*Figure element is empty*"]]
+} -result {1 0}
 
 test chart-tag-2 "getUntaggedCount bleibt bei 0" -constraints {chart pdf} -body {
     set pdf [::pdf4tcl::new %AUTO% -paper a4]

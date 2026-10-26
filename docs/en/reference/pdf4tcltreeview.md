@@ -141,6 +141,10 @@ $pdf endPage
 A node without `-text` falls back to the first value, so a treeview used
 purely as a table still produces readable entries.
 
+> **0.1:** `-bookmarks 1` produced no bookmark at all -- `bookmarkAdd` got
+> the level as its first word, pdf4tcl raised, and the error was caught.
+> Fixed in 0.1.1. A bookmark points to the page of its node.
+
 ---
 
 ## Tagged PDF

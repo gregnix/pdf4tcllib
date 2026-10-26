@@ -1,10 +1,12 @@
 # test_subst_cid.tcl -- sanitize im CID-Modus (0.6.6)
+# Nicht-ASCII nur als \uXXXX: Tcl 8.6 liest die Datei sonst in der
+# Systemkodierung (cp1252 unter Windows, ASCII unter LANG=C).
 #
 # Bis 0.6.5 ging im CID-Modus jedes Zeichen durch. Fehlte es im Font,
 # zeichnete pdf4tcl ein leeres .notdef-Kaestchen, ohne Zaehler, ohne Wort.
 # Gemessen 19.10.2026 an einem Buchbau: eine japanische Beispielzeile kam
 # als Kaestchenreihe heraus, ein Tab in einem Makefile-Codeblock als
-# Kaestchen, und -mono machte aus ⌘ ein "?", obwohl DejaVu Sans Mono es hat.
+# Kaestchen, und -mono machte aus U+2318 ein "?", obwohl DejaVu Sans Mono es hat.
 #
 # Seit 0.6.6:
 #   - fehlende Glyphe -> "?", gezaehlt
@@ -34,33 +36,33 @@ proc sz {txt args} {
 
 test subst-cid-1.1 {Kana fehlen in DejaVu: sichtbar und gezaehlt} \
         -constraints cid -body {
-    sz "%s をファ"
+    sz "%s \u3092\u30D5\u30A1"
 } -result {{%s ???} 3}
 
-test subst-cid-1.2 {Text: ⌘ und Umlaute gehen durch} -constraints cid -body {
-    sz "⌘C kopiert, Größe 5 €"
-} -result [list "⌘C kopiert, Größe 5 €" 0]
+test subst-cid-1.2 {Text: U+2318 und Umlaute gehen durch} -constraints cid -body {
+    sz "\u2318C kopiert, Gr\u00F6\u00DFe 5 \u20AC"
+} -result [list "\u2318C kopiert, Gr\u00F6\u00DFe 5 \u20AC" 0]
 
-test subst-cid-2.1 {Code: ⌘ → ∂ bleiben im Mono-TTF} -constraints monoTtf \
+test subst-cid-2.1 {Code: U+2318, U+2192, U+2202 bleiben im Mono-TTF} -constraints monoTtf \
         -body {
-    sz ";# ⌘C → ∂" -mono 1
-} -result [list ";# ⌘C → ∂" 0]
+    sz ";# \u2318C \u2192 \u2202" -mono 1
+} -result [list ";# \u2318C \u2192 \u2202" 0]
 
 test subst-cid-2.2 {Code: nur in Sans (U+01C4) wird "?"} -constraints monoTtf \
         -body {
     # Gegen den Regular-Font geprueft ginge es durch und verschwaende.
-    sz "Ǆ" -mono 1
+    sz "\u01C4" -mono 1
 } -result {? 1}
 
 test subst-cid-2.3 {Code: nur in Mono (U+238B) bleibt} -constraints monoTtf \
         -body {
     # Gegen den Regular-Font geprueft wuerde es faelschlich "?".
-    sz "⎋" -mono 1
-} -result [list "⎋" 0]
+    sz "\u238B" -mono 1
+} -result [list "\u238B" 0]
 
 test subst-cid-2.4 {Text: nur in Sans (U+01C4) bleibt} -constraints cid -body {
-    sz "Ǆ"
-} -result [list "Ǆ" 0]
+    sz "\u01C4"
+} -result [list "\u01C4" 0]
 
 test subst-cid-3.1 {Tab am Zeilenanfang} -constraints cid -body {
     lindex [sz "\ttclsh run.tcl" -mono 1] 0
@@ -85,7 +87,7 @@ test subst-cid-4.1 {im PDF: kein Tab, keine Kana im Inhaltsstrom} \
     $pdf startPage
     $pdf setFont 11 [::pdf4tcllib::fonts::fontMono]
     ::pdf4tcllib::unicode::resetSubst
-    ::pdf4tcllib::unicode::safeText $pdf "\tmake を" -x 40 -y 60 -mono 1
+    ::pdf4tcllib::unicode::safeText $pdf "\tmake \u3092" -x 40 -y 60 -mono 1
     set n [::pdf4tcllib::unicode::substCount]
     $pdf destroy
     set n

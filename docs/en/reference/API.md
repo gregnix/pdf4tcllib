@@ -1156,7 +1156,15 @@ rows [list \
     [list [dict create text "Summe" colspan 2] 210]]
 ```
 
-Both `table::render` and `table::draw` understand them.
+Both `table::render` and `table::draw` understand them -- `draw` since
+0.6.7. Before, `draw` drew a grid line through a `colspan` cell and did
+not know `rowspan` at all: the cell was drawn as an ordinary one and the
+following row shifted one column to the left.
+
+In `table::draw` a `rowspan` cell is drawn over its whole height, its text
+in the middle of the block, with the background of the row it starts in.
+No page break falls inside such a block; the whole block moves to the
+next page. A block taller than a page is an error.
 
 `colspan` adds up the widths of the covered columns; `rowspan` holds the
 column in the following rows, and as in HTML the covered cells are simply
@@ -1174,9 +1182,10 @@ plain cell would have to read literally "text … colspan …" to be mistaken
 for one. An unusable span — zero, negative, not a number — counts as one
 rather than raising.
 
-**Limitation:** a merged block that meets a page break is not repeated on
-the next page. Nothing is lost and the tree stays complete, but the merge
-is visually interrupted.
+**Limitation (`table::render`):** a merged block that meets a page break
+is not repeated on the next page. Nothing is lost and the tree stays
+complete, but the merge is visually interrupted. `table::draw` keeps the
+block together instead.
 
 ### When to use which
 
@@ -1318,8 +1327,14 @@ pdf4tcllib::form::configure \
 | fontSizeLabel | 9 | Label font size |
 | fontSizeSection | 10 | Section header font size |
 | fieldH | 16 | Field height in pt |
-| fieldBg | {0.96 0.96 0.96} | Field background |
+| fieldBg | {0.96 0.96 0.96} | Field background; {} = none |
 | fieldBorder | {0.70 0.70 0.70} | Field border |
+| fieldBorderW | 1 | Field border width; 0 = none |
+
+`fieldBg`, `fieldBorder` and `fieldBorderW` reach every field that
+`labelField`, `row`, `orderTable -cellForm` and `sumLine -id` create, as
+`-bgcolor`, `-bordercolor` and `-borderwidth` -- unless the call gives
+its own. Until 0.6.6 they were configurable but reached no field.
 | sectionBg | {0.88 0.88 0.88} | Section header background |
 | labelColor | {0 0 0} | Label text color |
 | lineColor | {0.70 0.70 0.70} | Separator line color |
@@ -1655,7 +1670,7 @@ if {[pdf4tcllib::validate_pdf "output.pdf"]} {
 
 ```tcl
 puts [pdf4tcllib::version]
-# -> 0.6.4   (the same number as [package provide pdf4tcllib])
+# -> 0.6.7   (the same number as [package provide pdf4tcllib])
 ```
 
 ### readFile

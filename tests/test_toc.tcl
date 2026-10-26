@@ -272,4 +272,34 @@ test toc-doc-7 "unbekannte Option wird abgelehnt" -constraints {toc pdf} -body {
     string match "*unknown option -quatsch*" $e
 } -result 1
 
+test toc-doc-8 "-bookmarks 0 beim Aufruf wirkt" -constraints {toc pdf} -body {
+    # Bis 0.1 las heading nur toc::configure; die Option des Aufrufs
+    # wurde angenommen und uebergangen.
+    tocBuild -bookmarks 0
+    set fh [open [tocOut] rb]
+    fconfigure $fh -encoding iso8859-1 -translation binary
+    set d [read $fh]
+    close $fh
+    list [llength [regexp -all -inline {/Title\s*\(} $d]] \
+        [set ::pdf4tcllib::toc::CFG(-bookmarks)]
+} -result {0 1}
+
+test toc-doc-9 "-gap beim Aufruf erreicht die Ueberschriften" \
+        -constraints {toc pdf} -body {
+    set y1 0; set y2 0
+    foreach gap {4 30} v {y1 y2} {
+        set pdf [::pdf4tcl::new %AUTO% -paper a4]
+        ::pdf4tcllib::toc::document $pdf a4 {
+            $pdf startPage
+            set y [dict get $ctx top]
+            ::pdf4tcllib::toc::heading $pdf $ctx y 1 Kapitel
+            set ::tocY $y
+            $pdf endPage
+        } -gap $gap
+        $pdf destroy
+        set $v $::tocY
+    }
+    list [expr {round($y2 - $y1)}] [set ::pdf4tcllib::toc::CFG(-gap)]
+} -result {26 4}
+
 cleanupTests

@@ -228,6 +228,18 @@ test gallery-2.3 {eine lange Unterschrift wird kleiner gesetzt} \
     expr {[llength $gr] > 0 && [lindex $gr end] < 9}
 } -result 1
 
+test gallery-2.4 {zu kleiner Rahmen: Meldung nennt das Raster} \
+        -constraints {pdf lib bild} -body {
+    # Bis 0.6.6 lief die Spaltenzahl als Befehl: invalid command name "2".
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -margin 30]
+    $pdf startPage
+    set id [$pdf addImage $::imgDatei]
+    set rc [catch {::pdf4tcllib::image::gallery $pdf [list $id] \
+            0 0 20 20 -cols 2 -rows 3 -gap 30} msg]
+    $pdf destroy
+    list $rc $msg
+} -result {1 {image::gallery: the frame is too small for 2x3 cells}}
+
 test gallery-2.4 {unsinniges Raster meldet sich} -constraints {pdf lib bild} \
         -body {
     set pdf [imgNew]

@@ -31,7 +31,7 @@
 
 package require pdf4tcllib 0.6
 
-package provide pdf4tcltoc 0.1
+package provide pdf4tcltoc 0.1.1
 
 namespace eval ::pdf4tcllib::toc {
     namespace export document heading collect render entries pageCount
@@ -304,9 +304,27 @@ proc ::pdf4tcllib::toc::document {pdf paper script args} {
     }
     set ctx [::pdf4tcllib::page::context $paper]
 
+    # heading reads -gap and -bookmarks from CFG, not from this call. Put the
+    # values of the call there for both passes and restore them afterwards
+    # -- until 0.1, "toc::document ... -bookmarks 0" still wrote bookmarks
+    # and "-gap 10" left the headings at the configured gap.
+    set saved [list -gap $CFG(-gap) -bookmarks $CFG(-bookmarks)]
+    set CFG(-gap)       $opts(-gap)
+    set CFG(-bookmarks) $opts(-bookmarks)
+    set rc [catch {
+        _document $pdf $paper $ctx $script [array get opts]
+    } result ropts]
+    array set CFG $saved
+    dict incr ropts -level
+    return -options $ropts $result
+}
+
+proc ::pdf4tcllib::toc::_document {pdf paper ctx script optList} {
+    array set opts $optList
+
     # --- pass 1: a throwaway document, only to learn the page numbers
     set probe [::pdf4tcl::new %AUTO% -paper $paper]
-    set entries [uplevel 1 [list ::pdf4tcllib::toc::_pass1 $probe $ctx $script]]
+    set entries [uplevel 2 [list ::pdf4tcllib::toc::_pass1 $probe $ctx $script]]
     set probePages [$probe pageCount]
     $probe destroy
 
@@ -326,7 +344,7 @@ proc ::pdf4tcllib::toc::document {pdf paper script args} {
                 $tocPages page(s) and written as $written -- every page\
                 number in it would be off by [expr {$written - $tocPages}]"
     }
-    uplevel 1 [list ::pdf4tcllib::toc::_pass2 $pdf $ctx $script]
+    uplevel 2 [list ::pdf4tcllib::toc::_pass2 $pdf $ctx $script]
 
     return [dict create entries $shifted tocPages $tocPages \
             contentPages $probePages]

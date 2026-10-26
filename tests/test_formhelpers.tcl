@@ -329,4 +329,33 @@ test fh-schema-3 "sections als Liste statt Dict wird benannt" \
     string match "*'sections' must be a dict*" $e
 } -result 1
 
+# ============================================================
+# fieldBg / fieldBorder erreichen die Felder (0.6.7)
+# ============================================================
+
+test fh-look-1 "labelField: Hintergrund und Rahmen aus der Konfiguration" \
+        -constraints {forms pdf} -body {
+    # Bis 0.6.6 waren fieldBg und fieldBorder einstellbar, kamen aber nie
+    # bei einem Feld an: kein /MK mit /BG und /BC.
+    lassign [fhNew] pdf ctx
+    set y 100
+    ::pdf4tcllib::form::labelField $pdf $ctx y "Name:" text -id f_name
+    set d [fhWrite $pdf]
+    list [regexp {/BG \[0\.96 0\.96 0\.96\]} $d] \
+        [regexp {/BC \[0\.70 0\.70 0\.70\]} $d]
+} -result {1 1}
+
+test fh-look-2 "eigene Angabe gewinnt, fieldBg {} schaltet ab" \
+        -constraints {forms pdf} -body {
+    set alt [::pdf4tcllib::form::configure]
+    ::pdf4tcllib::form::configure -fieldBg {}
+    lassign [fhNew] pdf ctx
+    set y 100
+    ::pdf4tcllib::form::labelField $pdf $ctx y "Name:" text -id f_name \
+        -bordercolor {1 0 0}
+    set d [fhWrite $pdf]
+    dict for {k v} $alt { ::pdf4tcllib::form::configure -$k $v }
+    list [regexp {/BG } $d] [regexp {/BC \[1(\.0)? 0(\.0)? 0(\.0)?\]} $d]
+} -result {0 1}
+
 cleanupTests

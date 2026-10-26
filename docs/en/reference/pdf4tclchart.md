@@ -128,8 +128,13 @@ With `$pdf tagged 1`:
 
 * the chart is one `Figure` element with an alternate text (`-alt`, or the
   title)
-* everything inside is a `Layout` artifact -- the grid, the bars, the axis
-  labels
+* everything drawn inside -- the grid, the bars, the axis labels -- is the
+  content of that `Figure`; the alternate text stands for it
+
+> **0.1.1:** everything inside was a `Layout` artifact. That left the
+> `Figure` with no content at all; pdf4tcl warned "the Figure element is
+> empty", and a reader had nothing the alternate text belonged to -- no
+> area to highlight, no bounding box.
 
 That is the honest markup. A bar chart is a picture of numbers, and a
 reader gets the figure and its description rather than a scattering of

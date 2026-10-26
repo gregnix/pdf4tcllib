@@ -39,7 +39,7 @@ the tree next to the table.
 | `labels::render` | one `Sect` per label -- each label is a unit of its own |
 | `toc::heading` | `H1`..`H6` by level, plus a PDF bookmark |
 | `toc::render` | `TOC` around the contents, `TOCI` per line, dot leaders as Layout artifacts |
-| `chart::bar`, `line`, `pie` | one `Figure` with alternate text; grid, bars and axis labels as Layout artifacts |
+| `chart::bar`, `line`, `pie` | one `Figure` with alternate text; grid, bars and axis labels are its content (artifacts until pdf4tclchart 0.1.1) |
 | `flow::columns` | `P` by default, or whatever type you pass |
 | `drawing::watermark` | Pagination artifact |
 
@@ -59,8 +59,9 @@ it at all.
 
 **A chart is a picture of numbers, and is marked up as one.** `chart::bar`
 and its siblings produce a single `Figure` element with an alternate text
-(`-alt`, falling back to the title) and mark everything inside it as an
-artifact -- the grid, the bars, the axis labels. That is the honest answer:
+(`-alt`, falling back to the title); the grid, the bars and the axis
+labels are the content of that element, and the alternate text stands for
+them. That is the honest answer:
 a reader gets "Revenue per month, bar chart" rather than a scattering of
 loose numbers in no particular order.
 

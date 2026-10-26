@@ -81,6 +81,10 @@ Options:
 | `-gap` | 4 | gap below a heading, in points |
 | `-bookmarks` | 1 | add a PDF bookmark per heading |
 
+`-gap` and `-bookmarks` given here apply to the headings of this call
+(since 0.1.1); before, `heading` read only `toc::configure`, and
+`-bookmarks 0` still wrote bookmarks.
+
 ### `heading pdf ctx yVar level text ?option value ...?`
 
 Draws a heading and records it. `level` is 1..6 and decides three things at
