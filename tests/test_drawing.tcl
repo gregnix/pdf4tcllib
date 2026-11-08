@@ -97,4 +97,38 @@ test draw-arc-center "Offset Center: Punkte verschoben" -body {
     list $x $y
 } -result {150 200}
 
+# ============================================================
+# gradient_v / gradient_h -- Streifen nur fuellen
+# ============================================================
+# Bis 0.6.7 zog jeder Streifen auch seinen Rand in der aktuellen
+# Linienfarbe ("B" statt "f"): ein Verlauf mit schwarzen Fugen.
+testConstraint hasPdf4tcl [expr {![catch {package require pdf4tcl}]}]
+
+test draw-gradient-nostroke "Verlauf: Streifen gefuellt, ohne Rand" -constraints {
+    hasPdf4tcl
+} -body {
+    set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true -compress 0]
+    $pdf startPage
+    pdf4tcllib::drawing::gradient_h $pdf 10 10 100 20 {0 0 0} {1 1 1} 5
+    pdf4tcllib::drawing::gradient_v $pdf 10 40 100 20 {0 0 0} {1 1 1} 5
+    $pdf endPage
+    set d [$pdf get]
+    $pdf destroy
+    list [regexp -all {re\s+f\M} $d] [regexp -all {re\s+B\M} $d]
+} -result {10 0}
+
+# textSkewed -- bis 0.6.7 rief es $pdf text mit Optionen auf, die es nicht
+# gibt, und fiel immer auf den Ersatz zeichenweise zurueck.
+test draw-skew-yangle "textSkewed: ein Tm mit Scherung, kein Ersatz" -constraints {
+    hasPdf4tcl
+} -body {
+    set pdf [pdf4tcl::new %AUTO% -paper a4 -orient true -compress 0]
+    $pdf startPage
+    pdf4tcllib::drawing::textSkewed $pdf "geneigt" 100 100 0 20 12
+    $pdf endPage
+    set d [$pdf get]
+    $pdf destroy
+    regexp -all -inline {[-0-9. ]+ Tm} $d
+} -result {{1 0 0.364 1 100 742 Tm}}
+
 cleanupTests

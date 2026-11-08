@@ -48,12 +48,29 @@ proc ::pdf4tcllib::textwidget::_checkOpts {who defaults args_} {
 
 proc ::pdf4tcllib::textwidget::render {pdf tw x y args} {
     array set opts {
-        -maxwidth    480  -fontsize    10  -fontfamily  Helvetica
+        -maxwidth    480  -fontsize    {}  -fontfamily  {}
         -linespacing 2    -skipelided  1   -skipinternal 1
         -ctx         {}   -yvar        {}
     }
     _checkOpts ::pdf4tcllib::textwidget::render [array get opts] $args
     array set opts $args
+
+    # Die Schrift fuer Text ohne Schrift-Tag.
+    #
+    # Bisher war das immer Helvetica 10, gleich was das Widget zeigte, und
+    # -fontfamily ging unbesehen an setFont: ein Tk-Familienname wie
+    # "DejaVu Sans" endete mit "font ... doesn't exist". Jetzt kommt sie
+    # aus der -font des Widgets, so wie der Rest des Exports aus dem
+    # Widget kommt. -fontfamily und -fontsize setzen sie weiter fest;
+    # -fontfamily darf ein PDF-Schriftname oder ein Tk-Familienname sein.
+    lassign [_widgetFont $tw] wFam wSize wBold wItal
+    if {$opts(-fontfamily) eq ""} {
+        set opts(-fontfamily) $wFam
+        set defFont [_tclFontToPdf $wFam $wBold $wItal]
+    } else {
+        set defFont [_pdfFont $opts(-fontfamily)]
+    }
+    if {$opts(-fontsize) eq ""} { set opts(-fontsize) $wSize }
     set orient 1
     if {$opts(-ctx) ne {}} { catch {set orient [dict get $opts(-ctx) orient]} }
 
@@ -67,7 +84,7 @@ proc ::pdf4tcllib::textwidget::render {pdf tw x y args} {
     set paraSpacingBefore 0
 
     set defaultStyle [dict create \
-        font $opts(-fontfamily) fontsize $opts(-fontsize) \
+        font $defFont fontsize $opts(-fontsize) \
         fg {0 0 0} bg {} underline 0 overstrike 0 elide 0 \
         lmargin1 0 lmargin2 0 spacing1 0 spacing3 0 justify left offset 0]
 
@@ -394,11 +411,34 @@ proc ::pdf4tcllib::textwidget::_drawLine {pdf lineBuffer x lmargin lineH \
     if {$orient} {return [expr {$curY+$lineH}]} else {return [expr {$curY-$lineH}]}
 }
 
+# Familie, Groesse in Punkt, fett, kursiv der -font eines Text-Widgets.
+# Die Familie, wie das Programm sie verlangt (Helvetica, nicht die
+# Ersatzschrift, die X dafuer nimmt); die Groesse, wie Tk sie aufloest --
+# eine benannte Schrift wie TkFixedFont nennt sonst keine.
+proc ::pdf4tcllib::textwidget::_widgetFont {tw} {
+    set spec {}
+    catch {set spec [$tw cget -font]}
+    lassign [_parseFont $spec Helvetica 10] fam sz bold ital
+    catch {set sz [dict get [font actual $spec] -size]}
+    if {![string is double -strict $sz] || $sz == 0} { set sz 10 }
+    if {$sz < 0} { set sz [expr {-$sz * 0.75}] }
+    return [list $fam $sz $bold $ital]
+}
+
+# Ein Name fuer setFont: ein PDF-Schriftname bleibt, wie er ist; alles
+# andere wird wie ein Tk-Familienname behandelt.
+proc ::pdf4tcllib::textwidget::_pdfFont {name} {
+    set alle {}
+    catch {set alle [::pdf4tcl::getFonts]}
+    if {$name in $alle} { return $name }
+    return [_tclFontToPdf $name 0 0]
+}
+
 proc ::pdf4tcllib::textwidget::_parseFont {fontSpec defFamily defSize} {
     set family $defFamily; set size $defSize; set bold 0; set italic 0
     if {![catch {font configure $fontSpec -family} fam]} {
         set family $fam
-        catch {set size [font configure $fontSpec -size]}
+        catch {set size [expr {abs([font configure $fontSpec -size])}]}
         catch {if {[font configure $fontSpec -weight] eq "bold"} {set bold 1}}
         catch {if {[font configure $fontSpec -slant]  eq "italic"} {set italic 1}}
         return [list $family $size $bold $italic]

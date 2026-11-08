@@ -14,6 +14,7 @@ pdf4tcllib fills the most common gaps in pdf4tcl:
 - **Table of contents** -- real page numbers and bookmarks, through a two-pass layout (`pdf4tcltoc`)
 - **Charts** -- bar, line and pie from data, Tk-free, tagged as figures (`pdf4tclchart`)
 - **Column flow** -- text through columns and pages, and a diagonal watermark (`pdf4tclflow`)
+- **Document templates** -- delivery notes, quotations, letters from a block layout and a data dict, page breaks and "page n of m" included (`pdf4tcltemplate`)
 - **Tree widgets** -- a `ttk::treeview` as an indented table or as an outline with bookmarks (`pdf4tcltreeview`)
 - **Images** -- fit or cover a frame with an anchor, and galleries across pages with captions (`image::place`, `image::gallery`)
 - **Diagrams** -- arrows with heads that point the right way, and callouts that shrink their text rather than cut it (`drawing::arrow`, `drawing::callout`)
@@ -74,22 +75,23 @@ tcl::tm::path add /path/to/lib
 package require pdf4tcllib 0.6
 ```
 
-`pdf4tcllib-0.6.7.tm` is one file and holds the core: fonts, unicode, text,
+`pdf4tcllib-0.6.8.tm` is one file and holds the core: fonts, unicode, text,
 math, table, page, drawing, units, image, form, tag. The others are
 separate packages, each usable on its own -- take only what you use.
 
 | file | `package require` | |
 |---|---|---|
-| `lib/pdf4tcllib-0.6.7.tm` | `pdf4tcllib` | the core, needed by all of the below |
+| `lib/pdf4tcllib-0.6.8.tm` | `pdf4tcllib` | the core, needed by all of the below |
 | `lib/pdf4tcltable-0.3.2.tm` | `pdf4tcltable` | export a Tk `tablelist` widget |
 | `lib/pdf4tcltreeview-0.1.1.tm` | `pdf4tcltreeview` | export a `ttk::treeview`, as a table or as an outline |
 | `lib/pdf4tclcanvas-0.1.tm` | `pdf4tclcanvas` | place a canvas in a frame, to scale and in the structure tree |
-| `lib/pdf4tcltext-0.3.tm` | `pdf4tcltext` | export a Tk `text` widget |
+| `lib/pdf4tcltext-0.4.tm` | `pdf4tcltext` | export a Tk `text` widget |
 | `lib/pdf4tclforms-0.2.3.tm` | `pdf4tclforms` | declarative AcroForm layouts |
 | `lib/pdf4tcllabels-0.3.tm` | `pdf4tcllabels` | label sheets and roll labels |
 | `lib/pdf4tcltoc-0.1.1.tm` | `pdf4tcltoc` | table of contents with real page numbers |
 | `lib/pdf4tclchart-0.1.2.tm` | `pdf4tclchart` | bar, line and pie charts |
 | `lib/pdf4tclflow-0.1.tm` | `pdf4tclflow` | text through columns and pages |
+| `lib/pdf4tcltemplate-0.1.tm` | `pdf4tcltemplate` | documents from a template (block layout) and a data dict |
 
 The only external dependency is pdf4tcl. `pdf4tcltable`, `pdf4tcltreeview`,
 `pdf4tclcanvas` and `pdf4tcltext` additionally need Tk and the widget they export; nothing
@@ -488,6 +490,35 @@ more often. Columns are for readability, not density.
 Full reference: `docs/en/reference/pdf4tclflow.md`. Example:
 `examples/basic/42_columns.tcl`.
 
+## pdf4tcltemplate -- documents from a template
+
+A delivery note, a quotation or a letter from two dicts: the layout says
+where each block sits (in mm), the data what it shows.
+
+```tcl
+package require pdf4tcltemplate
+
+::pdf4tcllib::template::render $pdf {
+    blocks {
+        address {x 20 y 50 w 85 list 1}
+        items   {type table x 20 y 108 w 170 cols {pos text qty}}
+        note    {x 20 y 0 w 170 gap 8}
+        foot    {x 20 y 282 w 170 page all align center text "Page {page} of {pages}"}
+    }
+} $data
+```
+
+Fixed blocks sit where they say; a block with `y 0` follows the block
+before it, usually the table, on whatever page that ends. The module
+computes nothing: amounts arrive as text. The block dict is the one of
+`tclutils::tulayout` and `tkutils::tkulayoutcanvas`, which are not needed.
+
+Full reference: `docs/en/reference/pdf4tcltemplate.md`. Examples:
+`examples/basic/43_template.tcl` (delivery note, letter, a variant of a
+template), `examples/advanced/d09_template.tcl` (a small template editor:
+drag blocks, write the PDF, save the template),
+`docs/en/howtos/howto-template.tcl`.
+
 
 ## Examples
 
@@ -495,7 +526,7 @@ Full reference: `docs/en/reference/pdf4tclflow.md`. Example:
 examples/
   basic/     01-38   Individual features (fonts, text, drawing, tables, ...)
   advanced/  36-49   Complex applications (batch, forms, annotations, ...)
-             d01-d08 Integration demos (multiple modules working together)
+             d01-d09 Integration demos (multiple modules working together)
 ```
 
 ```bash
@@ -512,7 +543,7 @@ tclsh examples/run_all.tcl
 
 # Options:
 tclsh examples/run_all.tcl -novalidate   # skip PDF validator
-tclsh examples/run_all.tcl -nodemos      # skip d01-d08
+tclsh examples/run_all.tcl -nodemos      # skip d01-d09
 tclsh examples/run_all.tcl -nobasic      # advanced only
 tclsh examples/run_all.tcl -noadvanced   # basic only
 ```

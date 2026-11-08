@@ -1,9 +1,9 @@
 #!/usr/bin/env tclsh
-# run_advanced.tcl -- Advanced examples + Demos (d01-d08)
+# run_advanced.tcl -- Advanced examples + Demos (d01-d09)
 #
 # Enthaelt:
 #   36, 39-49  -- Komplexe Examples (Batch, Forms, Annotations, ...)
-#   d01-d08    -- Integrations-Demos (mehrere Module im Zusammenspiel)
+#   d01-d09    -- Integrations-Demos (mehrere Module im Zusammenspiel)
 #
 # Usage: tclsh advanced/run_advanced.tcl [-novalidate] [-nodemos] [outdir]
 
@@ -48,6 +48,7 @@ set ::interactive {
     56_tablelist_pdf.tcl        -batch
     57_textwidget_pdf.tcl       -batch
     58_tablelist_miscwidgets.tcl -batch
+    d09_template.tcl            -batch
 }
 
 proc interactiveMode {f} {
@@ -66,7 +67,7 @@ proc runScript {f outdir} {
 
 # Skripte aufteilen: [0-9]*.tcl = examples, d*.tcl = demos
 set exScripts   [runner::collect $scriptDir {[0-9]*.tcl}  20 {nummerierte Beispiele}]
-set demoScripts [runner::collect $scriptDir {d[0-9]*.tcl}  5 {Demos d01-d08}]
+set demoScripts [runner::collect $scriptDir {d[0-9]*.tcl}  5 {Demos d01-d09}]
 
 if {$noDemos} { set demoScripts {} }
 

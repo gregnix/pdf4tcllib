@@ -5283,7 +5283,7 @@ proc ::pdf4tcllib::drawing::gradient_v {pdf x y w h c1 c2 {steps 100}} {
         set rgb [interpolate $c1 $c2 $t]
         $pdf setFillColor {*}$rgb
         set yy [expr {$y + $i * $dh}]
-        $pdf rectangle $x $yy $w $dh -filled 1
+        $pdf rectangle $x $yy $w $dh -filled 1 -stroke 0
     }
     ::pdf4tcllib::tag::artifactEnd $pdf
 }
@@ -5300,7 +5300,7 @@ proc ::pdf4tcllib::drawing::gradient_h {pdf x y w h c1 c2 {steps 100}} {
         set rgb [interpolate $c1 $c2 $t]
         $pdf setFillColor {*}$rgb
         set xx [expr {$x + $i * $dw}]
-        $pdf rectangle $xx $y $dw $h -filled 1
+        $pdf rectangle $xx $y $dw $h -filled 1 -stroke 0
     }
     ::pdf4tcllib::tag::artifactEnd $pdf
 }
@@ -5794,9 +5794,17 @@ proc ::pdf4tcllib::drawing::textScaled {pdf txt x y sx sy size {font ""}} {
 }
 
 proc ::pdf4tcllib::drawing::textSkewed {pdf txt x y skewX skewY size {font ""}} {
-    # Geneigter Text (Pseudo-Italic).
-    # skewX, skewY: Neigungswinkel in Grad
-    if {![catch {$pdf text $txt -x $x -y $y -skew $skewX $skewY -size $size -font $font}]} { return }
+    # Geneigter Text.
+    # skewX: Neigung der Grundlinie, skewY: Neigung der Zeichen
+    # (Pseudo-Italic), beides in Grad -- wie -xangle/-yangle von pdf4tcl.
+    #
+    # pdf4tcl kennt dafuer -xangle und -yangle. Bis 0.6.7 stand hier
+    # "-skew ... -size ... -font", Optionen, die $pdf text nicht hat: der
+    # Aufruf scheiterte immer, und der Ersatz unten setzte die Zeichen
+    # einzeln auf eine schraege Grundlinie, in festem Abstand.
+    if {$font eq ""} { set font [::pdf4tcllib::fonts::fontSans] }
+    $pdf setFont $size $font
+    if {![catch {$pdf text $txt -x $x -y $y -xangle $skewX -yangle $skewY}]} { return }
 
     # Fallback
     set pi [expr {acos(-1)}]

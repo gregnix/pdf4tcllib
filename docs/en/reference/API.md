@@ -58,6 +58,7 @@ Dependency: pdf4tcl (in `vendors/pkg/` or system-wide).
 > | `pdf4tcltoc` | `toc` | [table of contents](pdf4tcltoc.md) |
 > | `pdf4tclchart` | `chart` | [bar, line and pie charts](pdf4tclchart.md) |
 > | `pdf4tclflow` | `flow` | [text through columns and pages](pdf4tclflow.md) |
+> | `pdf4tcltemplate` | `template` | [documents from a template](pdf4tcltemplate.md) |
 
 > **Tagged PDF:** with `$pdf tagged 1` the building blocks mark up what they
 > draw -- tables as `Table`/`TR`/`TH`/`TD`, form fields as `Form` with their
@@ -827,8 +828,9 @@ pdf4tcllib::drawing::textRotated $pdf "Hello" $x $y 45 12
 # Scaled text
 pdf4tcllib::drawing::textScaled  $pdf "Hello" $x $y 1.5 0.8 12
 
-# Skewed text
-pdf4tcllib::drawing::textSkewed  $pdf "Hello" $x $y 20 0 12
+# Skewed text: skewX tilts the baseline, skewY slants the glyphs
+# (pseudo-italic) -- -xangle and -yangle of $pdf text
+pdf4tcllib::drawing::textSkewed  $pdf "Hello" $x $y 0 20 12
 ```
 
 ### drawing::watermark
@@ -1670,7 +1672,7 @@ if {[pdf4tcllib::validate_pdf "output.pdf"]} {
 
 ```tcl
 puts [pdf4tcllib::version]
-# -> 0.6.7   (the same number as [package provide pdf4tcllib])
+# -> 0.6.8   (the same number as [package provide pdf4tcllib])
 ```
 
 ### readFile

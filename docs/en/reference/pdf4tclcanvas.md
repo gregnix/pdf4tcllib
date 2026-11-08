@@ -17,11 +17,11 @@ time, for `tk::canvas`, `tkpath` and `tko::path`. Like
 [`pdf4tcltreeview`](pdf4tcltreeview.md) this is a thin adapter, and it
 takes over the two things around it.
 
-**The scale.** `$pdf canvas` takes `-width` and `-height` and pulls the
-drawing onto them. Where the aspect ratio of the frame differs from that
-of the drawing, it is distorted — exactly as `putImage` does with an
-image, and just as silently. `place` computes the scale from the bounding
-box and keeps the ratio.
+**The scale.** `$pdf canvas` takes `-width` and `-height` and keeps the
+aspect ratio itself, but it puts the drawing at the top left of that
+area (`-sticky nw`) and does not say how much of it was used. `place`
+computes the scale from the bounding box, aligns the drawing with
+`-anchor` and returns the area it really occupies.
 
 **The structure tree.** A canvas export leaves holes. Measured on four
 items — rectangle, oval, line, text — `$pdf canvas` alone leaves three
@@ -73,7 +73,7 @@ Returns the area actually used, `{x y w h}`, without the caption band.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `-fit` | contain | `contain` keeps the ratio, `stretch` is the old behaviour |
+| `-fit` | contain | `contain` scales and aligns here; `stretch` hands the frame to `$pdf canvas` unchanged (ratio kept, top left, `-border` and the return value are the whole frame) |
 | `-anchor` | center | `nw n ne w center e sw s se` |
 | `-alt` | {} | description; makes it a `Figure` |
 | `-caption` | {} | caption under the drawing |

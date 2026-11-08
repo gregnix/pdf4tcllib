@@ -17,11 +17,11 @@
 # und pdf4tcltreeview ist dies ein Adapter -- er nimmt dem Aufrufer ab,
 # was drumherum haengt und was jeder von Hand falsch macht:
 #
-#   - DER MASSSTAB. "$pdf canvas" nimmt -width und -height und zieht die
-#     Zeichnung darauf. Weicht das Seitenverhaeltnis des Rahmens von dem
-#     der Zeichnung ab, verzerrt sie -- genau wie putImage bei einem
-#     Bild, und genauso still. place rechnet den Massstab aus der bbox
-#     und haelt das Verhaeltnis.
+#   - DER MASSSTAB. "$pdf canvas" nimmt -width und -height und haelt das
+#     Seitenverhaeltnis selbst, setzt die Zeichnung aber oben links in
+#     diese Flaeche (-sticky nw) und sagt nicht, wie viel davon sie
+#     belegt. place rechnet den Massstab aus der bbox, richtet die
+#     Zeichnung mit -anchor aus und gibt die belegte Flaeche zurueck.
 #
 #   - DER STRUKTURBAUM. Ein Canvas-Export hinterlaesst Loecher: gemessen
 #     an vier Elementen (Rechteck, Ellipse, Linie, Text) drei offene
@@ -114,8 +114,9 @@ proc ::pdf4tcllib::canvas::place {pdf c x y w h args} {
     }
 
     # Der Massstab. Bei contain bestimmt die knappere Richtung ihn, und
-    # das Verhaeltnis bleibt erhalten; bei stretch wird gezogen, wie
-    # "$pdf canvas" es von sich aus tut.
+    # das Verhaeltnis bleibt erhalten; bei stretch geht der ganze Rahmen
+    # an "$pdf canvas", das ebenfalls das Verhaeltnis haelt, die
+    # Zeichnung aber oben links ansetzt.
     if {$o(-fit) eq "contain"} {
         set s [expr {min($w / double($bw), $rahmenH / double($bh))}]
         set zw [expr {$bw * $s}]

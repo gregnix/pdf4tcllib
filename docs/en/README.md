@@ -40,6 +40,7 @@ Xvfb :99 -screen 0 1280x1024x24 & export DISPLAY=:99
 | [`howto-shipping-labels.md`](howtos/howto-shipping-labels.md) | Parcel labels: sorting by tour, what goes where, the barcode |
 | [`howto-charts.md`](howtos/howto-charts.md) | Numbers on a page: bars, lines, shares, and a shared scale |
 | [`howto-toc.md`](howtos/howto-toc.md) | A contents page whose numbers are right |
+| [`howto-template.md`](howtos/howto-template.md) | A delivery note from a layout and a data dict, "page n of m" included |
 
 **Not covered by a howto:** `pdf4tclcanvas`, `pdf4tcltext` and
 `pdf4tcltreeview`. All three need Tk and a display, which the howtos here
@@ -67,6 +68,7 @@ in use.
 | [`reference/pdf4tcltoc.md`](reference/pdf4tcltoc.md) | `pdf4tcltoc` -- table of contents with real page numbers |
 | [`reference/pdf4tclchart.md`](reference/pdf4tclchart.md) | `pdf4tclchart` -- bar, line and pie charts |
 | [`reference/pdf4tclflow.md`](reference/pdf4tclflow.md) | `pdf4tclflow` -- text through columns and pages, plus the watermark |
+| [`reference/pdf4tcltemplate.md`](reference/pdf4tcltemplate.md) | `pdf4tcltemplate` -- documents from a template (block layout) and a data dict |
 | [`reference/accessibility.md`](reference/accessibility.md) | What an accessible document needs, and what no tool can supply |
 
 ## Requirements

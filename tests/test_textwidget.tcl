@@ -484,4 +484,48 @@ test tw-off-2 "ohne -offset bleibt alles auf einer Grundlinie" \
     llength [lsort -unique $ys]
 } -result 1
 
+# Die Schrift fuer Text ohne Schrift-Tag kommt aus der -font des Widgets.
+# Bis 0.3 war sie immer Helvetica 10, und ein Tk-Familienname in
+# -fontfamily endete mit "font ... doesn't exist".
+proc twStrom {font args} {
+    set t [text .__wf[incr ::twWf] -width 40 -height 3 -font $font]
+    $t insert end "Zeile ohne Tag\n"
+    update idletasks
+    set pdf [::pdf4tcl::new %AUTO% -paper a4 -orient 1 -compress 0]
+    $pdf startPage
+    set rc [catch {::pdf4tcllib::textwidget::render $pdf $t 40 40 {*}$args} m]
+    $pdf endPage
+    set strom [$pdf get]
+    $pdf destroy; destroy $t
+    if {$rc} { return "FEHLER: $m" }
+    return $strom
+}
+
+test tw-wfont-1 "ohne Optionen: Schrift und Groesse des Widgets" \
+        -constraints {text pdf tk} -body {
+    set s [twStrom {Times 12}]
+    list [regexp {/Times-Roman} $s] [regexp {/Helvetica} $s] [regexp { 12 Tf} $s]
+} -result {1 0 1}
+
+test tw-wfont-2 "-fontfamily und -fontsize setzen sie weiter fest" \
+        -constraints {text pdf tk} -body {
+    set s [twStrom {Times 12} -fontfamily Helvetica -fontsize 9]
+    list [regexp {/Helvetica} $s] [regexp {/Times-Roman} $s] [regexp { 9 Tf} $s]
+} -result {1 0 1}
+
+test tw-wfont-3 "ein Tk-Familienname in -fontfamily ist kein Fehler" \
+        -constraints {text pdf tk} -body {
+    set s [twStrom {Helvetica 10} -fontfamily {Courier New}]
+    list [string match FEHLER* $s] [regexp {/Courier} $s]
+} -result {0 1}
+
+test tw-wfont-4 "benannte Schrift mit Pixelgroesse wird positiv" \
+        -constraints {text pdf tk} -body {
+    catch {font delete __twPx}
+    font create __twPx -family Helvetica -size -16
+    set s [twStrom __twPx]
+    font delete __twPx
+    list [string match FEHLER* $s] [regexp {/Helvetica} $s] [regexp { -} [regexp -inline {[-0-9.]+ Tf} $s]]
+} -result {0 1 0}
+
 cleanupTests

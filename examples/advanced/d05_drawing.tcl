@@ -195,7 +195,7 @@ pdf4tcllib::drawing::textScaled $pdf "Hoch" [expr {$x + 200}] $y 1.0 2.0 12
 
 # Geneigt
 $pdf setFillColor 0.2 0.6 0.2
-pdf4tcllib::drawing::textSkewed $pdf "Geneigt 15" [expr {$x + 320}] $y 15 0 12
+pdf4tcllib::drawing::textSkewed $pdf "Geneigt 15" [expr {$x + 320}] $y 0 15 12
 
 $pdf setFillColor 0 0 0
 

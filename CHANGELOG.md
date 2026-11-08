@@ -5,6 +5,41 @@ and module headers.
 
 ---
 
+## pdf4tcllib 0.6.8, pdf4tcltext 0.4 (2026-11-08)
+
+- `drawing::gradient_v`, `gradient_h`: the strips are filled only. Until
+  now each strip also stroked its outline in the current stroke colour,
+  which left dark seams across the gradient. Test `draw-gradient-nostroke`.
+- `drawing::textSkewed`: passes `-xangle`/`-yangle` to `$pdf text` and
+  draws the text in one piece. It called options `$pdf text` does not
+  have, so it always fell back to placing the characters one by one at a
+  fixed spacing. skewX tilts the baseline, skewY slants the glyphs. Test
+  `draw-skew-yangle`.
+- pdf4tcltext: text without a font tag is set in the widget's `-font`
+  (family as requested, size as Tk resolves it). Until now it was always
+  Helvetica 10. `-fontfamily` accepts a Tk family name as well as a PDF
+  font name; a Tk name used to end with "font ... doesn't exist".
+  `-fontfamily` and `-fontsize` still override. A named font with a
+  pixel size no longer gives a negative size. Tests `tw-wfont-1` to `-4`.
+  Changed behaviour: output without `-fontfamily` follows the widget.
+- pdf4tclcanvas: comments and reference no longer say that `$pdf canvas`
+  distorts; it keeps the ratio and puts the drawing top left. `-fit
+  stretch` is described as what it does.
+
+---
+
+## pdf4tcltemplate 0.1 (2026-11-08)
+
+- New module: `template::render` draws a document from a block layout (mm)
+  and a data dict -- text, label/value
+  pairs, tables over several pages with repeated head, images, rules;
+  blocks in the flow after the table; `{page}`, `{pages}`, `{key}` in
+  texts; any `-unit`; tagged when the document is. `template::check`.
+- Tests `test_pdf4tcltemplate.tcl`, reference `pdf4tcltemplate.md`, howto
+  `howto-template`, examples `43_template` and `d09_template` (editor).
+
+---
+
 ## pdf4tcllib 0.6.7, pdf4tclchart 0.1.2, pdf4tcltoc 0.1.1, pdf4tcltreeview 0.1.1 (2026-10-25)
 
 Changed behaviour:

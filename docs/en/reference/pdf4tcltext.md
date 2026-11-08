@@ -1,7 +1,7 @@
 # pdf4tcltext — Tk Text Widget PDF Export
 
-**Package:** `pdf4tcltext 0.3`  
-**File:** `pdf4tcltext-0.3.tm`  
+**Package:** `pdf4tcltext 0.4`  
+**File:** `pdf4tcltext-0.4.tm`  
 **Requires:** `pdf4tcllib 0.2`, `pdf4tcl 0.9.4.25+`, Tk
 
 Exports a Tk `text` widget to a formatted PDF, preserving fonts, colors,
@@ -20,6 +20,14 @@ package require pdf4tcltext
 `pdf4tcltext` automatically loads `pdf4tcllib 0.2` as a dependency.
 
 Runnable companion: [`examples/advanced/72_textwidget_tags.tcl`](../../../examples/advanced/72_textwidget_tags.tcl) -- what carries over and what does not, checked while drawing.
+
+### New in 0.4
+
+- **Text without a font tag follows the widget.** It is set in the
+  widget's `-font` instead of always Helvetica 10; see
+  [Text Without a Font Tag](#text-without-a-font-tag). `-fontfamily` also
+  takes a Tk family name. Changed behaviour for callers that pass
+  neither `-fontfamily` nor `-fontsize`.
 
 ### New in 0.3
 
@@ -113,13 +121,26 @@ Alias for `pdf4tcllib::textwidget::render`.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-maxwidth W` | 480 | Content width in points. Lines are broken at word boundaries to fit; a single word wider than `W` is drawn anyway rather than cut. **Up to 0.2 this option was accepted and ignored** — one widget line became one PDF line, however long, and the text left the page without a word said. |
-| `-fontsize N` | 10 | Default font size in points |
-| `-fontfamily S` | Helvetica | Default font family |
+| `-fontsize N` | from the widget | Size for text without a font tag, in points |
+| `-fontfamily S` | from the widget | Font for text without a font tag: a PDF font name, or a Tk family name mapped like a tag font |
 | `-linespacing N` | 2 | Extra line spacing in points |
 | `-skipelided 0/1` | 1 | Skip text with `-elide 1` tags |
 | `-skipinternal 0/1` | 1 | Ignore internal marks (`sel`, `insert`) |
 | `-ctx dict` | — | `page::context` dict for orient-aware layout |
 | `-yvar name` | — | Variable to receive the new Y position |
+
+---
+
+## Text Without a Font Tag
+
+Text that no tag gives a `-font` is set in the widget's own `-font`:
+the family as the program requested it, mapped like a tag font (see
+below), and the size as Tk resolves it, in points. `-fontfamily` and
+`-fontsize` override either.
+
+Up to 0.3 this text was always Helvetica 10, whatever the widget showed,
+and `-fontfamily` went to `setFont` unchecked -- a Tk family name such as
+`DejaVu Sans` ended with `font ... doesn't exist`.
 
 ---
 
