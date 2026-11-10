@@ -28,6 +28,19 @@ and module headers.
 
 ---
 
+## pdf4tcltemplate 0.2 (2026-11-09)
+
+- Tables: row kinds `_kind group`, `sum`, `total` and `_span 1` for rows
+  across all columns. A heading stays with the next row, a totals row
+  with the row before it; such chains move to the next page together,
+  with the head repeated. Unknown row kind: `DATA`.
+- Reference: a letterhead image needs a fixed `y` (`y 0` is the flow).
+- Tests `ly-rows-1` to `ly-rows-9` (exact page fill, 1 mm too little,
+  heading at the page end, totals at the page top, chain longer than a
+  page, tagged).
+
+---
+
 ## pdf4tcltemplate 0.1 (2026-11-08)
 
 - New module: `template::render` draws a document from a block layout (mm)

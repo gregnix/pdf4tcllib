@@ -91,7 +91,7 @@ separate packages, each usable on its own -- take only what you use.
 | `lib/pdf4tcltoc-0.1.1.tm` | `pdf4tcltoc` | table of contents with real page numbers |
 | `lib/pdf4tclchart-0.1.2.tm` | `pdf4tclchart` | bar, line and pie charts |
 | `lib/pdf4tclflow-0.1.tm` | `pdf4tclflow` | text through columns and pages |
-| `lib/pdf4tcltemplate-0.1.tm` | `pdf4tcltemplate` | documents from a template (block layout) and a data dict |
+| `lib/pdf4tcltemplate-0.2.tm` | `pdf4tcltemplate` | documents from a template (block layout) and a data dict |
 
 The only external dependency is pdf4tcl. `pdf4tcltable`, `pdf4tcltreeview`,
 `pdf4tclcanvas` and `pdf4tcltext` additionally need Tk and the widget they export; nothing

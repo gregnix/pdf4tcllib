@@ -287,4 +287,103 @@ test ly-tag-1 "mit tagged 1 bleibt nichts unausgezeichnet" -constraints template
     return $n
 } -result 0
 
+# ============================================================
+# Zeilenarten der Tabelle: Gruppenkopf, Summe, ueber alle Spalten
+# ============================================================
+
+# Zeilenhoehe bei size 10: Zeilenabstand 1.3 * 10 pt plus 1 mm Rand
+set ::rh [expr {10 * 1.3 / 72.0 * 25.4 + 1.0}]
+
+# Layout ohne Tabellenkopf: genau k Zeilen passen auf eine Seite
+# (plus d mm Luft); die Tabelle beginnt oben am Fluss
+proc rowsLayout {k {d 0}} {
+    set bottom [expr {20 + $k * $::rh + $d}]
+    dict create paper a4 margin 20 top 20 bottom $bottom size 10 blocks [dict create \
+        t [dict create type table x 20 y 20 w 170 header 0 cols {{key a w 30} {key b}}]]
+}
+
+proc rowsN {n {pre R}} {
+    set r {}
+    for {set i 1} {$i <= $n} {incr i} { lappend r [dict create a $pre$i b x] }
+    return $r
+}
+
+# Text je Seite
+proc pageTexts {txt} { split [string trimright $txt \f] \f }
+
+test ly-rows-1 "Gruppenkopf ueber alle Spalten, fett; Summe darunter" -constraints {template pdftotext} -body {
+    set rows [list [dict create _kind group a "Kunde: Mueller GmbH und Soehne Kommanditgesellschaft"] \
+        [dict create a R1 b 10,00] [dict create a R2 b 20,00] [dict create _kind sum a Summe b 30,00] \
+        [dict create _span 1 _text "Hinweis ueber die ganze Breite der Tabelle ohne Umbruch"]]
+    lassign [lyRun {blocks {t {type table x 20 y 20 w 170 cols {{key a w 30} {key b}}}}} \
+        [dict create t $rows]] res txt
+    list [regexp {Kunde: Mueller GmbH und Soehne Kommanditgesellschaft} $txt] \
+        [regexp {Summe\s+30,00} $txt] \
+        [regexp {Hinweis ueber die ganze Breite der Tabelle ohne Umbruch} $txt] [dict get $res pages]
+} -result {1 1 1 1}
+
+test ly-rows-2 "Zeilen fuellen die Seite genau: keine leere zweite Seite" -constraints template -body {
+    lassign [lyRun [rowsLayout 10] [dict create t [rowsN 10]]] res
+    dict get $res pages
+} -result 1
+
+test ly-rows-3 "1 mm zu wenig Platz: die letzte Zeile kommt auf Seite 2" -constraints {template pdftotext} -body {
+    lassign [lyRun [rowsLayout 10 -1] [dict create t [rowsN 10]]] res txt
+    set s [pageTexts $txt]
+    list [dict get $res pages] [regexp {R10\M} [lindex $s 0]] [regexp {R10\M} [lindex $s 1]]
+} -result {2 0 1}
+
+test ly-rows-4 "Gruppenkopf am Seitenende wandert mit der naechsten Zeile" -constraints {template pdftotext} -body {
+    set rows [concat [rowsN 9] [list [dict create _kind group a KOPF] [dict create a NACH b x]]]
+    lassign [lyRun [rowsLayout 10] [dict create t $rows]] res txt
+    set s [pageTexts $txt]
+    list [dict get $res pages] [regexp KOPF [lindex $s 0]] [regexp {KOPF.*NACH} [lindex $s 1]]
+} -result {2 0 1}
+
+test ly-rows-5 "Summe nicht allein oben: die letzte Zeile geht mit" -constraints {template pdftotext} -body {
+    set rows [concat [rowsN 10] [list [dict create _kind sum a SUMME b 1]]]
+    lassign [lyRun [rowsLayout 10] [dict create t $rows]] res txt
+    set s [pageTexts $txt]
+    list [dict get $res pages] [regexp {R10\M} [lindex $s 0]] [regexp {R10\M.*SUMME} [lindex $s 1]]
+} -result {2 0 1}
+
+test ly-rows-6 "Kette laenger als eine Seite: Zeile fuer Zeile, jede genau einmal" -constraints {template pdftotext} -body {
+    set rows [list [dict create a A b x]]
+    for {set i 1} {$i <= 25} {incr i} { lappend rows [dict create _kind sum a S$i b x] }
+    lassign [lyRun [rowsLayout 10] [dict create t $rows]] res txt
+    set fehlt {}
+    for {set i 1} {$i <= 25} {incr i} {
+        if {[llength [regexp -all -inline "S$i\\M" $txt]] != 1} { lappend fehlt $i }
+    }
+    list [dict get $res pages] $fehlt
+} -result {3 {}}
+
+test ly-rows-7 "Unbekannte Zeilenart ist ein Fehler" -constraints template -body {
+    set pdf [::pdf4tcl::new %AUTO% -paper a4]
+    set c [catch {::pdf4tcllib::template::render $pdf {blocks {t {type table x 20 y 20 w 100 cols {a b}}}} \
+        {t {{_kind kreis a 1}}}} m o]
+    $pdf destroy
+    list $c [lrange [dict get $o -errorcode] 0 2]
+} -result {1 {PDF4TCLLIB TEMPLATE DATA}}
+
+test ly-rows-8 "Zeilenarten mit tagged 1: nichts unausgezeichnet" -constraints template -body {
+    set pdf [::pdf4tcl::new %AUTO% -paper a4]
+    $pdf tagged 1
+    ::pdf4tcllib::template::render $pdf {blocks {t {type table x 20 y 20 w 100 cols {a b}}}} \
+        {t {{_kind group a K} {a 1 b 2} {_kind total a S b 2}}}
+    set n [$pdf getUntaggedCount]
+    $pdf destroy
+    return $n
+} -result 0
+
+test ly-rows-9 "Kopfzeile wiederholt sich auch vor einer gewanderten Kette" -constraints {template pdftotext} -body {
+    set l [rowsLayout 10]
+    dict set l blocks t header 1
+    dict set l blocks t cols {{key a w 30 title SPALTEA} {key b title SPALTEB}}
+    set rows [concat [rowsN 8] [list [dict create _kind group a KOPF] [dict create a NACH b x]]]
+    lassign [lyRun $l [dict create t $rows]] res txt
+    set s [pageTexts $txt]
+    list [dict get $res pages] [regexp {SPALTEA.*KOPF} [lindex $s 1]]
+} -result {2 1}
+
 cleanupTests

@@ -100,9 +100,37 @@ keys or a list in column order. A cell wraps inside its column, a row never
 splits, the head repeats on every page. `header 0` drops the head,
 `zebra 1` shades every second row, `rule` is the colour of the lines.
 
+A row dict may carry row keys besides the column keys, for grouped lists
+such as open items per customer:
+
+| row key | |
+|---|---|
+| `_kind group` | heading row: bold, across all columns, no line below; never alone at the bottom of a page |
+| `_kind sum` | totals row: bold, a thin line above; never alone at the top of a page |
+| `_kind total` | like `sum`, with a stronger line |
+| `_span 1` | the text runs across all columns (`group` has it by default) |
+| `_text` | the text of a spanning row; without it the value of the first column |
+
+```tcl
+set rows [list \
+    {_kind group a "Customer: Miller Ltd"} \
+    {a RE-101 b 450,00} {a RE-108 b 320,00} \
+    {_kind sum a "Total Miller Ltd" b 770,00} \
+    {_kind total a "Grand total" b 770,00}]
+```
+
+Rows that hold together -- a heading with the row after it, a totals row
+with the row before it -- move to the next page together when they do not
+fit in what is left; the head of the table is repeated there. A chain
+longer than a page breaks row by row. A row that fills the page exactly
+starts no empty page. The module adds nothing up: totals arrive as text
+like every other value. Zebra shading counts plain rows only.
+
 `image` blocks: the value is a file (PNG, JPEG). It is fitted into
 `w × h` with its aspect kept, along the width as `align` says. A full-page
-image at `x 0 y 0` with `page all`, first in the order, is a letterhead.
+image at `x 0` with `page all`, first in the order, is a letterhead. It
+needs a fixed `y` such as `0.01`: `y 0` puts a block in the flow, and
+`page all` is not allowed there.
 
 `rule` blocks: a line across `w` at `y`; `size` is its width in points.
 
@@ -167,8 +195,7 @@ lines and images artifacts. `getUntaggedCount` stays 0.
 
 ## Not covered
 
-- Cells spanning columns, totals rows inside the table: put totals in a
-  `pairs` block in the flow.
+- Cells spanning some columns but not all.
 - A block taller than a page, other than a text block.
 - Images other than what `addImage` reads; a PDF as letterhead must be
   turned into an image first.
